@@ -4,6 +4,7 @@
 import numpy as np
 import argparse
 import sys
+import random
 from random import randint
 from random import randrange
 # import time
@@ -71,6 +72,7 @@ class Env:
 	def initialize(self):
 		# initialize sdm, char_map and merge
 		print("Initializing.")
+		np.random.seed(self.pvals["seed"])
 		self.fsa = FSA(self.pvals["num_states"], self.pvals["num_actions"], self.pvals["num_choices"],
 			self.pvals["word_length"])
 		# self.sdm = SDM(self)
@@ -181,6 +183,14 @@ def make_summand(n, width):
 	s = np.where(bool_vals, 1, -1)
 	return s
 
+def pop_random_element(L):
+	# pop random element from a list
+	# from https://stackoverflow.com/questions/10048069/what-is-the-most-pythonic-way-to-pop-a-random-element-from-a-list
+	i = random.randrange(len(L)) # get random index
+	L[i], L[-1] = L[-1], L[i]    # swap with the last element
+	x = L.pop()                  # pop last element O(1)
+	return x
+
 
 class Sdm:
 	# implements a sparse distributed memory
@@ -242,9 +252,18 @@ class FSA:
 		self.actions_im = initialize_binary_matrix(num_actions, word_length, debug=False)
 		self.word_length = word_length
 		self.num_choices = num_choices
+		# make list of all possible action -> next_state combinations for selecting without replacement
+		# action_next_states = [(a, s) for a in range(num_actions) for s in range(num_states)]
 		fsa = []
 		for i in range(num_states):
-			fsa.append( [ (randrange(num_actions), randrange(num_states)) for j in range(num_choices)] )
+			possible_actions = list(range(self.num_actions))
+			possible_next_states = list(range(self.num_states))
+			nas = []
+			for j in range(num_choices):
+				nas.append( ( pop_random_element(possible_actions), pop_random_element(possible_next_states) ) )
+			# fsa.append( [ (randrange(num_actions), randrange(num_states)) for j in range(num_choices)] )
+			# fsa.append(random.sample(action_next_states, num_choices))
+			fsa.append(nas)
 		self.fsa = fsa
 		self.save_using_bundle()
 
