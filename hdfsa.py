@@ -240,6 +240,54 @@ class Sdm:
 		# set data_array contents to zero
 		self.data_array.fill(0)
 
+class Bundle:
+	# bundle in hd vector
+
+	def __init__(self, word_length, debug=False):
+		self.word_length = word_length
+		self.debug = debug
+		self.bundle = np.zeros((self.word_length, ), dtype=np.int16)
+
+	def add(self, v):
+		# add binary vector v to bundle
+		d = make_summand(v, self.word_length)
+		self.bundle += d
+		if self.debug:
+			print("add %s" % bin(v))
+			print("bundle=%s", self.bundle)
+
+	def binarize(self):
+		# convert from bundle to binary then to int
+		binarr = np.where(self.bundle>0, 1, 0)
+		bpack = np.packbits(binarr, axis=-1)
+		intval = int.from_bytes(bpack.tobytes(), byteorder)
+		if self.debug:
+			print("intval=%s" % bin(intval))
+		return intval
+
+	def test():
+		word_length = 200
+		bun = Bundle(word_length, debug=True)
+		a1 = random.getrandbits(word_length)
+		a2 = random.getrandbits(word_length)
+		s1 = random.getrandbits(word_length)
+		s2 = random.getrandbits(word_length)
+		sr = random.getrandbits(word_length)
+		# a1 = 0b11110000
+		# a2 = 0b11000011
+		# s1 = 0b10101010
+		# s2 = 0b01010101
+		bun.add(a1^s1)
+		bun.add(a2^s2)
+		b = bun.binarize()
+		fmt = "0%sb" % word_length
+		print("recalling from bundle:")
+		print("a1^b=%s" % format(a1^b, fmt))
+		print("  s1=%s, diff=%s" % (format(s1, fmt), gmpy2.popcount(a1^b^s1)))
+		print("a2^b=%s" % format(a2^b, fmt))
+		print("  s2=%s, diff=%s" % (format(s2, fmt), gmpy2.popcount(a2^b^s2)))
+		print("random distance: %s, %s" % (gmpy2.popcount(a1^b^sr), gmpy2.popcount(a2^b^sr)))
+
 
 class FSA:
 	# finite-state automaton
@@ -252,8 +300,6 @@ class FSA:
 		self.actions_im = initialize_binary_matrix(num_actions, word_length, debug=False)
 		self.word_length = word_length
 		self.num_choices = num_choices
-		# make list of all possible action -> next_state combinations for selecting without replacement
-		# action_next_states = [(a, s) for a in range(num_actions) for s in range(num_states)]
 		fsa = []
 		for i in range(num_states):
 			possible_actions = list(range(self.num_actions))
@@ -261,8 +307,6 @@ class FSA:
 			nas = []
 			for j in range(num_choices):
 				nas.append( ( pop_random_element(possible_actions), pop_random_element(possible_next_states) ) )
-			# fsa.append( [ (randrange(num_actions), randrange(num_states)) for j in range(num_choices)] )
-			# fsa.append(random.sample(action_next_states, num_choices))
 			fsa.append(nas)
 		self.fsa = fsa
 		self.save_using_bundle()
@@ -327,5 +371,7 @@ def main():
 	env.fsa.display()
 	env.fsa.recall_using_bundle()
 
-main()
+# main()
+Bundle.test()
+
 
