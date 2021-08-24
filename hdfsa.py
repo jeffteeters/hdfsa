@@ -174,8 +174,8 @@ def rotate_right(n, width, d = 1):
     # https://stackoverflow.com/questions/27176317/bitwise-rotate-right
     return (2**width-1)&(n>>d|n<<(width-d))
 
-def make_summand(n, width):
-	# n is an integer to add to counter, binary bits
+def int2iar(n, width):
+	# convert n (integer) to int array with integer bits 0, 1 mapped to -1, +1 in the array
 	# width is the word_length (number of bits) in the integer
 	# returns numpy int8 array with: where n bit is zero, -1, where n bit is one, +1
 	bool_vals = list(xmpz(n).iter_bits(stop=width))
@@ -216,7 +216,7 @@ class Sdm:
 	def store(self, address, data):
 		# store binary word data at top nact addresses matching address
 		top_matches = find_matches(self.addresses, address, self.nact, index_only = True)
-		d = make_summand(data, self.word_length)
+		d = int2iar(data, self.word_length)
 		for i in top_matches:
 			self.data_array[i] += d
 			self.hits[i] += 1
@@ -281,19 +281,20 @@ class Bundle:
 		self.fmt = "0%sb" % word_length
 		self.bundle = np.zeros((self.word_length, ), dtype=np.int16)
 
-	def make_summand(self, n):
-		# n is an integer to add to counter, binary bits
-		# returns numpy int8 array with: where n bit is zero, -1, where n bit is one, +1
-		# first element of array is set to most significant bit, to match bin() representation
-		bool_vals = list(xmpz(n).iter_bits(stop=self.word_length))
-		s = np.where(bool_vals, 1, -1)
-		# flip for most significant bit is first
-		s = np.flipud(s)
-		return s
+	# def make_summand(self, n):
+	# 	return int2iar(n, self.word_length)
+	# 	# n is an integer to add to counter, binary bits
+	# 	# returns numpy int8 array with: where n bit is zero, -1, where n bit is one, +1
+	# 	# first element of array is set to most significant bit, to match bin() representation
+	# 	bool_vals = list(xmpz(n).iter_bits(stop=self.word_length))
+	# 	s = np.where(bool_vals, 1, -1)
+	# 	# flip for most significant bit is first
+	# 	s = np.flipud(s)
+	# 	return s
 
 	def add(self, v):
 		# add binary vector v to bundle
-		d = self.make_summand(v)
+		d = int2iar(v, self.word_length)
 		self.bundle += d
 		if self.debug:
 			print("add  %s" % format(v, self.fmt))
@@ -302,14 +303,6 @@ class Bundle:
 	def binarize(self):
 		# convert from bundle to binary then to int
 		return iar2int(self.bundle)
-		# bbytes = np.where(self.bundle>0, ord('1'), ord('0')).astype(np.int8).tobytes()  # makes byte string, e.g. '0110101'
-		# intval = int(bbytes, 2)
-		# #  np.where(bundle>0, ord('1'), ord('0'))
-		# # bpack = np.packbits(binarr, axis=-1)
-		# # intval = int.from_bytes(bpack.tobytes(), byteorder)
-		# # if self.debug:
-		# # 	print("intval=%s" % format(intval, self.fmt))
-		# return intval
 
 	def test():
 		word_length = 1000
@@ -377,6 +370,7 @@ class FSA_store:
 		self.debug = debug
 		self.pvals = pvals
 		self.fsa.initialize_item_memory(word_length)
+		print("Recall from %s" % self.__class__.__name__)
 		self.initialize()
 		self.store()
 		self.recall()
@@ -478,70 +472,11 @@ class FSA_sdm_store(FSA_store):
 		return self.sdm.read(state_v ^ action_v)
 
 
-# class FSA_Bind_store_old:
-# 	# save fsa using binding in a single vector
-
-# 	def __init__(self, fsa, bind_word_length, debug=False):
-# 		self.fsa = fsa 
-# 		self.bind_word_length = bind_word_length
-# 		self.debug = debug
-# 		self.save_using_bundle()
-
-# 	def save_using_bundle(self):
-# 		# save the fsa using bundling in a single vector
-# 		# do this by adding state_v XOR action_v XOR Right_shift(next_state_v)
-# 		bundle = Bundle(self.bind_word_length)
-# 		for state_num in range(self.fsa.num_states):
-# 			state_v = self.fsa.states_im[state_num]
-# 			action_next_state_list = self.fsa.fsa[state_num]
-# 			for action_nexts in action_next_state_list:
-# 				action_num, next_state_num = action_nexts
-# 				action_v = self.fsa.actions_im[action_num]
-# 				next_state_v = self.fsa.states_im[next_state_num]
-# 				add_v = state_v ^ action_v ^ rotate_right(next_state_v, self.bind_word_length)
-# 				bundle.add(add_v)
-# 		# convert from counter to binary
-# 		self.bundle = bundle.binarize()
-
-# 	def recall_using_bundle(self):
-# 		# recall each action from the fsa bundle vector
-# 		# do this by finding best match for left_rotate(state_v XOR action_v)
-# 		num_errors = 0
-# 		nret = 3
-# 		hdiffs = []
-# 		item_count = 0
-# 		vr = random.getrandbits(self.bind_word_length)
-# 		for state_num in range(self.fsa.num_states):
-# 			state_v = self.fsa.states_im[state_num]
-# 			action_next_state_list = self.fsa.fsa[state_num]
-# 			for action_nexts in action_next_state_list:
-# 				item_count += 1
-# 				action_num, next_state_num = action_nexts
-# 				action_v = self.fsa.actions_im[action_num]
-# 				next_state_v = self.fsa.states_im[next_state_num]
-# 				found_v = rotate_left(state_v ^ action_v ^ self.bundle, self.word_length)
-# 				if self.debug:
-# 					print("s%s: a%s, hdist=%s, random=" %(state_num, action_num, gmpy2.popcount(found_v ^ next_state_v)),
-# 						gmpy2.popcount(found_v ^ vr))
-# 				im_matches = find_matches(self.fsa.states_im, found_v, nret, debug=self.debug)
-# 				if self.debug:
-# 					print("find_matches returned: %s" % im_matches)
-# 				found_i = im_matches[0][0]
-# 				hdiff_dif = im_matches[1][1] - im_matches[0][1]
-# 				if found_i != next_state_num:
-# 					print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s" % (next_state_num, 
-# 						found_i, gmpy2.popcount(self.states_im[found_i] ^ found_v), hdiff_dif))
-# 					num_errors += 1
-# 				hdiffs.append(hdiff_dif)
-# 		print("num_errors=%s/%s, hdiff avg=%0.4f, std=%0.4f" % (num_errors, item_count,
-# 			statistics.mean(hdiffs), statistics.stdev(hdiffs)))
-
-
 def main():
 	env = Env()
 	fsa = FSA(env.pvals["num_states"], env.pvals["num_actions"], env.pvals["num_choices"])
 	fsa.display()
-	# FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"])
+	FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"])
 	FSA_sdm_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
 
 main()
