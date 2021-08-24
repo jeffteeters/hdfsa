@@ -33,8 +33,10 @@ class Env:
 	 	  "flag":"c", "required_init":"i", "default":3 },
 	 	{ "name":"num_trials", "kw":{"help":"Number of trials to run", "type":int},
 	 	  "flag":"t", "required_init":"i", "default":3 }, 
-		{ "name":"word_length", "kw":{"help":"Word length for address and memory", "type":int},
-	 	  "flag":"n", "required_init":"i", "default":512 },
+		{ "name":"sdm_word_length", "kw":{"help":"Word length for SDM memory", "type":int},
+	 	  "flag":"w", "required_init":"i", "default":512 },
+	 	{ "name":"bind_word_length", "kw":{"help":"Word length for binding memory", "type":int},
+	 	  "flag":"b", "required_init":"i", "default":512 },
 	 	{ "name":"num_rows", "kw":{"help":"Number rows in memory","type":int},
 	 	  "flag":"m", "required_init":"i", "default":2048 },
 		{ "name":"activation_count", "kw":{"help":"Number memory rows to activate for each address","type":int},
@@ -74,8 +76,9 @@ class Env:
 		# initialize sdm, char_map and merge
 		print("Initializing.")
 		np.random.seed(self.pvals["seed"])
-		self.fsa = FSA(self.pvals["num_states"], self.pvals["num_actions"], self.pvals["num_choices"],
-			self.pvals["word_length"], self.pvals["debug"])
+		# self.fsa = FSA(self.pvals["num_states"], self.pvals["num_actions"], self.pvals["num_choices"])
+		# self.fsa_bind_store = FSA_Bind_store(self.fsa, self.pvals["bind_word_length"], self.pvals["debug"])
+		# self.fsa_sdm_store = FSA_SDM_store(self.fsa, self.pvals["sdm_word_length"], self.pvals["debug"])
 		# self.sdm = SDM(self)
 
 	def display_settings(self):
@@ -306,13 +309,10 @@ class Bundle:
 class FSA:
 	# finite-state automaton
 
-	def __init__(self, num_states, num_actions, num_choices, word_length, debug=False):
+	def __init__(self, num_states, num_actions, num_choices, debug=False):
 		# num_choices is number of actions per state
 		self.num_states = num_states
-		self.states_im = initialize_binary_matrix(num_states, word_length, debug=False)
 		self.num_actions = num_actions
-		self.actions_im = initialize_binary_matrix(num_actions, word_length, debug=False)
-		self.word_length = word_length
 		self.num_choices = num_choices
 		self.debug = debug
 		fsa = []
@@ -324,7 +324,6 @@ class FSA:
 				nas.append( ( pop_random_element(possible_actions), pop_random_element(possible_next_states) ) )
 			fsa.append(nas)
 		self.fsa = fsa
-		self.save_using_bundle()
 
 
 	def display(self):
@@ -335,66 +334,222 @@ class FSA:
 			next_states = ', '.join(["a%s -> s%s" % (ns[i][0], ns[i][1]) for i in range(len(ns))])
 			print("%s: %s" % (state_name, next_states))
 
-	def save_using_bundle(self):
-		# save the fsa using bundling in a single vector
-		# do this by adding state_v XOR action_v XOR Right_shift(next_state_v)
-		bundle = Bundle(self.word_length)
-		for state_num in range(self.num_states):
-			state_v = self.states_im[state_num]
-			action_next_state_list = self.fsa[state_num]
+	def initialize_item_memory(self, word_length):
+		self.states_im = initialize_binary_matrix(self.num_states, word_length, self.debug)
+		self.actions_im = initialize_binary_matrix(self.num_actions, word_length, self.debug)
+
+	# def save_using_bundle(self):
+	# 	# save the fsa using bundling in a single vector
+	# 	# do this by adding state_v XOR action_v XOR Right_shift(next_state_v)
+	# 	bundle = Bundle(self.bind_word_length)
+	# 	for state_num in range(self.num_states):
+	# 		state_v = self.states_im[state_num]
+	# 		action_next_state_list = self.fsa[state_num]
+	# 		for action_nexts in action_next_state_list:
+	# 			action_num, next_state_num = action_nexts
+	# 			action_v = self.actions_im[action_num]
+	# 			next_state_v = self.states_im[next_state_num]
+	# 			add_v = state_v ^ action_v ^ rotate_right(next_state_v, self.bind_word_length)
+	# 			bundle.add(add_v)
+	# 	# convert from counter to binary
+	# 	self.bundle = bundle.binarize()
+
+	# def save_using_bundle_old(self):
+	# 	# save the fsa using bundling in a single vector
+	# 	# do this by adding state_v XOR action_v XOR Right_shift(next_state_v)
+	# 	# 
+	# 	bundle = np.zeros((self.word_length, ), dtype=np.int16)
+	# 	for state_num in range(self.num_states):
+	# 		state_v = self.states_im[state_num]
+	# 		action_next_state_list = self.fsa[state_num]
+	# 		for action_nexts in action_next_state_list:
+	# 			action_num, next_state_num = action_nexts
+	# 			action_v = self.actions_im[action_num]
+	# 			next_state_v = self.states_im[next_state_num]
+	# 			add_v = state_v ^ action_v ^ rotate_right(next_state_v, self.word_length)
+	# 			d = make_summand(add_v, self.word_length)
+	# 			bundle += d
+	# 	# convert from counter to binary, then to 
+	# 	bundle = np.where(bundle>0, 1, 0)
+	# 	bpack = np.packbits(bundle, axis=-1)
+	# 	intval = int.from_bytes(bpack.tobytes(), byteorder)
+	# 	self.bundle = intval
+
+
+	# def recall_using_bundle(self):
+	# 	# recall each action from the fsa bundle vector
+	# 	# do this by finding best match for left_rotate(state_v XOR action_v)
+	# 	#
+	# 	num_errors = 0
+	# 	nret = 3
+	# 	hdiffs = []
+	# 	item_count = 0
+	# 	vr = random.getrandbits(self.bind_word_length)
+	# 	for state_num in range(self.num_states):
+	# 		state_v = self.states_im[state_num]
+	# 		action_next_state_list = self.fsa[state_num]
+	# 		for action_nexts in action_next_state_list:
+	# 			item_count += 1
+	# 			action_num, next_state_num = action_nexts
+	# 			action_v = self.actions_im[action_num]
+	# 			next_state_v = self.states_im[next_state_num]
+	# 			found_v = rotate_left(state_v ^ action_v ^ self.bundle, self.word_length)
+	# 			if self.debug:
+	# 				print("s%s: a%s, hdist=%s, random=" %(state_num, action_num, gmpy2.popcount(found_v ^ next_state_v)),
+	# 					gmpy2.popcount(found_v ^ vr))
+	# 			im_matches = find_matches(self.states_im, found_v, nret, debug=self.debug)
+	# 			if self.debug:
+	# 				print("find_matches returned: %s" % im_matches)
+	# 			found_i = im_matches[0][0]
+	# 			hdiff_dif = im_matches[1][1] - im_matches[0][1]
+	# 			if found_i != next_state_num:
+	# 				print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s" % (next_state_num, 
+	# 					found_i, gmpy2.popcount(self.states_im[found_i] ^ found_v), hdiff_dif))
+	# 				num_errors += 1
+	# 			hdiffs.append(hdiff_dif)
+	# 	print("num_errors=%s/%s, hdiff avg=%0.4f, std=%0.4f" % (num_errors, item_count,
+	# 		statistics.mean(hdiffs), statistics.stdev(hdiffs)))
+
+class FSA_store:
+	# abstract class for storing FSA.  Must subclass to implement different storage methods
+
+	def __init__(self, fsa, word_length, debug):
+		self.fsa = fsa
+		self.word_length = word_length
+		self.debug = debug
+		self.fsa.initialize_item_memory(word_length)
+		self.initialize()
+		self.store()
+		self.recall()
+
+
+	def store(self):
+		# store the fsa
+		for state_num in range(self.fsa.num_states):
+			state_v = self.fsa.states_im[state_num]
+			action_next_state_list = self.fsa.fsa[state_num]
 			for action_nexts in action_next_state_list:
 				action_num, next_state_num = action_nexts
-				action_v = self.actions_im[action_num]
-				next_state_v = self.states_im[next_state_num]
-				add_v = state_v ^ action_v ^ rotate_right(next_state_v, self.word_length)
-				bundle.add(add_v)
-		# convert from counter to binary
-		self.bundle = bundle.binarize()
+				action_v = self.fsa.actions_im[action_num]
+				next_state_v = self.fsa.states_im[next_state_num]
+				self.save_transition(state_v, action_v, next_state_v)
+		self.finalize_store()
 
-	def save_using_bundle_old(self):
-		# save the fsa using bundling in a single vector
-		# do this by adding state_v XOR action_v XOR Right_shift(next_state_v)
-		# 
-		bundle = np.zeros((self.word_length, ), dtype=np.int16)
-		for state_num in range(self.num_states):
-			state_v = self.states_im[state_num]
-			action_next_state_list = self.fsa[state_num]
-			for action_nexts in action_next_state_list:
-				action_num, next_state_num = action_nexts
-				action_v = self.actions_im[action_num]
-				next_state_v = self.states_im[next_state_num]
-				add_v = state_v ^ action_v ^ rotate_right(next_state_v, self.word_length)
-				d = make_summand(add_v, self.word_length)
-				bundle += d
-		# convert from counter to binary, then to 
-		bundle = np.where(bundle>0, 1, 0)
-		bpack = np.packbits(bundle, axis=-1)
-		intval = int.from_bytes(bpack.tobytes(), byteorder)
-		self.bundle = intval
-
-
-	def recall_using_bundle(self):
-		# recall each action from the fsa bundle vector
-		# do this by finding best match for left_rotate(state_v XOR action_v)
-		#
+	def recall(self):
+		# recall the fsa
 		num_errors = 0
 		nret = 3
 		hdiffs = []
 		item_count = 0
 		vr = random.getrandbits(self.word_length)
-		for state_num in range(self.num_states):
-			state_v = self.states_im[state_num]
-			action_next_state_list = self.fsa[state_num]
+		for state_num in range(self.fsa.num_states):
+			state_v = self.fsa.states_im[state_num]
+			action_next_state_list = self.fsa.fsa[state_num]
 			for action_nexts in action_next_state_list:
 				item_count += 1
 				action_num, next_state_num = action_nexts
-				action_v = self.actions_im[action_num]
-				next_state_v = self.states_im[next_state_num]
+				action_v = self.fsa.actions_im[action_num]
+				next_state_v = self.fsa.states_im[next_state_num]
+				found_v = self.recall_transition(state_v, action_v)
+				# found_v = rotate_left(state_v ^ action_v ^ self.bundle, self.word_length)
+				if self.debug:
+					print("s%s: a%s, hdist=%s, random=" %(state_num, action_num, gmpy2.popcount(found_v ^ next_state_v)),
+						gmpy2.popcount(found_v ^ vr))
+				im_matches = find_matches(self.fsa.states_im, found_v, nret, debug=self.debug)
+				if self.debug:
+					print("find_matches returned: %s" % im_matches)
+				found_i = im_matches[0][0]
+				hdiff_dif = im_matches[1][1] - im_matches[0][1]
+				if found_i != next_state_num:
+					print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s" % (next_state_num, 
+						found_i, gmpy2.popcount(self.fsa.states_im[found_i] ^ found_v), hdiff_dif))
+					num_errors += 1
+				hdiffs.append(hdiff_dif)
+		print("num_errors=%s/%s, hdiff avg=%0.4f, std=%0.4f" % (num_errors, item_count,
+			statistics.mean(hdiffs), statistics.stdev(hdiffs)))
+
+	# following classes must or can be overridden by subclasses
+
+	def initialize(self):
+		# subclass must be overridden
+		sys.exit("initialize must be overridden")
+
+	def save_transition(self, state_v, action_v, next_state_v):
+		sys.exit("save_transition must be overridden")
+
+	def recall_transition(self, state_v, action_v):
+		# recall next_state_v from state_v and action_v
+		sys.exit("recall_transition must be overridden")
+
+	def finalize_store(self):
+		pass
+
+
+class FSA_bind_store(FSA_store):
+
+	def initialize(self):
+		self.bundle = Bundle(self.word_length)
+
+	def save_transition(self, state_v, action_v, next_state_v):
+		add_v = state_v ^ action_v ^ rotate_right(next_state_v, self.word_length)
+		self.bundle.add(add_v)
+
+	def finalize_store(self):
+		# convert from counter to binary
+		self.bundle = self.bundle.binarize()
+
+	def recall_transition(self, state_v, action_v):
+		# recall next_state_v from state_v and action_v
+		found_v = rotate_left(state_v ^ action_v ^ self.bundle, self.word_length)
+		return found_v
+
+
+class FSA_Bind_store_old:
+	# save fsa using binding in a single vector
+
+	def __init__(self, fsa, bind_word_length, debug=False):
+		self.fsa = fsa 
+		self.bind_word_length = bind_word_length
+		self.debug = debug
+		self.save_using_bundle()
+
+	def save_using_bundle(self):
+		# save the fsa using bundling in a single vector
+		# do this by adding state_v XOR action_v XOR Right_shift(next_state_v)
+		bundle = Bundle(self.bind_word_length)
+		for state_num in range(self.fsa.num_states):
+			state_v = self.fsa.states_im[state_num]
+			action_next_state_list = self.fsa.fsa[state_num]
+			for action_nexts in action_next_state_list:
+				action_num, next_state_num = action_nexts
+				action_v = self.fsa.actions_im[action_num]
+				next_state_v = self.fsa.states_im[next_state_num]
+				add_v = state_v ^ action_v ^ rotate_right(next_state_v, self.bind_word_length)
+				bundle.add(add_v)
+		# convert from counter to binary
+		self.bundle = bundle.binarize()
+
+	def recall_using_bundle(self):
+		# recall each action from the fsa bundle vector
+		# do this by finding best match for left_rotate(state_v XOR action_v)
+		num_errors = 0
+		nret = 3
+		hdiffs = []
+		item_count = 0
+		vr = random.getrandbits(self.bind_word_length)
+		for state_num in range(self.fsa.num_states):
+			state_v = self.fsa.states_im[state_num]
+			action_next_state_list = self.fsa.fsa[state_num]
+			for action_nexts in action_next_state_list:
+				item_count += 1
+				action_num, next_state_num = action_nexts
+				action_v = self.fsa.actions_im[action_num]
+				next_state_v = self.fsa.states_im[next_state_num]
 				found_v = rotate_left(state_v ^ action_v ^ self.bundle, self.word_length)
 				if self.debug:
 					print("s%s: a%s, hdist=%s, random=" %(state_num, action_num, gmpy2.popcount(found_v ^ next_state_v)),
 						gmpy2.popcount(found_v ^ vr))
-				im_matches = find_matches(self.states_im, found_v, nret, debug=self.debug)
+				im_matches = find_matches(self.fsa.states_im, found_v, nret, debug=self.debug)
 				if self.debug:
 					print("find_matches returned: %s" % im_matches)
 				found_i = im_matches[0][0]
@@ -407,10 +562,13 @@ class FSA:
 		print("num_errors=%s/%s, hdiff avg=%0.4f, std=%0.4f" % (num_errors, item_count,
 			statistics.mean(hdiffs), statistics.stdev(hdiffs)))
 
+
 def main():
 	env = Env()
-	env.fsa.display()
-	env.fsa.recall_using_bundle()
+	fsa = FSA(env.pvals["num_states"], env.pvals["num_actions"], env.pvals["num_choices"])
+	fsa.display()
+	FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"])
+	# FSA_SDM_store(env.fsa, env.pvals["sdm_word_length"], env.pvals["debug"])
 
 main()
 # Bundle.test()
