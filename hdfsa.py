@@ -15,6 +15,7 @@ pp = pprint.PrettyPrinter(indent=4)
 # from bitarray import bitarray
 import gmpy2
 from gmpy2 import xmpz
+import statistics
 
 
 byteorder = "big" # sys.byteorder
@@ -378,7 +379,7 @@ class FSA:
 		#
 		num_errors = 0
 		nret = 3
-		sum_hdiff = 0.0
+		hdiffs = []
 		item_count = 0
 		vr = random.getrandbits(self.word_length)
 		for state_num in range(self.num_states):
@@ -390,17 +391,21 @@ class FSA:
 				action_v = self.actions_im[action_num]
 				next_state_v = self.states_im[next_state_num]
 				found_v = rotate_left(state_v ^ action_v ^ self.bundle, self.word_length)
-				print("s%s: a%s, hdist=%s, random=" %(state_num, action_num, gmpy2.popcount(found_v ^ next_state_v)),
-					gmpy2.popcount(found_v ^ vr))
+				if self.debug:
+					print("s%s: a%s, hdist=%s, random=" %(state_num, action_num, gmpy2.popcount(found_v ^ next_state_v)),
+						gmpy2.popcount(found_v ^ vr))
 				im_matches = find_matches(self.states_im, found_v, nret, debug=self.debug)
-				print("find_matches returned: %s" % im_matches)
+				if self.debug:
+					print("find_matches returned: %s" % im_matches)
 				found_i = im_matches[0][0]
+				hdiff_dif = im_matches[1][1] - im_matches[0][1]
 				if found_i != next_state_num:
-					print("error, expected state=s%s, found_state=s%s, found_hdif=%s" % (next_state_num, 
-						found_i, gmpy2.popcount(self.states_im[found_i] ^ found_v)))
+					print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s" % (next_state_num, 
+						found_i, gmpy2.popcount(self.states_im[found_i] ^ found_v), hdiff_dif))
 					num_errors += 1
-				sum_hdiff += abs(im_matches[0][1] - im_matches[1][1])
-		print("num_errors=%s, ave_hdiff=%0.4f" % (num_errors, sum_hdiff / item_count) )
+				hdiffs.append(hdiff_dif)
+		print("num_errors=%s/%s, hdiff avg=%0.4f, std=%0.4f" % (num_errors, item_count,
+			statistics.mean(hdiffs), statistics.stdev(hdiffs)))
 
 def main():
 	env = Env()
