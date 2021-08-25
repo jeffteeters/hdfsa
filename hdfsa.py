@@ -35,7 +35,7 @@ class Env:
 	 	# { "name":"num_trials", "kw":{"help":"Number of trials to run", "type":int},
 	 	#   "flag":"t", "required_init":"i", "default":3 },
 	 	{ "name":"verbosity", "kw":{"help":"Verbosity of output, 0-minimum, 1-show fsa, 2-show errors", "type":int},
-	 	  "flag":"v", "required_init":"i", "default":1 }, 
+		  "flag":"v", "required_init":"i", "default":0 },
 		{ "name":"sdm_word_length", "kw":{"help":"Word length for SDM memory, 0 to disable", "type":int},
 	 	  "flag":"w", "required_init":"i", "default":512 },
 		{ "name":"sdm_method", "kw":{"help":"0-normal SDM, 1-bind SDM, 2-both (combo)", "type":int},
@@ -349,13 +349,12 @@ class FSA:
 			fsa.append(nas)
 		self.fsa = fsa
 
-
 	def display(self):
 		# display the fsa
 		for state_num in range(self.num_states):
 			state_name = "s%s" % state_num
 			ns = self.fsa[state_num]
-			next_states = ', '.join(["a%s -> s%s" % (ns[i][0], ns[i][1]) for i in range(len(ns))])
+			next_states = ', '.join(["a%s->s%s" % (ns[i][0], ns[i][1]) for i in range(len(ns))])
 			print("%s: %s" % (state_name, next_states))
 
 	def initialize_item_memory(self, word_length):
