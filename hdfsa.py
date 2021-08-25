@@ -16,6 +16,7 @@ pp = pprint.PrettyPrinter(indent=4)
 import gmpy2
 from gmpy2 import xmpz
 import statistics
+import scipy.stats
 
 
 byteorder = "big" # sys.byteorder
@@ -31,11 +32,15 @@ class Env:
 	 	  "flag":"r", "required_init":"i", "default":10 },
 	 	{ "name":"num_choices", "kw":{"help":"Number of actions per state in finite-state automaton", "type":int},
 	 	  "flag":"c", "required_init":"i", "default":3 },
-	 	{ "name":"num_trials", "kw":{"help":"Number of trials to run", "type":int},
-	 	  "flag":"t", "required_init":"i", "default":3 }, 
-		{ "name":"sdm_word_length", "kw":{"help":"Word length for SDM memory", "type":int},
+	 	# { "name":"num_trials", "kw":{"help":"Number of trials to run", "type":int},
+	 	#   "flag":"t", "required_init":"i", "default":3 },
+	 	{ "name":"verbosity", "kw":{"help":"Verbosity of output, 0-minimum, 1-show fsa, 2-show errors", "type":int},
+	 	  "flag":"v", "required_init":"i", "default":1 }, 
+		{ "name":"sdm_word_length", "kw":{"help":"Word length for SDM memory, 0 to disable", "type":int},
 	 	  "flag":"w", "required_init":"i", "default":512 },
-	 	{ "name":"bind_word_length", "kw":{"help":"Word length for binding memory", "type":int},
+		{ "name":"sdm_method", "kw":{"help":"0-normal SDM, 1-bind SDM, 2-both (combo)", "type":int},
+	 	  "flag":"o", "required_init":"i", "default":2 },	 	  
+	 	{ "name":"bind_word_length", "kw":{"help":"Word length for binding memory, 0 to disable", "type":int},
 	 	  "flag":"b", "required_init":"i", "default":512 },
 	 	{ "name":"num_rows", "kw":{"help":"Number rows in memory","type":int},
 	 	  "flag":"m", "required_init":"i", "default":2048 },
@@ -76,15 +81,12 @@ class Env:
 		# initialize sdm, char_map and merge
 		print("Initializing.")
 		np.random.seed(self.pvals["seed"])
-		# self.fsa = FSA(self.pvals["num_states"], self.pvals["num_actions"], self.pvals["num_choices"])
-		# self.fsa_bind_store = FSA_Bind_store(self.fsa, self.pvals["bind_word_length"], self.pvals["debug"])
-		# self.fsa_sdm_store = FSA_SDM_store(self.fsa, self.pvals["sdm_word_length"], self.pvals["debug"])
-		# self.sdm = SDM(self)
+
 
 	def display_settings(self):
 		print("Current settings:")
 		for p in self.parms:
-			print(" %s: %s" % (p["name"], self.pvals[p["name"]]))
+			print("%s %s: %s" % (p["flag"], p["name"], self.pvals[p["name"]]))
 
 	# def update_settings(self, line):
 	# 	instructions = ("Update settings using 'u' followed by KEY VALUE pair(s), where keys are:\n" +
@@ -365,6 +367,9 @@ class FSA_store:
 	# abstract class for storing FSA.  Must subclass to implement different storage methods
 
 	def __init__(self, fsa, word_length, debug, pvals=None):
+		if word_length == 0:
+			# don't process if wordlength is zero
+			return
 		self.fsa = fsa
 		self.word_length = word_length
 		self.debug = debug
@@ -374,7 +379,6 @@ class FSA_store:
 		self.initialize()
 		self.store()
 		self.recall()
-
 
 	def store(self):
 		# store the fsa
@@ -414,12 +418,18 @@ class FSA_store:
 				found_i = im_matches[0][0]
 				hdiff_dif = im_matches[1][1] - im_matches[0][1]
 				if found_i != next_state_num:
-					print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s" % (next_state_num, 
-						found_i, gmpy2.popcount(self.fsa.states_im[found_i] ^ found_v), hdiff_dif))
+					# since this is in error, hdiff_dif needs to be calculated based on hdif to next_state_v
+					hdiff_dif = im_matches[0][1] - gmpy2.popcount(found_v ^ next_state_v)
 					num_errors += 1
+					if self.pvals["verbosity"] > 1:
+						print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s, im_matches=%s" % (
+							next_state_num, 
+							found_i, gmpy2.popcount(self.fsa.states_im[found_i] ^ found_v), hdiff_dif, im_matches))
 				hdiffs.append(hdiff_dif)
-		print("num_errors=%s/%s, hdiff avg=%0.4f, std=%0.4f" % (num_errors, item_count,
-			statistics.mean(hdiffs), statistics.stdev(hdiffs)))
+		mean = statistics.mean(hdiffs)
+		stdev = statistics.stdev(hdiffs)
+		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, probability of error=%.2e" % (num_errors, item_count,
+			mean, stdev, scipy.stats.norm(mean, stdev).cdf(0.0)))
 
 	# following classes must or can be overridden by subclasses
 
@@ -471,13 +481,31 @@ class FSA_sdm_store(FSA_store):
 		# recall next_state_v from state_v and action_v
 		return self.sdm.read(state_v ^ action_v)
 
+class FSA_combo_store(FSA_store):
+	# store FSA using SDM (sparse distributed memory) and binding
+
+	def initialize(self):
+		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
+			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"], debug=self.debug)
+
+	def save_transition(self, state_v, action_v, next_state_v):
+		self.sdm.store(state_v, action_v ^ next_state_v)
+
+	def recall_transition(self, state_v, action_v):
+		# recall next_state_v from state_v and action_v
+		return self.sdm.read(state_v) ^ action_v
+
 
 def main():
 	env = Env()
 	fsa = FSA(env.pvals["num_states"], env.pvals["num_actions"], env.pvals["num_choices"])
-	fsa.display()
-	FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"])
-	FSA_sdm_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
+	if env.pvals["verbosity"] > 0:
+		fsa.display()
+	FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
+	if env.pvals["sdm_method"] in (0, 2):
+		FSA_sdm_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
+	if env.pvals["sdm_method"] in (1, 2):
+		FSA_combo_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
 
 main()
 # Bundle.test()
