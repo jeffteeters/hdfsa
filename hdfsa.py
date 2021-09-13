@@ -201,6 +201,79 @@ def pop_random_element(L):
 	return x
 
 
+# scratch_code = """
+
+class Memory_Usage:
+	# for storing and displaying memory usage of different storage techniques
+
+	def __init__(self, name):
+		self.name = name  # name of memory storage technique, e.g. Overman SDM
+
+	def set_usage(self, address_memory, storage_memory, item_memory):
+		# values specified in bytes
+		self.address_memory = address_memory
+		self.storage_memory = storage_memory
+		self.item_memory = item_memory
+
+	def get_total(self):
+		return self.address_memory + self.storage_memory + self.item_memory
+
+	def __repr__(self):
+		return '%s- address:%s, storage:%s, item:%s, total:%s' % (self.name,
+			self.address_memory, self.storage_memory, self.item_memory, self.get_total())
+
+
+
+class Memory:
+	# abstract class for memory of any type (binding and various types of SDM)
+
+	def __init__(self, pvals):
+		self.pvals = pvals
+		self.debug = pvals["debug"]
+		self.verbosity = pvals["verbosity"]
+		self.initialize_storage()
+
+	# folling must be overidden
+
+	def initialize_im(self, item_count):
+		# initialize item memory
+		assert False, "must be ovridden"
+
+	def initialize_storage(self):
+		# initialize array used to store data, e.g. a 2-D array (for SDM) or 1 1-D array for binding
+		assert False, "must be ovridden"
+
+	def store(self, address, data):
+		# using address save data
+		assert False, "must be ovridden"
+
+	def finalize_storage(self):
+		pass
+
+	def recall(address):
+		# recall data stored at address
+		assert False, "must be ovridden"
+
+	def get_storage_requirements(self):
+		# return requirements for storage as a text string
+		assert False, "must be ovridden"
+
+
+class SdmA(Memory):
+	# abstracted version of SDM
+
+	def initialize_storage(self):
+		self.word_length = self.pvals["sdm_word_length"]
+		# self.address_length = self.word_length
+		self.num_rows = self.pvals["num_rows"]
+		self.nact = self.pvals["activation_count"]
+		self.storage = np.zeros((num_rows, word_length), dtype=np.int16)
+		self.addresses = initialize_binary_matrix(num_rows, word_length)
+		self.fmt = "0%sb" % word_length
+
+# """
+
+
 class Sdm:
 	# implements a sparse distributed memory
 	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, debug=False):
@@ -358,8 +431,12 @@ class FSA:
 			print("%s: %s" % (state_name, next_states))
 
 	def initialize_item_memory(self, word_length):
+		self.word_length = word_length
 		self.states_im = initialize_binary_matrix(self.num_states, word_length, self.debug)
 		self.actions_im = initialize_binary_matrix(self.num_actions, word_length, self.debug)
+
+	def get_storage_requirements_for_im(self):
+		return "im: %s bytes" % ((self.num_states + self.num_actions) * self.word_length / 8)
 
 
 class FSA_store:
@@ -429,6 +506,7 @@ class FSA_store:
 		stdev = statistics.stdev(hdiffs)
 		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, probability of error=%.2e" % (num_errors, item_count,
 			mean, stdev, scipy.stats.norm(mean, stdev).cdf(0.0)))
+		print("Storage required: %s, %s" % (self.fsa.get_storage_requirements_for_im(), self.get_storage_requirements()))
 
 	# following classes must or can be overridden by subclasses
 
@@ -445,6 +523,9 @@ class FSA_store:
 
 	def finalize_store(self):
 		pass
+
+	def get_storage_requirements(self):
+		assert False, "get_storage_requirements must be overridden"
 
 
 class FSA_bind_store(FSA_store):
@@ -466,6 +547,10 @@ class FSA_bind_store(FSA_store):
 		found_v = rotate_left(state_v ^ action_v ^ self.bundle, self.word_length)
 		return found_v
 
+	def get_storage_requirements(self):
+		return ("bundle: %s bytes" % (self.word_length / 8))
+
+
 class FSA_sdm_store(FSA_store):
 	# store FSA using SDM (sparse distributed memory)
 
@@ -480,6 +565,10 @@ class FSA_sdm_store(FSA_store):
 		# recall next_state_v from state_v and action_v
 		return self.sdm.read(state_v ^ action_v)
 
+	def get_storage_requirements(self):
+		return ("sdm counter: %s bytes" % (self.word_length * self.pvals["num_rows"]))
+
+
 class FSA_combo_store(FSA_store):
 	# store FSA using SDM (sparse distributed memory) and binding
 
@@ -493,6 +582,10 @@ class FSA_combo_store(FSA_store):
 	def recall_transition(self, state_v, action_v):
 		# recall next_state_v from state_v and action_v
 		return self.sdm.read(state_v) ^ action_v
+
+	def get_storage_requirements(self):
+		return ("sdm counter: %s bytes" % (self.word_length * self.pvals["num_rows"]))
+
 
 
 def main():
