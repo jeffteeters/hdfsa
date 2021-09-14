@@ -38,6 +38,8 @@ class Env:
 		  "flag":"v", "required_init":"i", "default":0 },
 		{ "name":"sdm_word_length", "kw":{"help":"Word length for SDM memory, 0 to disable", "type":int},
 	 	  "flag":"w", "required_init":"i", "default":512 },
+	 	{ "name":"mem_algorithm", "kw":{"help":"String specifying memory algorithm. Chars are: b-binding, "
+	 	  "d-normal sdm, c-combo sdm", "type":string}, "flag":"y", "required_init":"i", "default":"bdc" },
 		{ "name":"sdm_method", "kw":{"help":"0-normal SDM, 1-bind SDM, 2-both (combo)", "type":int},
 	 	  "flag":"o", "required_init":"i", "default":2 },	 	  
 	 	{ "name":"bind_word_length", "kw":{"help":"Word length for binding memory, 0 to disable", "type":int},
@@ -201,27 +203,22 @@ def pop_random_element(L):
 	return x
 
 
-# scratch_code = """
-
 class Memory_Usage:
 	# for storing and displaying memory usage of different storage techniques
 
-	def __init__(self, name):
+	def __init__(self, name, address_memory_size, storage_memory_size, item_memory_size)
 		self.name = name  # name of memory storage technique, e.g. Overman SDM
-
-	def set_usage(self, address_memory, storage_memory, item_memory):
 		# values specified in bytes
-		self.address_memory = address_memory
-		self.storage_memory = storage_memory
-		self.item_memory = item_memory
+		self.address_memory_size = address_memory_size
+		self.storage_memory_size = storage_memory_size
+		self.item_memory_size = item_memory_size
 
 	def get_total(self):
-		return self.address_memory + self.storage_memory + self.item_memory
+		return self.address_memory_size + self.storage_memory_size + self.item_memory_size
 
 	def __repr__(self):
 		return '%s- address:%s, storage:%s, item:%s, total:%s' % (self.name,
-			self.address_memory, self.storage_memory, self.item_memory, self.get_total())
-
+			self.address_memory_size, self.storage_memory_size, self.item_memory_size, self.get_total())
 
 
 class Memory:
@@ -229,49 +226,145 @@ class Memory:
 
 	def __init__(self, pvals):
 		self.pvals = pvals
-		self.debug = pvals["debug"]
-		self.verbosity = pvals["verbosity"]
+		# self.debug = pvals["debug"]
+		# self.verbosity = pvals["verbosity"]
+		# item memory types stored as dictionary with key the name of the item memory, value is the data
+		# self.im = {}
+		# self.im_storage_size = 0  # number of bytes used for storing item memory
+		if self.pvals["debug"]:
+			self.fmt = "0%sb" % word_length
 		self.initialize_storage()
 
-	# folling must be overidden
+	def get_memory_usage(self):
+		# return memory size in bytes
+		return self.memory_size
 
-	def initialize_im(self, item_count):
-		# initialize item memory
-		assert False, "must be ovridden"
+	# following must be overidden
 
 	def initialize_storage(self):
 		# initialize array used to store data, e.g. a 2-D array (for SDM) or 1 1-D array for binding
-		assert False, "must be ovridden"
+		assert False, "must be overidden"
+
+	# def initialize_im(self, name, item_count):
+	# 	# initialize item memory
+	# 	assert False, "must be overidden"
 
 	def store(self, address, data):
 		# using address save data
-		assert False, "must be ovridden"
+		assert False, "must be overidden"
 
 	def finalize_storage(self):
+		# must set self.memory_usage
 		pass
 
-	def recall(address):
-		# recall data stored at address
-		assert False, "must be ovridden"
+	def read(self, address):
+		# read data stored at address
+		assert False, "must be overidden"
 
-	def get_storage_requirements(self):
-		# return requirements for storage as a text string
-		assert False, "must be ovridden"
+class SDM_addresses:
+	# addresses for an SDM, is an abstract class
+
+	def __init__(self, pvals):
+		self.pvals = pvals
+		self.initialize()
+
+	def initialize(self):
+		# initialize address memory.  Save in "self.addresses" and also save "self.bytes_required"
+
+	def find_activated(self, address):
+		# return list of indicies matching address (rows in memory that are activated for store or recall)
+		assert False, "must be overriden"
+
+
+class Standard_SDM_addresses(SDM_addresses):
+	# standard sdm using dense vectors as addresses
+
+	def initialize(self):
+		self.addresses = initialize_binary_matrix(self.pvals["num_rows"], self.pvals["word_length"])
+		self.bytes_required = self.pvals["num_rows"] * self.pvals["word_length"] / 8
+
+	def find_activated(self, address):
+		# return list of indicies matching address (rows in memory that are activated for store or recall)
+		return find_matches(self.addresses, address, self.pvals["activation_count"], index_only = True)
+
+class Item_Memory:
+	# An item memory.  Is an abstract class
+
+	def __init__(self, pvals):
+		self.pvals = pvals
+		self.initialize()
+
+	def initialize(self, item_count, word_length):
+		# initialize item memory.  Save in "self.item_memory" and also save "self.bytes_required"
+		assert, "must be overridden"
+
+	def top_matches(self, v, nret):
+		# return top nret matches to v in item_memory.  Return as list: [(i0, h0), (i1, h1), ...]
+		# each "i" is index to matching item_memory item and "h" is hamming distance to v
+		assert False, "must be overridden"
+
+class Dense_Item_Memory(Item_memory):
+	# implements dense item memory (dense binary vectors)
+
+	def initialize(self, item_count, word_length):
+		self.item_memory = initialize_binary_matrix(item_count, word_length, self.pvals.debug)
+		self.im_storage_size += item_count * word_length / 8
+
+	def top_matches(self, v, nret):
+		return find_matches(self.item_memory, v, nret, debug=self.pvals.debug)
 
 
 class SdmA(Memory):
-	# abstracted version of SDM
+	# version of SDM using abstract classes
 
 	def initialize_storage(self):
+		self.name = "Standard SDM"
 		self.word_length = self.pvals["sdm_word_length"]
 		# self.address_length = self.word_length
 		self.num_rows = self.pvals["num_rows"]
-		self.nact = self.pvals["activation_count"]
+		# self.nact = self.pvals["activation_count"]
 		self.storage = np.zeros((num_rows, word_length), dtype=np.int16)
-		self.addresses = initialize_binary_matrix(num_rows, word_length)
-		self.fmt = "0%sb" % word_length
+		self.addresses = Standard_SDM_addresses(self.pvals)
 
-# """
+
+	# def initialize_im(self, name, item_count):
+	# 	# initialize item memory
+	# 	self.im[name] = initialize_binary_matrix(item_count, self.word_length, self.debug)
+	# 	self.im_storage_size += item_count * self.word_length / 8
+
+	def store(self, address, data):
+		# using address save data
+		# store binary word data at top nact addresses matching address
+		# top_matches = find_matches(self.addresses.addresses, address, self.nact, index_only = True)
+		top_matches = self.addresses.find_activated(address)
+		d = int2iar(data, self.word_length)
+		for i in top_matches:
+			self.data_array[i] += d
+		if self.debug:
+			print("store\n addr=%s\n data=%s" % (format(address, self.fmt), format(data, self.fmt)))
+
+	def finalize_storage(self):
+		# set self.memory_usage
+		address_memory_size = self.addresses.bytes_required
+		storage_memory_size = self.num_rows * self.word_length
+		self.memory_usage = Memory_usage(self.name, address_memory_size, storage_memory_size, self.im_storage_size)
+
+	def read(self, address):
+		# read data stored at address
+		# top_matches = find_matches(self.addresses, address, self.nact, index_only = True)
+		top_matches = self.addresses.find_activated(address)
+		i = top_matches[0]
+		isum = np.int32(self.data_array[i].copy())  # np.int32 is to convert to int32 to have range for sum
+		for i in top_matches[1:]:
+			isum += self.data_array[i]
+		isum2 = iar2int(isum)
+		if self.debug:
+			print("read\n addr=%s\n top_matches=%s\n data=%s\nisum=%s," % (format(address, self.fmt), top_matches,
+				format(isum2, self.fmt), isum))
+		return isum2
+
+
+"""
 
 
 class Sdm:
@@ -402,6 +495,41 @@ class Bundle:
 		print("  s2=%s, diff=%s" % (format(s2, fmt), gmpy2.popcount(a2^b^s2)))
 		print("random distance: %s, %s" % (gmpy2.popcount(a1^b^sr), gmpy2.popcount(a2^b^sr)))
 
+"""
+class BundleA(Memory):
+	# bundle in hd vector, using abstract class base
+
+	def initialize_storage(self):
+		self.name = "Bundling in one vector"
+		self.word_length = self.pvals["bind_word_length"]
+		self.bundle = np.zeros((self.word_length, ), dtype=np.int16)
+
+	def initialize_im(self, name, item_count):
+		# initialize item memory
+		self.im[name] = (item_count, initialize_binary_matrix(item_count, self.word_length, self.debug))
+		self.im_storage_size += item_count * self.word_length / 8
+
+	def store(self, address, data):
+		# bind address and data then bundle (add to bundle vector)
+		v = address ^ data
+		d = int2iar(v, self.word_length)
+		self.bundle += d
+		if self.debug:
+			print("add  %s" % format(v, self.fmt))
+			print("bundle=%s" % self.bundle)
+
+	def finalize_storage(self):
+		self.bundle = iar2int(self.bundle)
+		# set self.memory_usage
+		address_memory = 0
+		storage_memory = self.word_length
+		self.memory_usage = Memory_usage(self.name, address_memory, storage_memory, self.im_storage_size)
+
+	def read(self, address):
+		# read data stored at address
+		v = self.bundle ^ address
+		return v
+"""
 
 class FSA:
 	# finite-state automaton
@@ -438,7 +566,44 @@ class FSA:
 	def get_storage_requirements_for_im(self):
 		return "im: %s bytes" % ((self.num_states + self.num_actions) * self.word_length / 8)
 
+"""
 
+class FSAA:
+	# finite-state automaton, used with abstract Memory class
+
+	def __init__(self, num_states, num_actions, num_choices, debug=False):
+		# num_choices is number of actions per state
+		self.num_states = num_states
+		self.num_actions = num_actions
+		self.num_choices = num_choices
+		self.debug = debug
+		fsa = []
+		for i in range(num_states):
+			possible_actions = list(range(self.num_actions))
+			possible_next_states = list(range(self.num_states))
+			nas = []
+			for j in range(num_choices):
+				nas.append( ( pop_random_element(possible_actions), pop_random_element(possible_next_states) ) )
+			fsa.append(nas)
+		self.fsa = fsa
+
+	def display(self):
+		# display the fsa
+		for state_num in range(self.num_states):
+			state_name = "s%s" % state_num
+			ns = self.fsa[state_num]
+			next_states = ', '.join(["a%s->s%s" % (ns[i][0], ns[i][1]) for i in range(len(ns))])
+			print("%s: %s" % (state_name, next_states))
+
+	# def initialize_item_memory(self, word_length):
+	# 	self.word_length = word_length
+	# 	self.states_im = initialize_binary_matrix(self.num_states, word_length, self.debug)
+	# 	self.actions_im = initialize_binary_matrix(self.num_actions, word_length, self.debug)
+
+	# def get_storage_requirements_for_im(self):
+	# 	return "im: %s bytes" % ((self.num_states + self.num_actions) * self.word_length / 8)
+
+"""
 class FSA_store:
 	# abstract class for storing FSA.  Must subclass to implement different storage methods
 
@@ -527,6 +692,95 @@ class FSA_store:
 	def get_storage_requirements(self):
 		assert False, "get_storage_requirements must be overridden"
 
+"""
+
+class FSA_storeA:
+	# abstract class for storing FSA.  Must subclass to implement different storage methods
+	# A at end means for using abstract Memory class
+
+	def __init__(self,  memory, fsa, word_length, debug, pvals=None):
+		self.memory = memory
+		self.fsa = fsa
+		memory()
+		self.word_length = word_length
+		self.debug = debug
+		self.pvals = pvals
+		self.fsa.initialize_item_memory(word_length)
+		print("Recall from %s" % self.__class__.__name__)
+		self.initialize()
+		self.store()
+		self.recall()
+
+	def store(self):
+		# store the fsa
+		for state_num in range(self.fsa.num_states):
+			state_v = self.fsa.states_im[state_num]
+			action_next_state_list = self.fsa.fsa[state_num]
+			for action_nexts in action_next_state_list:
+				action_num, next_state_num = action_nexts
+				action_v = self.fsa.actions_im[action_num]
+				next_state_v = self.fsa.states_im[next_state_num]
+				self.save_transition(state_v, action_v, next_state_v)
+		self.finalize_store()
+
+	def recall(self):
+		# recall the fsa
+		num_errors = 0
+		nret = 3
+		hdiffs = []
+		item_count = 0
+		vr = random.getrandbits(self.word_length)
+		for state_num in range(self.fsa.num_states):
+			state_v = self.fsa.states_im[state_num]
+			action_next_state_list = self.fsa.fsa[state_num]
+			for action_nexts in action_next_state_list:
+				item_count += 1
+				action_num, next_state_num = action_nexts
+				action_v = self.fsa.actions_im[action_num]
+				next_state_v = self.fsa.states_im[next_state_num]
+				found_v = self.recall_transition(state_v, action_v)
+				# found_v = rotate_left(state_v ^ action_v ^ self.bundle, self.word_length)
+				if self.debug:
+					print("s%s: a%s, hdist=%s, random=" %(state_num, action_num, gmpy2.popcount(found_v ^ next_state_v)),
+						gmpy2.popcount(found_v ^ vr))
+				im_matches = find_matches(self.fsa.states_im, found_v, nret, debug=self.debug)
+				if self.debug:
+					print("find_matches returned: %s" % im_matches)
+				found_i = im_matches[0][0]
+				hdiff_dif = im_matches[1][1] - im_matches[0][1]
+				if found_i != next_state_num:
+					# since this is in error, hdiff_dif needs to be calculated based on hdif to next_state_v
+					hdiff_dif = im_matches[0][1] - gmpy2.popcount(found_v ^ next_state_v)
+					num_errors += 1
+					if self.pvals["verbosity"] > 1:
+						print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s, im_matches=%s" % (
+							next_state_num, 
+							found_i, gmpy2.popcount(self.fsa.states_im[found_i] ^ found_v), hdiff_dif, im_matches))
+				hdiffs.append(hdiff_dif)
+		mean = statistics.mean(hdiffs)
+		stdev = statistics.stdev(hdiffs)
+		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, probability of error=%.2e" % (num_errors, item_count,
+			mean, stdev, scipy.stats.norm(mean, stdev).cdf(0.0)))
+		print("Storage required: %s, %s" % (self.fsa.get_storage_requirements_for_im(), self.get_storage_requirements()))
+
+	# following classes must or can be overridden by subclasses
+
+	def initialize(self):
+		# subclass must be overridden
+		sys.exit("initialize must be overridden")
+
+	def save_transition(self, state_v, action_v, next_state_v):
+		sys.exit("save_transition must be overridden")
+
+	def recall_transition(self, state_v, action_v):
+		# recall next_state_v from state_v and action_v
+		sys.exit("recall_transition must be overridden")
+
+	def finalize_store(self):
+		pass
+
+	def get_storage_requirements(self):
+		assert False, "get_storage_requirements must be overridden"
 
 class FSA_bind_store(FSA_store):
 	# store FSA using binding into a single vector
@@ -586,18 +840,20 @@ class FSA_combo_store(FSA_store):
 	def get_storage_requirements(self):
 		return ("sdm counter: %s bytes" % (self.word_length * self.pvals["num_rows"]))
 
-
-
 def main():
 	env = Env()
 	fsa = FSA(env.pvals["num_states"], env.pvals["num_actions"], env.pvals["num_choices"])
 	if env.pvals["verbosity"] > 0:
 		fsa.display()
-	FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
-	if env.pvals["sdm_method"] in (0, 2):
-		FSA_sdm_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
-	if env.pvals["sdm_method"] in (1, 2):
-		FSA_combo_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
+	mem_algorithms = { "b":FSA_bind_storeA, "d":FSA_sdm_storeA, "c":FSA_combo_storeA}
+	for code in env.pvals["mem_algorithm"]:
+		mem_algorithms[code](fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
+
+	# FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
+	# if env.pvals["sdm_method"] in (0, 2):
+	# 	FSA_sdm_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
+	# if env.pvals["sdm_method"] in (1, 2):
+	# 	FSA_combo_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
 
 main()
 # Bundle.test()
