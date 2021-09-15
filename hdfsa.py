@@ -269,7 +269,7 @@ class SDM_addresses:
 		self.initialize()
 
 	def initialize(self):
-		# initialize address memory.  Save in "self.addresses" and also save "self.bytes_required"
+		# initialize address memory.  Save in "self.addresses" and set "self.bytes_required", self.num_rows
 
 	def find_activated(self, address):
 		# return list of indicies matching address (rows in memory that are activated for store or recall)
@@ -282,6 +282,7 @@ class Standard_SDM_addresses(SDM_addresses):
 	def initialize(self):
 		self.addresses = initialize_binary_matrix(self.pvals["num_rows"], self.pvals["word_length"])
 		self.bytes_required = self.pvals["num_rows"] * self.pvals["word_length"] / 8
+		self.num_rows = self.pvals["num_rows"]
 
 	def find_activated(self, address):
 		# return list of indicies matching address (rows in memory that are activated for store or recall)
@@ -317,14 +318,16 @@ class Dense_Item_Memory(Item_memory):
 class SdmA(Memory):
 	# version of SDM using abstract classes
 
-	def initialize_storage(self):
-		self.name = "Standard SDM"
+	def initialize_storage(self, name, addresses):
+		assert isinstance(addresses, SDM_addresses)
+		self.name = name  # e.g. "Standard SDM", "Overman"
+		self.addresses = addresses
 		self.word_length = self.pvals["sdm_word_length"]
 		# self.address_length = self.word_length
-		self.num_rows = self.pvals["num_rows"]
+		self.num_rows = addresses.num_rows
 		# self.nact = self.pvals["activation_count"]
-		self.storage = np.zeros((num_rows, word_length), dtype=np.int16)
-		self.addresses = Standard_SDM_addresses(self.pvals)
+		self.storage = np.zeros((self.num_rows, self.word_length), dtype=np.int16)
+		# self.addresses = Standard_SDM_addresses(self.pvals)
 
 
 	# def initialize_im(self, name, item_count):
@@ -808,7 +811,14 @@ class FSA_bind_store(FSA_store):
 class FSA_sdm_store(FSA_store):
 	# store FSA using SDM (sparse distributed memory)
 
+	def __init__(self,  pvals):
+		addresses = Standard_SDM_addresses
+		self.memory = 
+
+		fsa, word_length, debug, 
+
 	def initialize(self):
+		addresses = Standard_SDM_addresses(self.pvals)
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
 			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"], debug=self.debug)
 
@@ -825,6 +835,23 @@ class FSA_sdm_store(FSA_store):
 
 class FSA_combo_store(FSA_store):
 	# store FSA using SDM (sparse distributed memory) and binding
+
+	def __init__(self,  pvals):
+		memory, fsa, word_length, debug, 
+
+
+		memory, fsa, word_length, debug, 
+		self.memory = memory
+		self.fsa = fsa
+		memory()
+		self.word_length = word_length
+		self.debug = debug
+		self.pvals = pvals
+		self.fsa.initialize_item_memory(word_length)
+		print("Recall from %s" % self.__class__.__name__)
+		self.initialize()
+		self.store()
+		self.recall()
 
 	def initialize(self):
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
@@ -847,7 +874,7 @@ def main():
 		fsa.display()
 	mem_algorithms = { "b":FSA_bind_storeA, "d":FSA_sdm_storeA, "c":FSA_combo_storeA}
 	for code in env.pvals["mem_algorithm"]:
-		mem_algorithms[code](fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
+		mem_algorithms[code](fsa, env.pvals)
 
 	# FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
 	# if env.pvals["sdm_method"] in (0, 2):
