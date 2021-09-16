@@ -224,16 +224,16 @@ class Memory_Usage:
 class Memory:
 	# abstract class for memory of any type (binding and various types of SDM)
 
-	def __init__(self, pvals):
-		self.pvals = pvals
-		# self.debug = pvals["debug"]
-		# self.verbosity = pvals["verbosity"]
-		# item memory types stored as dictionary with key the name of the item memory, value is the data
-		# self.im = {}
-		# self.im_storage_size = 0  # number of bytes used for storing item memory
-		if self.pvals["debug"]:
-			self.fmt = "0%sb" % word_length
-		self.initialize_storage()
+	# def __init__(self, pvals):
+	# 	self.pvals = pvals
+	# 	# self.debug = pvals["debug"]
+	# 	# self.verbosity = pvals["verbosity"]
+	# 	# item memory types stored as dictionary with key the name of the item memory, value is the data
+	# 	# self.im = {}
+	# 	# self.im_storage_size = 0  # number of bytes used for storing item memory
+	# 	if self.pvals["debug"]:
+	# 		self.fmt = "0%sb" % word_length
+	# 	self.initialize_storage()
 
 	def get_memory_usage(self):
 		# return memory size in bytes
@@ -264,13 +264,6 @@ class Memory:
 class SDM_addresses:
 	# addresses for an SDM, is an abstract class
 
-	def __init__(self, pvals):
-		self.pvals = pvals
-		self.initialize()
-
-	def initialize(self):
-		# initialize address memory.  Save in "self.addresses" and set "self.bytes_required", self.num_rows
-
 	def find_activated(self, address):
 		# return list of indicies matching address (rows in memory that are activated for store or recall)
 		assert False, "must be overriden"
@@ -279,25 +272,27 @@ class SDM_addresses:
 class Standard_SDM_addresses(SDM_addresses):
 	# standard sdm using dense vectors as addresses
 
-	def initialize(self):
-		self.addresses = initialize_binary_matrix(self.pvals["num_rows"], self.pvals["word_length"])
-		self.bytes_required = self.pvals["num_rows"] * self.pvals["word_length"] / 8
-		self.num_rows = self.pvals["num_rows"]
+	def __init__(self, num_rows, word_length, activation_count):
+		# initialize address memory.  Save in "self.addresses" and set "self.bytes_required", self.num_rows
+		self.nact = activation_count
+		self.addresses = initialize_binary_matrix(num_rows, word_length)
+		self.bytes_required = num_rows * pvals / 8
 
 	def find_activated(self, address):
 		# return list of indicies matching address (rows in memory that are activated for store or recall)
-		return find_matches(self.addresses, address, self.pvals["activation_count"], index_only = True)
+		return find_matches(self.addresses, address, self.nact, index_only = True)
+
 
 class Item_Memory:
 	# An item memory.  Is an abstract class
 
-	def __init__(self, pvals):
-		self.pvals = pvals
-		self.initialize()
+	# def __init__(self, pvals):
+	# 	self.pvals = pvals
+	# 	self.initialize()
 
-	def initialize(self, item_count, word_length):
-		# initialize item memory.  Save in "self.item_memory" and also save "self.bytes_required"
-		assert, "must be overridden"
+	# def initialize(self, item_count, word_length):
+	# 	# initialize item memory.  Save in "self.item_memory" and also save "self.bytes_required"
+	# 	assert, "must be overridden"
 
 	def top_matches(self, v, nret):
 		# return top nret matches to v in item_memory.  Return as list: [(i0, h0), (i1, h1), ...]
@@ -307,27 +302,39 @@ class Item_Memory:
 class Dense_Item_Memory(Item_memory):
 	# implements dense item memory (dense binary vectors)
 
-	def initialize(self, item_count, word_length):
-		self.item_memory = initialize_binary_matrix(item_count, word_length, self.pvals.debug)
-		self.im_storage_size += item_count * word_length / 8
+	def __init__(self, item_count, word_length, debug):
+		self.debug = debug
+		self.item_memory = initialize_binary_matrix(item_count, word_length, debug=debug)
+		self.bytes_required += item_count * word_length / 8
 
 	def top_matches(self, v, nret):
-		return find_matches(self.item_memory, v, nret, debug=self.pvals.debug)
+		return find_matches(self.item_memory, v, nret, debug=self.debug)
 
 
-class SdmA(Memory):
+# class SdmA(Memory):
+class SdmA:
 	# version of SDM using abstract classes
 
-	def initialize_storage(self, name, addresses):
-		assert isinstance(addresses, SDM_addresses)
+	def __init__(self, name, addresses, pvals):
 		self.name = name  # e.g. "Standard SDM", "Overman"
+		assert isinstance(addresses, SDM_addresses)
 		self.addresses = addresses
 		self.word_length = self.pvals["sdm_word_length"]
 		# self.address_length = self.word_length
 		self.num_rows = addresses.num_rows
 		# self.nact = self.pvals["activation_count"]
 		self.storage = np.zeros((self.num_rows, self.word_length), dtype=np.int16)
-		# self.addresses = Standard_SDM_addresses(self.pvals)
+		# self.addresses = Standard_SDM_addresses(self.pvals)		
+		self.pvals = pvals
+		# self.debug = pvals["debug"]
+		# self.verbosity = pvals["verbosity"]
+		# item memory types stored as dictionary with key the name of the item memory, value is the data
+		# self.im = {}
+		# self.im_storage_size = 0  # number of bytes used for storing item memory
+		self.bytes_required = self.num_rows * self.word_length
+		if self.pvals["debug"]:
+			self.fmt = "0%sb" % word_length
+		self.initialize_storage()
 
 
 	# def initialize_im(self, name, item_count):
@@ -598,10 +605,10 @@ class FSAA:
 			next_states = ', '.join(["a%s->s%s" % (ns[i][0], ns[i][1]) for i in range(len(ns))])
 			print("%s: %s" % (state_name, next_states))
 
-	# def initialize_item_memory(self, word_length):
-	# 	self.word_length = word_length
-	# 	self.states_im = initialize_binary_matrix(self.num_states, word_length, self.debug)
-	# 	self.actions_im = initialize_binary_matrix(self.num_actions, word_length, self.debug)
+	def initialize_item_memory(self, word_length):
+		self.word_length = word_length
+		self.states_im = initialize_binary_matrix(self.num_states, word_length, self.debug)
+		self.actions_im = initialize_binary_matrix(self.num_actions, word_length, self.debug)
 
 	# def get_storage_requirements_for_im(self):
 	# 	return "im: %s bytes" % ((self.num_states + self.num_actions) * self.word_length / 8)
@@ -811,9 +818,11 @@ class FSA_bind_store(FSA_store):
 class FSA_sdm_store(FSA_store):
 	# store FSA using SDM (sparse distributed memory)
 
-	def __init__(self,  pvals):
-		addresses = Standard_SDM_addresses
-		self.memory = 
+	def __init__(self, fsa, pvals):
+		addresses = Standard_SDM_addresses(pvals)
+		name = "Standard SDM"
+		self.sdm = SdmA(name, addresses, pvals)
+		self.i
 
 		fsa, word_length, debug, 
 
