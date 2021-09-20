@@ -39,7 +39,7 @@ class Env:
 		{ "name":"sdm_word_length", "kw":{"help":"Word length for SDM memory, 0 to disable", "type":int},
 	 	  "flag":"w", "required_init":"i", "default":512 },
 		{ "name":"sdm_method", "kw":{"help":"0-normal SDM, 1-bind SDM, 2-both (combo)", "type":int},
-	 	  "flag":"o", "required_init":"i", "default":2 },	 	  
+	 	  "flag":"o", "required_init":"i", "default":0 },	 	  
 	 	{ "name":"bind_word_length", "kw":{"help":"Word length for binding memory, 0 to disable", "type":int},
 	 	  "flag":"b", "required_init":"i", "default":512 },
 	 	{ "name":"num_rows", "kw":{"help":"Number rows in memory","type":int},
@@ -434,9 +434,10 @@ class FSA:
 		self.word_length = word_length
 		self.states_im = initialize_binary_matrix(self.num_states, word_length, self.debug)
 		self.actions_im = initialize_binary_matrix(self.num_actions, word_length, self.debug)
+		self.bytes_required = int((self.num_states + self.num_actions) * word_length / 8)
 
 	def get_storage_requirements_for_im(self):
-		return "im: %s bytes" % ((self.num_states + self.num_actions) * self.word_length / 8)
+		return "im: %s bytes" % int((self.num_states + self.num_actions) * self.word_length / 8)
 
 
 class FSA_store:
@@ -506,7 +507,8 @@ class FSA_store:
 		stdev = statistics.stdev(hdiffs)
 		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, probability of error=%.2e" % (num_errors, item_count,
 			mean, stdev, scipy.stats.norm(mean, stdev).cdf(0.0)))
-		print("Storage required: %s, %s" % (self.fsa.get_storage_requirements_for_im(), self.get_storage_requirements()))
+		print("Storage required: %s, %s, total: %.3e" % (self.fsa.get_storage_requirements_for_im(),
+			self.get_storage_requirements(), self.fsa.bytes_required + self.bytes_required))
 
 	# following classes must or can be overridden by subclasses
 
@@ -533,6 +535,7 @@ class FSA_bind_store(FSA_store):
 
 	def initialize(self):
 		self.bundle = Bundle(self.word_length)
+		self.bytes_required = int(self.word_length / 8)
 
 	def save_transition(self, state_v, action_v, next_state_v):
 		add_v = state_v ^ action_v ^ rotate_right(next_state_v, self.word_length)
@@ -548,7 +551,7 @@ class FSA_bind_store(FSA_store):
 		return found_v
 
 	def get_storage_requirements(self):
-		return ("bundle: %s bytes" % (self.word_length / 8))
+		return ("bundle: %s bytes" % int(self.word_length / 8))
 
 
 class FSA_sdm_store(FSA_store):
@@ -557,6 +560,7 @@ class FSA_sdm_store(FSA_store):
 	def initialize(self):
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
 			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"], debug=self.debug)
+		self.bytes_required = self.word_length * self.pvals["num_rows"]
 
 	def save_transition(self, state_v, action_v, next_state_v):
 		self.sdm.store(state_v ^ action_v, next_state_v)
@@ -575,6 +579,7 @@ class FSA_combo_store(FSA_store):
 	def initialize(self):
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
 			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"], debug=self.debug)
+		self.bytes_required = self.word_length * self.pvals["num_rows"]
 
 	def save_transition(self, state_v, action_v, next_state_v):
 		self.sdm.store(state_v, action_v ^ next_state_v)
