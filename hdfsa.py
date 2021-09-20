@@ -46,6 +46,8 @@ class Env:
 	 	  "flag":"m", "required_init":"i", "default":2048 },
 		{ "name":"activation_count", "kw":{"help":"Number memory rows to activate for each address","type":int},
 		  "flag":"a", "required_init":"m", "default":20},
+		{ "name":"noise_percent", "kw":{"help":"Percent of bits to change in memory to test noise resiliency",
+		  "type":int}, "flag":"n", "required_init":"m", "default":0},
 		{ "name":"debug", "kw":{"help":"Debug mode","type":int, "choices":[0, 1]},
 		  "flag":"d", "required_init":"", "default":0},
 		# { "name":"format", "kw":{"help":"Format used to store items and hard addresses, choices: "
@@ -176,6 +178,17 @@ def rotate_right(n, width, d = 1):
     # https://stackoverflow.com/questions/27176317/bitwise-rotate-right
     return (2**width-1)&(n>>d|n<<(width-d))
 
+def add_noise(iar, noise_percent):
+	# add noise by flipping sign of elements of iar (integer array)
+	# iar must be an numpy int array.  noise_percent is the percent noise, 0 to 100
+	if noise_percent == 0:
+		return
+	word_length = len(iar)
+	num_to_flip = int(word_length * noise_percent / 100)
+	rng = np.random.default_rng()
+	idx = rng.choice(word_length, size=num_to_flip)
+	iar[idx] *= -1
+
 def int2iar(n, width):
 	# convert n (integer) to int array with integer bits 0, 1 mapped to -1, +1 in the array
 	# width is the word_length (number of bits) in the integer
@@ -276,12 +289,13 @@ class SdmA(Memory):
 
 class Sdm:
 	# implements a sparse distributed memory
-	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, debug=False):
+	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, noise_percent=0, debug=False):
 		# nact - number of active addresses used (top matches) for reading or writing
 		self.address_length = address_length
 		self.word_length = word_length
 		self.num_rows = num_rows
 		self.nact = nact
+		self.noise_percent = noise_percent
 		self.data_array = np.zeros((num_rows, word_length), dtype=np.int16)
 		self.addresses = initialize_binary_matrix(num_rows, word_length)
 		self.debug = debug
@@ -297,6 +311,13 @@ class Sdm:
 			self.hits[i] += 1
 		if self.debug:
 			print("store\n addr=%s\n data=%s" % (format(address, self.fmt), format(data, self.fmt)))
+
+	def add_noise(self):
+		# add noise to counters to test noise resiliency
+		if self.noise_percent == 0:
+			return
+		for i in range(self.num_rows):
+			add_noise(self.data_array[i], self.noise_percent)
 
 	def show_hits(self):
 		# display histogram of overlapping hits
@@ -350,8 +371,9 @@ class Sdm:
 class Bundle:
 	# bundle in hd vector
 
-	def __init__(self, word_length, debug=False):
+	def __init__(self, word_length, noise_percent=0, debug=False):
 		self.word_length = word_length
+		self.noise_percent = noise_percent
 		self.debug = debug
 		self.fmt = "0%sb" % word_length
 		self.bundle = np.zeros((self.word_length, ), dtype=np.int16)
@@ -377,6 +399,8 @@ class Bundle:
 
 	def binarize(self):
 		# convert from bundle to binary then to int
+		if self.noise_percent > 0:
+			add_noise(self.bundle, self.noise_percent)
 		return iar2int(self.bundle)
 
 	def test():
@@ -534,7 +558,7 @@ class FSA_bind_store(FSA_store):
 	# store FSA using binding into a single vector
 
 	def initialize(self):
-		self.bundle = Bundle(self.word_length)
+		self.bundle = Bundle(self.word_length, noise_percent=self.pvals["noise_percent"])
 		self.bytes_required = int(self.word_length / 8)
 
 	def save_transition(self, state_v, action_v, next_state_v):
@@ -559,11 +583,16 @@ class FSA_sdm_store(FSA_store):
 
 	def initialize(self):
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
-			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"], debug=self.debug)
+			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"],
+			noise_percent=self.pvals["noise_percent"], debug=self.debug)
 		self.bytes_required = self.word_length * self.pvals["num_rows"]
 
 	def save_transition(self, state_v, action_v, next_state_v):
 		self.sdm.store(state_v ^ action_v, next_state_v)
+
+	def finalize_store(self):
+		if self.pvals["noise_percent"] > 0:
+			self.sdm.add_noise()
 
 	def recall_transition(self, state_v, action_v):
 		# recall next_state_v from state_v and action_v
@@ -578,11 +607,16 @@ class FSA_combo_store(FSA_store):
 
 	def initialize(self):
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
-			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"], debug=self.debug)
+			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"],
+			noise_percent=self.pvals["noise_percent"], debug=self.debug)
 		self.bytes_required = self.word_length * self.pvals["num_rows"]
 
 	def save_transition(self, state_v, action_v, next_state_v):
 		self.sdm.store(state_v, action_v ^ next_state_v)
+
+	def finalize_store(self):
+		if self.pvals["noise_percent"] > 0:
+			self.sdm.add_noise()
 
 	def recall_transition(self, state_v, action_v):
 		# recall next_state_v from state_v and action_v
