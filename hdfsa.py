@@ -47,7 +47,7 @@ class Env:
 		{ "name":"activation_count", "kw":{"help":"Number memory rows to activate for each address","type":int},
 		  "flag":"a", "required_init":"m", "default":20},
 		{ "name":"noise_percent", "kw":{"help":"Percent of bits to change in memory to test noise resiliency",
-		  "type":int}, "flag":"n", "required_init":"m", "default":0},
+		  "type":float}, "flag":"n", "required_init":"m", "default":0.0},
 		{ "name":"debug", "kw":{"help":"Debug mode","type":int, "choices":[0, 1]},
 		  "flag":"d", "required_init":"", "default":0},
 		# { "name":"format", "kw":{"help":"Format used to store items and hard addresses, choices: "
@@ -529,8 +529,18 @@ class FSA_store:
 				hdiffs.append(hdiff_dif)
 		mean = statistics.mean(hdiffs)
 		stdev = statistics.stdev(hdiffs)
+		probability_of_error = scipy.stats.norm(mean, stdev).cdf(0.0)
+		probability_correct = 1.0 - probability_of_error
+		actual_fraction_error = num_errors / item_count
+		actual_fraction_correct = 1.0 - actual_fraction_error
 		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, probability of error=%.2e" % (num_errors, item_count,
 			mean, stdev, scipy.stats.norm(mean, stdev).cdf(0.0)))
+		# print("Expected: error=%.2e, correct=%.2e; actual: error=%.2e, correct=%.2e" % (
+		# 	probability_of_error, probability_correct, actual_fraction_error,
+		# 	actual_fraction_correct))
+		print("error expected=%s actual=%s;  correct expected=%s actual=%s" % (
+			probability_of_error, actual_fraction_error, probability_correct,
+			actual_fraction_correct))
 		print("Storage required: %s, %s, total: %.3e" % (self.fsa.get_storage_requirements_for_im(),
 			self.get_storage_requirements(), self.fsa.bytes_required + self.bytes_required))
 
