@@ -17,6 +17,7 @@ import gmpy2
 from gmpy2 import xmpz
 import statistics
 import scipy.stats
+import os.path
 
 
 byteorder = "big" # sys.byteorder
@@ -32,8 +33,8 @@ class Env:
 	 	  "flag":"r", "required_init":"i", "default":10 },
 	 	{ "name":"num_choices", "kw":{"help":"Number of actions per state in finite-state automaton", "type":int},
 	 	  "flag":"c", "required_init":"i", "default":3 },
-	 	# { "name":"num_trials", "kw":{"help":"Number of trials to run", "type":int},
-	 	#   "flag":"t", "required_init":"i", "default":3 },
+	 	{ "name":"num_trials", "kw":{"help":"Number of trials to run (used when generating table)", "type":int},
+	 	  "flag":"t", "required_init":"i", "default":3 },
 	 	{ "name":"verbosity", "kw":{"help":"Verbosity of output, 0-minimum, 1-show fsa, 2-show errors", "type":int},
 		  "flag":"v", "required_init":"i", "default":0 },
 		{ "name":"sdm_word_length", "kw":{"help":"Word length for SDM memory, 0 to disable", "type":int},
@@ -50,6 +51,8 @@ class Env:
 		  "type":float}, "flag":"n", "required_init":"m", "default":0.0},
 		{ "name":"debug", "kw":{"help":"Debug mode","type":int, "choices":[0, 1]},
 		  "flag":"d", "required_init":"", "default":0},
+		{ "name":"generate_table", "kw":{"help":"Generate table to make plots","type":int, "choices":[0, 1]},
+		  "flag":"g", "required_init":"", "default":0},
 		# { "name":"format", "kw":{"help":"Format used to store items and hard addresses, choices: "
 		#    "int8, np.packbits, bitarray, gmpy2, gmpy2pure, colsum"},
 		#   "flag":"f", "required_init":"i", "default":"int8", "choices":["int8", "np.packbits", "bitarray", "gmpy2",
@@ -535,14 +538,24 @@ class FSA_store:
 		actual_fraction_correct = 1.0 - actual_fraction_error
 		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, probability of error=%.2e" % (num_errors, item_count,
 			mean, stdev, scipy.stats.norm(mean, stdev).cdf(0.0)))
+		# ? expected_mean, expected_stdev = get_expected_mean_and_stdev(item_count, )
 		# print("Expected: error=%.2e, correct=%.2e; actual: error=%.2e, correct=%.2e" % (
 		# 	probability_of_error, probability_correct, actual_fraction_error,
 		# 	actual_fraction_correct))
 		print("error expected=%s actual=%s;  correct expected=%s actual=%s" % (
 			probability_of_error, actual_fraction_error, probability_correct,
 			actual_fraction_correct))
+		total_storage_required = self.fsa.bytes_required + self.bytes_required
 		print("Storage required: %s, %s, total: %.3e" % (self.fsa.get_storage_requirements_for_im(),
-			self.get_storage_requirements(), self.fsa.bytes_required + self.bytes_required))
+			self.get_storage_requirements(), total_storage_required))
+
+		# save info for retrieval if generating table
+		self.sinfo = {"item_count": item_count, "num_errors": num_errors,
+			"actual_fraction_error": actual_fraction_error,
+			"actual_fraction_correct": actual_fraction_correct,
+			"probability_of_error": probability_of_error,
+			"probability_correct": probability_correct,
+			"total_storage_required": total_storage_required}
 
 	# following classes must or can be overridden by subclasses
 
@@ -635,6 +648,96 @@ class FSA_combo_store(FSA_store):
 	def get_storage_requirements(self):
 		return ("sdm counter: %s bytes" % (self.word_length * self.pvals["num_rows"]))
 
+class Table_Generator():
+	# generate table of outputs
+
+	def __init__(self, pvals, fsa):
+		self.pvals = pvals
+		self.fsa = fsa
+		self.num_items = fsa.num_states + fsa.num_actions
+		self.storage_min = 100000  # min amount of storage
+		self.storage_max = 1000000 # max amount of storage
+		self.storage_step = 100000 # step size
+		assert self.pvals["num_states"] == 100
+		assert self.pvals["num_actions"] == 10
+		assert self.pvals["num_choices"] == 10
+		assert self.pvals["sdm_word_length"] == 512
+		self.generate_table()
+
+	def get_file_name(self):
+		# return name of file that does not yet exist
+		file_name = "sdata"
+		count = 0
+		full_file_name = "%s.txt" % file_name
+		while os.path.isfile(full_file_name):
+			count += 1
+			full_file_name = "%s_%s.txt" % (file_name, count)
+		return full_file_name
+
+	def format_info(self, rid, storage, mtype, mlen, sinfo):
+		# create row in output table from sinfo
+		# self.sinfo = {"item_count": item_count, "num_errors": num_errors,
+		# 	"actual_fraction_error": actual_fraction_error,
+		# 	"actual_fraction_correct": actual_fraction_correct,
+		# 	"probability_of_error": probability_of_error,
+		# 	"probability_correct": probability_correct.pvals,
+		# 	"total_storage_required": total_storage_required}
+		assert sinfo["item_count"] == 1000
+		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, storage, mtype, mlen, sinfo["num_errors"],
+			sinfo["actual_fraction_error"], sinfo["probability_of_error"], sinfo["total_storage_required"])
+		return row
+
+	def generate_table(self):
+		file_name = self.get_file_name()
+		fp = open(file_name,'w')
+		fp.write("rid\tstorage\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n")
+		print("storage\tbind_len\tsdm_len\tparameters")
+		sid = 0
+		for storage in range(self.storage_min, self.storage_max+1, self.storage_step):
+			sid += 1
+			tid = 0
+			for trial in range(self.pvals["num_trials"]):
+				tid += 1
+				bind_l = self.bind_len(storage)
+				sdm_num_rows = self.sdm_len(storage)
+				sdm_activation_count = round(sdm_num_rows / 100)
+				parameters = "-b %s -m %s -a %s" % (bind_l, sdm_num_rows, sdm_activation_count)
+				self.pvals["num_rows"] = sdm_num_rows
+				self.pvals["activation_count"] = sdm_activation_count
+				print("%s\t%s\t%s\t%s" % (storage, bind_l, sdm_num_rows, parameters))
+				fbs = FSA_bind_store(self.fsa, bind_l, self.pvals["debug"], self.pvals)
+				rid = "%s.%s" % (sid, tid)
+				fp.write(self.format_info(rid, storage, "bind", bind_l, fbs.sinfo))
+				fss = FSA_sdm_store(self.fsa, self.pvals["sdm_word_length"], self.pvals["debug"], self.pvals)
+				fp.write(self.format_info(rid, storage, "sdm", sdm_num_rows, fss.sinfo))
+		fp.close()
+
+
+
+
+	def bind_len(self, storage):
+		# given storage in bytes, compute vector length to use that storage
+		length = round((storage * 8) / (self.num_items + 1))
+		return length
+
+	def sdm_len(self, storage):
+		# given storage in bytes, compute # rows in SDM memory to use that storage
+		sdm_word_length = self.pvals["sdm_word_length"] # num bites in sdm address and memory
+		length = round((storage - (self.num_items * sdm_word_length / 8)) / sdm_word_length)
+		return length
+
+
+def main():
+	# if len(sys.argv) != 2:
+	# 	sys.exit("Usage %s <storage (in bytes)>" % sys.argv[0])
+	# storage = int(sys.argv[1])
+	print("storage\tbind_len\tsdm_len\tparameters")
+	for i in range(1, 11):
+		storage = i * 100000
+		bind_l = bind_len(storage)
+		sdm_l = sdm_len(storage)
+		parameters = "-b %s -m %s -a %s" % (bind_l, sdm_l, round(sdm_l / 100))
+		print("%s\t%s\t%s" % (storage, bind_len(storage), sdm_len(storage)), parameters)
 
 
 def main():
@@ -642,6 +745,9 @@ def main():
 	fsa = FSA(env.pvals["num_states"], env.pvals["num_actions"], env.pvals["num_choices"])
 	if env.pvals["verbosity"] > 0:
 		fsa.display()
+	if env.pvals["generate_table"] == 1:
+		Table_Generator(env.pvals, fsa)
+		return
 	FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
 	if env.pvals["sdm_method"] in (0, 2):
 		FSA_sdm_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
