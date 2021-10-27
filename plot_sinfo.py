@@ -1,55 +1,75 @@
 # script to parse generated file
 import re
 import sys
+import os.path
 
-file_name = "sdata.txt"
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
+
+
+if len(sys.argv) != 2:
+	sys.exit("Usage %s <file_name.txt>" % sys.argv[0])
+file_name = sys.argv[1]
+assert os.path.isfile(file_name), "file %s not found" % file_name
+if file_name[0] == "s":
+	# assume 'sdata*.txt' - storage vs error
+	xvar = "storage"
+elif file_name[0] == "f":
+	# assume 'fdata*.txt' - bit flips vs error
+	xvar = "pflip"  # percent flip
+else:
+	sys.exit("File name first character should be 'f' or 's': found: %s" % file_name[0])
+
 
 fp = open(file_name, 'r')
 header = fp.readline()
-assert header == "rid\tstorage\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n"
+assert header == "rid\t%s\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n" % xvar
 
 sdata = {}
-pattern = r"(\d+\.\d+)\t(\d+)\t(\w+)\t(\d+)\t(\d+)\t([^\t]+)\t([^\t]+)\t(\d+)\n"
+pattern = r"(\d+\.\d+)\t([^\t]+)\t(\w+)\t(\d+)\t(\d+)\t([^\t]+)\t([^\t]+)\t(\d+)\n"
 # 1.1	100000	bind	7207	641	0.641	0.6433422825527839	99996
+# 2.2     2.5     sdm     1300    0       0.0     4.427697670830096e-06   672640 # for fdata.txt (bit flips)
 while True:
-    # Get next line from file
-    line = fp.readline()
-    if not line:
-    	break
-    match = re.match(pattern, line)
-    if not match:
-    	sys.exit("Match failed on:\n%s" % line)
-    rid, storage, mtype, mlen, error_count, fraction_error, perror, storage_required = match.group(1,2,3,4,5,6,7,8)
+	# Get next line from file
+	line = fp.readline()
+	if not line:
+		break
+	match = re.match(pattern, line)
+	if not match:
+		sys.exit("Match failed on:\n%s" % line)
+	rid, xval, mtype, mlen, error_count, fraction_error, perror, storage_required = match.group(1,2,3,4,5,6,7,8)
 
-    # add new line to sdata dictionary
+	# add new line to sdata dictionary
 
-    if mtype not in sdata:
-    	sdata[mtype] = {}
-    storage = int(storage)
-    perror = float(perror)
-    if storage not in sdata[mtype]:
-    	sdata[mtype][storage] = {"pmin":float(perror), "pmax":float(perror), "recs":[]}
-    else:
-    	if perror < sdata[mtype][storage]["pmin"]:
-    		sdata[mtype][storage]["pmin"] = perror
-    	elif perror > sdata[mtype][storage]["pmax"]:
-    		sdata[mtype][storage]["pmax"] = perror
-    info = {"error_count":int(error_count), "fraction_error":float(fraction_error), "perror":perror,
-    	"storage_required":int(storage_required)}
-    sdata[mtype][storage]["recs"].append(info)
+	if mtype not in sdata:
+		sdata[mtype] = {}
+	xval = int(xval) if xvar == "storage" else float(xval)
+	perror = float(perror)
+	if xval not in sdata[mtype]:
+	   sdata[mtype][xval] = {"pmin":float(perror), "pmax":float(perror), "recs":[]}
+	else:
+	   if perror < sdata[mtype][xval]["pmin"]:
+			   sdata[mtype][xval]["pmin"] = perror
+	   elif perror > sdata[mtype][xval]["pmax"]:
+			   sdata[mtype][xval]["pmax"] = perror
+	info = {"error_count":int(error_count), "fraction_error":float(fraction_error), "perror":perror,
+	   "storage_required":int(storage_required)}
+	sdata[mtype][xval]["recs"].append(info)
+
+# pp.pprint(sdata)
 
 # create arrays used for plotting
 xvals = {}
 yvals = {}
 ebar = {}
 for mtype in sdata:
-	xvals[mtype] = sorted(list(sdata[mtype].keys()))  # will be sorted storage
+	xvals[mtype] = sorted(list(sdata[mtype].keys()))  # will be sorted storage (or pflips)
 	yvals[mtype] = []
 	ebar[mtype] = []
-	for storage in xvals[mtype]:
-		pmid = (sdata[mtype][storage]["pmin"] + sdata[mtype][storage]["pmax"]) / 2.0
+	for xval in xvals[mtype]:
+		pmid = (sdata[mtype][xval]["pmin"] + sdata[mtype][xval]["pmax"]) / 2.0
 		yvals[mtype].append(pmid)
-		prange = sdata[mtype][storage]["pmax"] - sdata[mtype][storage]["pmin"]
+		prange = sdata[mtype][xval]["pmax"] - sdata[mtype][xval]["pmin"]
 		ebar[mtype] = prange
 
 
@@ -62,7 +82,9 @@ plt.yscale('log')
 for mtype in xvals:
 	plt.errorbar(xvals[mtype], yvals[mtype], yerr=ebar[mtype], label=mtype)
 
-
-plt.legend(loc='upper right')
+if xvar == "storage":
+	plt.legend(loc='upper right')
+else:
+	plt.legend(loc='lower right')
 plt.show()
 

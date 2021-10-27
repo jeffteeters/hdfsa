@@ -43,16 +43,18 @@ class Env:
 	 	  "flag":"o", "required_init":"i", "default":0 },	 	  
 	 	{ "name":"bind_word_length", "kw":{"help":"Word length for binding memory, 0 to disable", "type":int},
 	 	  "flag":"b", "required_init":"i", "default":512 },
-	 	{ "name":"num_rows", "kw":{"help":"Number rows in memory","type":int},
+	 	{ "name":"num_rows", "kw":{"help":"Number rows in sdm memory","type":int},
 	 	  "flag":"m", "required_init":"i", "default":2048 },
-		{ "name":"activation_count", "kw":{"help":"Number memory rows to activate for each address","type":int},
+		{ "name":"activation_count", "kw":{"help":"Number memory rows to activate for each address (sdm)","type":int},
 		  "flag":"a", "required_init":"m", "default":20},
 		{ "name":"noise_percent", "kw":{"help":"Percent of bits to change in memory to test noise resiliency",
 		  "type":float}, "flag":"n", "required_init":"m", "default":0.0},
 		{ "name":"debug", "kw":{"help":"Debug mode","type":int, "choices":[0, 1]},
 		  "flag":"d", "required_init":"", "default":0},
-		{ "name":"generate_table", "kw":{"help":"Generate table to make plots","type":int, "choices":[0, 1]},
+		{ "name":"generate_error_vs_storage_table", "kw":{"help":"Generate table to make plots (error vs storage)","type":int, "choices":[0, 1]},
 		  "flag":"g", "required_init":"", "default":0},
+		{ "name":"generate_error_vs_bitflips_table", "kw":{"help":"Generate table to make plots (error vs bithlips)","type":int, "choices":[0, 1]},
+		  "flag":"f", "required_init":"", "default":0},
 		# { "name":"format", "kw":{"help":"Format used to store items and hard addresses, choices: "
 		#    "int8, np.packbits, bitarray, gmpy2, gmpy2pure, colsum"},
 		#   "flag":"f", "required_init":"i", "default":"int8", "choices":["int8", "np.packbits", "bitarray", "gmpy2",
@@ -648,8 +650,17 @@ class FSA_combo_store(FSA_store):
 	def get_storage_requirements(self):
 		return ("sdm counter: %s bytes" % (self.word_length * self.pvals["num_rows"]))
 
-class Table_Generator():
-	# generate table of outputs
+def get_file_name(base_name):
+		# return name of file that does not yet exist
+		count = 0
+		full_name = "%s.txt" % base_name
+		while os.path.isfile(full_name):
+			count += 1
+			full_name = "%s_%s.txt" % (base_name, count)
+		return full_name
+
+class Table_Generator_error_vs_storage():
+	# generate table of error vs storage
 
 	def __init__(self, pvals, fsa):
 		self.pvals = pvals
@@ -663,16 +674,6 @@ class Table_Generator():
 		assert self.pvals["num_choices"] == 10
 		assert self.pvals["sdm_word_length"] == 512
 		self.generate_table()
-
-	def get_file_name(self):
-		# return name of file that does not yet exist
-		file_name = "sdata"
-		count = 0
-		full_file_name = "%s.txt" % file_name
-		while os.path.isfile(full_file_name):
-			count += 1
-			full_file_name = "%s_%s.txt" % (file_name, count)
-		return full_file_name
 
 	def format_info(self, rid, storage, mtype, mlen, sinfo):
 		# create row in output table from sinfo
@@ -688,7 +689,7 @@ class Table_Generator():
 		return row
 
 	def generate_table(self):
-		file_name = self.get_file_name()
+		file_name = get_file_name("sdata")
 		fp = open(file_name,'w')
 		fp.write("rid\tstorage\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n")
 		print("storage\tbind_len\tsdm_len\tparameters")
@@ -712,9 +713,6 @@ class Table_Generator():
 				fp.write(self.format_info(rid, storage, "sdm", sdm_num_rows, fss.sinfo))
 		fp.close()
 
-
-
-
 	def bind_len(self, storage):
 		# given storage in bytes, compute vector length to use that storage
 		length = round((storage * 8) / (self.num_items + 1))
@@ -725,6 +723,64 @@ class Table_Generator():
 		sdm_word_length = self.pvals["sdm_word_length"] # num bites in sdm address and memory
 		length = round((storage - (self.num_items * sdm_word_length / 8)) / sdm_word_length)
 		return length
+
+
+class Table_Generator_error_vs_bitflips():
+	# generate table of error vs bitflips
+
+	def __init__(self, pvals, fsa):
+		self.pvals = pvals
+		self.fsa = fsa
+		self.num_items = fsa.num_states + fsa.num_actions
+		self.pflip_min = 0.0  # min percent bit flips
+		self.pflip_max = 50.0 # max percent bit flips
+		self.pflip_step = 2.5 # step percent bit flips
+		assert self.pvals["num_states"] == 100
+		assert self.pvals["num_actions"] == 10
+		assert self.pvals["num_choices"] == 10
+		assert self.pvals["sdm_word_length"] == 512
+		# folloging give about the same level of erreo, about 1.0e-6
+		# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1300 -a 13 -b 93000
+		assert self.pvals["num_rows"] == 1300
+		assert self.pvals["activation_count"] == 13
+		assert self.pvals["bind_word_length"] == 93000
+		self.generate_table()
+
+	def format_info(self, rid, pflip, mtype, mlen, sinfo):
+		# create row in output table from sinfo
+		# self.sinfo = {"item_count": item_count, "num_errors": num_errors,
+		# 	"actual_fraction_error": actual_fraction_error,
+		# 	"actual_fraction_correct": actual_fraction_correct,
+		# 	"probability_of_error": probability_of_error,
+		# 	"probability_correct": probability_correct.pvals,
+		# 	"total_storage_required": total_storage_required}
+		assert sinfo["item_count"] == 1000
+		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, pflip, mtype, mlen, sinfo["num_errors"],
+			sinfo["actual_fraction_error"], sinfo["probability_of_error"], sinfo["total_storage_required"])
+		return row
+
+	def generate_table(self):
+		file_name = get_file_name("fdata")
+		fp = open(file_name,'w')
+		fp.write("rid\tpflip\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n")
+		print("pflip\tparameters")
+		fid = 0
+		pflip = self.pflip_min
+		while pflip <= self.pflip_max:
+			fid += 1
+			tid = 0
+			for trial in range(self.pvals["num_trials"]):
+				tid += 1
+				parameters = "-n %s" % pflip
+				rid = "%s.%s" % (fid, tid)
+				self.pvals["noise_percent"] = pflip
+				print("%s\t%s\t%s" % (rid, pflip, parameters))
+				fbs = FSA_bind_store(self.fsa, self.pvals["bind_word_length"], self.pvals["debug"], self.pvals)
+				fp.write(self.format_info(rid, pflip, "bind", self.pvals["bind_word_length"], fbs.sinfo))
+				fss = FSA_sdm_store(self.fsa, self.pvals["sdm_word_length"], self.pvals["debug"], self.pvals)
+				fp.write(self.format_info(rid, pflip, "sdm", self.pvals["num_rows"], fss.sinfo))
+			pflip += self.pflip_step
+		fp.close()
 
 
 def main():
@@ -745,8 +801,11 @@ def main():
 	fsa = FSA(env.pvals["num_states"], env.pvals["num_actions"], env.pvals["num_choices"])
 	if env.pvals["verbosity"] > 0:
 		fsa.display()
-	if env.pvals["generate_table"] == 1:
-		Table_Generator(env.pvals, fsa)
+	if env.pvals["generate_error_vs_storage_table"] == 1:
+		Table_Generator_error_vs_storage(env.pvals, fsa)
+		return
+	if env.pvals["generate_error_vs_bitflips_table"] == 1:
+		Table_Generator_error_vs_bitflips(env.pvals, fsa)
 		return
 	FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
 	if env.pvals["sdm_method"] in (0, 2):
