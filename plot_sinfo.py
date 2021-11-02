@@ -76,19 +76,25 @@ for mtype in sdata:
 		prange = statistics.stdev(sdata[mtype][xval]["pelist"])
 		ebar[mtype].append(prange / 2)
 
-
-import numpy as np
+# import numpy as np
 import matplotlib.pyplot as plt
 
-
+# fig, ax = plt.subplots()
 fig = plt.figure()
 plt.yscale('log')
 for mtype in xvals:
-	plt.errorbar(xvals[mtype], yvals[mtype], yerr=ebar[mtype], label=mtype)
+	label = "superposition vector" if mtype == "bind" else "SDM"
+	print ("label is '%s'" % label)
+	plt.errorbar(xvals[mtype], yvals[mtype], yerr=ebar[mtype], label=label) # fmt="-o")
 
-if xvar == "storage":
-	plt.legend(loc='upper right')
-else:
-	plt.legend(loc='lower right')
+title = "Fraction error vs storage size (bytes)" if xvar == "storage" else "Fraction error vs percent bits flipped" 
+plt.title(title)
+xlabel = "Storage (bytes)" if xvar == "storage" else '% bits flipped'
+plt.xlabel(xlabel)
+ylabel = "Fraction error"
+plt.ylabel(ylabel)
+
+loc = 'upper right' if xvar == "storage" else 'lower right'
+plt.legend(loc=loc)
 plt.show()
 
