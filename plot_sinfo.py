@@ -5,6 +5,7 @@ import os.path
 
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
+import statistics
 
 
 if len(sys.argv) != 2:
@@ -43,15 +44,16 @@ while True:
 
 	if mtype not in sdata:
 		sdata[mtype] = {}
-	xval = int(xval) if xvar == "storage" else float(xval)
+	xval = int(xval) if xvar == "storage" else float(xval)   # xval is either storage (bytes) or bits flipped (%)
 	perror = float(perror)
 	if xval not in sdata[mtype]:
-	   sdata[mtype][xval] = {"pmin":float(perror), "pmax":float(perror), "recs":[]}
+		sdata[mtype][xval] = {"pmin":perror, "pmax":perror, "recs":[], "pelist": [perror]}
 	else:
-	   if perror < sdata[mtype][xval]["pmin"]:
-			   sdata[mtype][xval]["pmin"] = perror
-	   elif perror > sdata[mtype][xval]["pmax"]:
-			   sdata[mtype][xval]["pmax"] = perror
+		if perror < sdata[mtype][xval]["pmin"]:
+			sdata[mtype][xval]["pmin"] = perror
+		elif perror > sdata[mtype][xval]["pmax"]:
+			sdata[mtype][xval]["pmax"] = perror
+		sdata[mtype][xval]["pelist"].append(perror)
 	info = {"error_count":int(error_count), "fraction_error":float(fraction_error), "perror":perror,
 	   "storage_required":int(storage_required)}
 	sdata[mtype][xval]["recs"].append(info)
@@ -67,10 +69,12 @@ for mtype in sdata:
 	yvals[mtype] = []
 	ebar[mtype] = []
 	for xval in xvals[mtype]:
-		pmid = (sdata[mtype][xval]["pmin"] + sdata[mtype][xval]["pmax"]) / 2.0
+		# pmid = (sdata[mtype][xval]["pmin"] + sdata[mtype][xval]["pmax"]) / 2.0
+		pmid = statistics.mean(sdata[mtype][xval]["pelist"])
 		yvals[mtype].append(pmid)
-		prange = sdata[mtype][xval]["pmax"] - sdata[mtype][xval]["pmin"]
-		ebar[mtype] = prange
+		# prange = sdata[mtype][xval]["pmax"] - sdata[mtype][xval]["pmin"]
+		prange = statistics.stdev(sdata[mtype][xval]["pelist"])
+		ebar[mtype].append(prange / 2)
 
 
 import numpy as np

@@ -55,6 +55,8 @@ class Env:
 		  "flag":"g", "required_init":"", "default":0},
 		{ "name":"generate_error_vs_bitflips_table", "kw":{"help":"Generate table to make plots (error vs bithlips)","type":int, "choices":[0, 1]},
 		  "flag":"f", "required_init":"", "default":0},
+		{ "name":"error_vs_bitflips_table_start_at_equal_storage", "kw":{"help":"Start at equal storage for error vs bithlips table","type":int, "choices":[0, 1]},
+		  "flag":"j", "required_init":"", "default":0},	  
 		# { "name":"format", "kw":{"help":"Format used to store items and hard addresses, choices: "
 		#    "int8, np.packbits, bitarray, gmpy2, gmpy2pure, colsum"},
 		#   "flag":"f", "required_init":"i", "default":"int8", "choices":["int8", "np.packbits", "bitarray", "gmpy2",
@@ -734,16 +736,25 @@ class Table_Generator_error_vs_bitflips():
 		self.num_items = fsa.num_states + fsa.num_actions
 		self.pflip_min = 0.0  # min percent bit flips
 		self.pflip_max = 50.0 # max percent bit flips
-		self.pflip_step = 2.5 # step percent bit flips
+		self.pflip_step = 5 # step percent bit flips
 		assert self.pvals["num_states"] == 100
 		assert self.pvals["num_actions"] == 10
 		assert self.pvals["num_choices"] == 10
 		assert self.pvals["sdm_word_length"] == 512
-		# folloging give about the same level of erreo, about 1.0e-6
-		# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1300 -a 13 -b 93000
-		assert self.pvals["num_rows"] == 1300
-		assert self.pvals["activation_count"] == 13
-		assert self.pvals["bind_word_length"] == 93000
+		if not self.pvals["error_vs_bitflips_table_start_at_equal_storage"]:
+			# folloging give about the same level of erreo, about 1.0e-6
+			# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1300 -a 13 -b 93000
+			assert self.pvals["num_rows"] == 1300
+			assert self.pvals["activation_count"] == 13
+			assert self.pvals["bind_word_length"] == 93000
+		else:
+			# following settings for 80000 bytes storage for both
+			# 8.1     800000  bind    57658   0       0.0     0.0005658820455930389   800004
+			# 8.1     800000  sdm     1549    0       0.0     1.14064404735783e-07    800128
+			# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1549 -a 15 -b 57658 -j 1 -f 1
+			assert self.pvals["num_rows"] == 1549
+			assert self.pvals["activation_count"] == 15
+			assert self.pvals["bind_word_length"] == 57658
 		self.generate_table()
 
 	def format_info(self, rid, pflip, mtype, mlen, sinfo):
