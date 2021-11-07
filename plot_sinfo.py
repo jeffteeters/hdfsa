@@ -23,6 +23,14 @@ else:
 
 
 fp = open(file_name, 'r')
+while True:
+	# scan for line indicating start of data
+	line = fp.readline()
+	if not line:
+		sys.exit("start not found")
+	if line == "-----Data starts here-----\n":
+		break
+
 header = fp.readline()
 assert header == "rid\t%s\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n" % xvar
 
@@ -78,23 +86,32 @@ for mtype in sdata:
 
 # import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 
 # fig, ax = plt.subplots()
 fig = plt.figure()
 plt.yscale('log')
 for mtype in xvals:
 	label = "superposition vector" if mtype == "bind" else "SDM"
-	print ("label is '%s'" % label)
-	plt.errorbar(xvals[mtype], yvals[mtype], yerr=ebar[mtype], label=label) # fmt="-o")
+	plt.errorbar(xvals[mtype], yvals[mtype], yerr=ebar[mtype], label=label, fmt="-o")
 
 title = "Fraction error vs storage size (bytes)" if xvar == "storage" else "Fraction error vs percent bits flipped" 
 plt.title(title)
 xlabel = "Storage (bytes)" if xvar == "storage" else '% bits flipped'
 plt.xlabel(xlabel)
+if xvar == "storage":
+	xaxis_labels = ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "1e6" ]
+	plt.xticks(xvals[mtype],xaxis_labels)
 ylabel = "Fraction error"
 plt.ylabel(ylabel)
 
+# plt.axes().yaxis.get_ticklocs(minor=True)
+
+# Initialize minor ticks
+# plt.axes().yaxis.minorticks_on()
+
 loc = 'upper right' if xvar == "storage" else 'lower right'
 plt.legend(loc=loc)
+plt.grid()
 plt.show()
 

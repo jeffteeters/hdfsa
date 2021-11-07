@@ -93,9 +93,19 @@ class Env:
 
 
 	def display_settings(self):
-		print("Current settings:")
+		print(self.get_settings())
+		# print("Settings:")
+		# for p in self.parms:
+		# 	print("%s %s: %s" % (p["flag"], p["name"], self.pvals[p["name"]]))
+
+	def get_settings(self):
+		msg = "Arguments:\n"
+		msg += " ".join(sys.argv)
+		msg += "\nSettings:\n"
 		for p in self.parms:
-			print("%s %s: %s" % (p["flag"], p["name"], self.pvals[p["name"]]))
+			msg += "%s %s: %s\n" % (p["flag"], p["name"], self.pvals[p["name"]])
+		return msg
+
 
 	# def update_settings(self, line):
 	# 	instructions = ("Update settings using 'u' followed by KEY VALUE pair(s), where keys are:\n" +
@@ -664,8 +674,9 @@ def get_file_name(base_name):
 class Table_Generator_error_vs_storage():
 	# generate table of error vs storage
 
-	def __init__(self, pvals, fsa):
-		self.pvals = pvals
+	def __init__(self, env, fsa):
+		self.env = env
+		self.pvals = env.pvals
 		self.fsa = fsa
 		self.num_items = fsa.num_states + fsa.num_actions
 		self.storage_min = 100000  # min amount of storage
@@ -693,6 +704,8 @@ class Table_Generator_error_vs_storage():
 	def generate_table(self):
 		file_name = get_file_name("sdata")
 		fp = open(file_name,'w')
+		fp.write(self.env.get_settings())
+		fp.write("\n-----Data starts here-----\n")
 		fp.write("rid\tstorage\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n")
 		print("storage\tbind_len\tsdm_len\tparameters")
 		sid = 0
@@ -730,8 +743,9 @@ class Table_Generator_error_vs_storage():
 class Table_Generator_error_vs_bitflips():
 	# generate table of error vs bitflips
 
-	def __init__(self, pvals, fsa):
-		self.pvals = pvals
+	def __init__(self, env, fsa):
+		self.env = env
+		self.pvals = env.pvals
 		self.fsa = fsa
 		self.num_items = fsa.num_states + fsa.num_actions
 		self.pflip_min = 0.0  # min percent bit flips
@@ -748,13 +762,26 @@ class Table_Generator_error_vs_bitflips():
 			assert self.pvals["activation_count"] == 13
 			assert self.pvals["bind_word_length"] == 93000
 		else:
-			# following settings for 80000 bytes storage for both
-			# 8.1     800000  bind    57658   0       0.0     0.0005658820455930389   800004
-			# 8.1     800000  sdm     1549    0       0.0     1.14064404735783e-07    800128
-			# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1549 -a 15 -b 57658 -j 1 -f 1
-			assert self.pvals["num_rows"] == 1549
-			assert self.pvals["activation_count"] == 15
-			assert self.pvals["bind_word_length"] == 57658
+			# this should be made an argument
+			storage = 1000000
+			if storage == 800000:
+				# following settings for 800000 bytes storage for both
+				# 8.1     800000  bind    57658   0       0.0     0.0005658820455930389   800004
+				# 8.1     800000  sdm     1549    0       0.0     1.14064404735783e-07    800128
+				# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1549 -a 15 -b 57658 -j 1 -f 1
+				assert self.pvals["num_rows"] == 1549
+				assert self.pvals["activation_count"] == 15
+				assert self.pvals["bind_word_length"] == 57658
+			elif storage == 1000000:
+				# following settings for 1000000 bytes storage for both
+				# 10.6    1000000 bind    72072   0       0.0     4.0137960109522544e-05  999999
+				# 10.6    1000000 sdm     1939    0       0.0     5.200091764358587e-09   999808
+				# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1939 -a 19 -b 72072 -j 1 -f 1 -t 10
+				assert self.pvals["num_rows"] == 1939
+				assert self.pvals["activation_count"] == 19
+				assert self.pvals["bind_word_length"] == 72072
+			else:
+				sys.exit("Invalid storage size for bit flip table")
 		self.generate_table()
 
 	def format_info(self, rid, pflip, mtype, mlen, sinfo):
@@ -773,6 +800,8 @@ class Table_Generator_error_vs_bitflips():
 	def generate_table(self):
 		file_name = get_file_name("fdata")
 		fp = open(file_name,'w')
+		fp.write(self.env.get_settings())
+		fp.write("\n-----Data starts here-----\n")
 		fp.write("rid\tpflip\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n")
 		print("pflip\tparameters")
 		fid = 0
@@ -813,10 +842,10 @@ def main():
 	if env.pvals["verbosity"] > 0:
 		fsa.display()
 	if env.pvals["generate_error_vs_storage_table"] == 1:
-		Table_Generator_error_vs_storage(env.pvals, fsa)
+		Table_Generator_error_vs_storage(env, fsa)
 		return
 	if env.pvals["generate_error_vs_bitflips_table"] == 1:
-		Table_Generator_error_vs_bitflips(env.pvals, fsa)
+		Table_Generator_error_vs_bitflips(env, fsa)
 		return
 	FSA_bind_store(fsa, env.pvals["bind_word_length"], env.pvals["debug"], env.pvals)
 	if env.pvals["sdm_method"] in (0, 2):
