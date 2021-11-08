@@ -63,7 +63,7 @@ while True:
 			sdata[mtype][xval]["pmax"] = perror
 		sdata[mtype][xval]["pelist"].append(perror)
 	info = {"error_count":int(error_count), "fraction_error":float(fraction_error), "perror":perror,
-	   "storage_required":int(storage_required)}
+	   "storage_required":int(storage_required), "mlen":int(mlen), "error_count":int(error_count) }
 	sdata[mtype][xval]["recs"].append(info)
 
 # pp.pprint(sdata)
@@ -84,6 +84,47 @@ for mtype in sdata:
 		prange = statistics.stdev(sdata[mtype][xval]["pelist"])
 		ebar[mtype].append(prange / 2)
 
+
+from scipy.stats import norm
+import math
+
+def compute_theoretical_bundle_error(bl):
+	# compute theoretical error based on bundle length (bl)
+	k = 1000  # number of items stored in bundle
+	delta = 0.5 - 0.4 / math.sqrt(k - 0.44)  # from Pentti's paper
+	mean_hamming_match = delta * bl
+	variance_hamming_match = delta * (1 - delta) * bl
+	mean_hamming_distractor = 0.5 * bl
+	variance_distractor = 0.5 * (1 - 0.5) * bl
+	# make mean and variance of difference distribution
+	diff_dist_mean = mean_hamming_distractor - mean_hamming_match
+	diff_dist_variance = variance_hamming_match + variance_distractor
+	# want probability diff_dist distribution is less than zero (meaning, hamming distance of distractor less than
+	# hamming distance of match)
+	loc = diff_dist_mean
+	scale = math.sqrt(diff_dist_variance)
+	eperr = norm.pdf(0, loc, scale)
+	pcorr_one = 1.0 - eperr 
+	pcorr_all = pcorr_one ** 99
+	perror_all = 1 - pcorr_all
+	return perror_all
+
+
+def get_bundle_lengths(xvals, sdata):
+	mtype = "bind"
+	bundle_lengths = []
+	for xval in xvals[mtype]:
+		bundle_lengths.append(sdata[mtype][xval]["recs"][0]["mlen"])
+	return(bundle_lengths)
+
+add_theoretical_bundle = xvar == "storage"
+
+if add_theoretical_bundle:
+	bundle_lengths = get_bundle_lengths(xvals, sdata)
+	terr = [ compute_theoretical_bundle_error(bl) for bl in bundle_lengths]
+	# print("bundle_lengths = %s\nterr = %s" % (bundle_lengths, terr))
+	# sys.exit("done for now")
+
 # import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
@@ -94,6 +135,8 @@ plt.yscale('log')
 for mtype in xvals:
 	label = "superposition vector" if mtype == "bind" else "SDM"
 	plt.errorbar(xvals[mtype], yvals[mtype], yerr=ebar[mtype], label=label, fmt="-o")
+if add_theoretical_bundle:
+	plt.errorbar(xvals["bind"], terr, label="bundle theory", fmt="-o")
 
 title = "Fraction error vs storage size (bytes)" if xvar == "storage" else "Fraction error vs percent bits flipped" 
 plt.title(title)
