@@ -65,6 +65,7 @@ while True:
 	info = {"error_count":int(error_count), "fraction_error":float(fraction_error), "perror":perror,
 	   "storage_required":int(storage_required), "mlen":int(mlen), "error_count":int(error_count) }
 	sdata[mtype][xval]["recs"].append(info)
+fp.close()
 
 # pp.pprint(sdata)
 
@@ -87,9 +88,66 @@ for mtype in sdata:
 
 from scipy.stats import norm
 import math
+import numpy as np
+
+import warnings
+warnings.filterwarnings("error")
+
+
+def normal_dist_wrong(x , mean , sd):
+	# from https://www.askpython.com/python/normal-distribution
+    prob_density = (np.pi*sd) * np.exp(-0.5*((x-mean)/sd)**2)
+    return prob_density
+
+def normal_dist(x , mean , sd):
+	# from https://www.askpython.com/python/normal-distribution
+	# but fixed
+    prob_density = (1.0 / math.sqrt(2.0*np.pi*sd*sd)) * np.exp(-0.5*((x-mean)/sd)**2)
+    return prob_density
 
 def compute_theoretical_bundle_error(bl):
 	# compute theoretical error based on bundle length (bl)
+	k = 1000  # number of items stored in bundle
+	num_distractors = 99
+	delta = 0.5 - 0.4 / math.sqrt(k - 0.44)  # from Pentti's paper
+	mean_hamming_match = delta * bl
+	variance_hamming_match = delta * (1 - delta) * bl
+	sd_hamming_match = math.sqrt(variance_hamming_match)
+	mean_hamming_distractor = 0.5 * bl
+	variance_distractor = 0.5 * (1 - 0.5) * bl
+	sd_hamming_distractor = math.sqrt(variance_distractor)
+	# create arrays of distribution for both
+	match_hamming_distribution = np.empty(bl, dtype=np.float64)
+	distractor_hamming_distribution = np.empty(bl, dtype=np.float64)
+	for h in range(bl):
+		match_hamming_distribution[h] = normal_dist(h, mean_hamming_match, sd_hamming_match)
+		distractor_hamming_distribution[h] = normal_dist(h, mean_hamming_distractor, sd_hamming_distractor)
+	# now calculate total error
+	sum_distractors_less = 0.0
+	prob_correct = 0.0
+	for h in range(1, bl):
+		try:
+			sum_distractors_less += distractor_hamming_distribution[h-1]
+			prob_correct_one = 1.0 - sum_distractors_less
+			prob_correct += match_hamming_distribution[h] * (prob_correct_one ** num_distractors)
+		except RuntimeWarning as err:
+			print ('Warning at h=%s, %s' % (h, err))
+			print("sum_distractors_less=%s" % sum_distractors_less)
+			print("prob_correct_one=%s" % prob_correct_one)
+			print("match_hamming_distribution[h] = %s" % match_hamming_distribution[h])
+			import pdb; pdb.set_trace()
+
+			sys.exit("aborting")
+	prob_error = 1.0 - prob_correct
+	# import pdb; pdb.set_trace()
+	return prob_error
+
+
+def compute_theoretical_bundle_error_simple_1(bl):
+	# compute theoretical error based on bundle length (bl)
+	# *Version is incorrect*
+	# Assumes that prob error with one can be raised to power number of distractors, to
+	# get probability error for all (is incorrect)
 	k = 1000  # number of items stored in bundle
 	delta = 0.5 - 0.4 / math.sqrt(k - 0.44)  # from Pentti's paper
 	mean_hamming_match = delta * bl
