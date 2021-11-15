@@ -9,6 +9,7 @@ import statistics
 
 from scipy.stats import norm
 from scipy.stats import binom
+from scipy.integrate import quad
 import math
 import numpy as np
 
@@ -116,6 +117,17 @@ def normal_dist(x , mean , sd):
     prob_density = (1.0 / math.sqrt(2.0*np.pi*sd*sd)) * np.exp(-0.5*((x-mean)/sd)**2)
     return prob_density
 
+def frady_eq_integrand(h, mean_hamming_match, sd_hamming_match, mean_hamming_distractor, sd_hamming_distractor):
+	# equation based on Frady, 2018 2.12
+	# h is the variable for integeration.  Here I think it's related to hamming distance, but not in the Frady paper
+	weight = normal_dist(h, mean_hamming_match, sd_hamming_match)
+	sum_distractors_less = norm(mean_hamming_distractor, sd_hamming_distractor).cdf(h)
+	prob_correct_one = 1.0 - sum_distractors_less
+	num_distractors = 99
+	prob_correct = weight * (prob_correct_one ** num_distractors)
+	return prob_correct
+
+
 def compute_theoretical_error(sl, mtype):
 	# compute theoretical error based on storage lenght.  if mtype bind (bundle) sl is bundle length (bl)
 	# if mtype is sdm, sl is number of rows in SDM
@@ -150,6 +162,14 @@ def compute_theoretical_error(sl, mtype):
 	sd_hamming_distractor = math.sqrt(variance_distractor)
 	print("mean_hamming_match=%s, sd_hamming_match=%s, mean_hamming_distractor=%s, sd_hamming_distractor=%s" % (
 		mean_hamming_match, sd_hamming_match, mean_hamming_distractor, sd_hamming_distractor))
+	I = quad(frady_eq_integrand, 0, bl, args=(
+			mean_hamming_match, sd_hamming_match, mean_hamming_distractor, sd_hamming_distractor))
+	prob_correct = I[0]
+	prob_error = 1.0 - prob_correct
+	# import pdb; pdb.set_trace()
+	return prob_error
+
+""" <<old version>>>
 	# create arrays of distribution for both
 	# match_hamming_distribution = np.empty(bl, dtype=np.float64)
 	# distractor_hamming_distribution = np.empty(bl, dtype=np.float64)
@@ -179,6 +199,7 @@ def compute_theoretical_error(sl, mtype):
 	prob_error = 1.0 - prob_correct
 	# import pdb; pdb.set_trace()
 	return prob_error
+	<<< end old version>>>"""
 
 
 def compute_theoretical_bundle_error(bl):
