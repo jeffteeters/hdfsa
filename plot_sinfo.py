@@ -160,6 +160,9 @@ def compute_theoretical_error(sl, mtype):
 		print("sdm num_rows=%s,act_count=%s,pact=%s,average_overlap=%s,mean=%s,std=%s,probability_single_bit_failure=%s" % (
 			sdm_num_rows, sdm_activation_count, pact, average_overlap, mean, standard_deviation, probability_single_bit_failure))
 		bl = 512  # 512 bit length words used for sdm
+
+	"""
+	# <<<following use mean and sd distributions without explicit arrays>>>
 	mean_hamming_match = delta * bl
 	variance_hamming_match = delta * (1 - delta) * bl
 	sd_hamming_match = math.sqrt(variance_hamming_match)
@@ -174,6 +177,51 @@ def compute_theoretical_error(sl, mtype):
 	I = quad(frady_eq_integrand, -bl/4, bl, args=(
 			mean_hamming_match, sd_hamming_match, mean_hamming_distractor, sd_hamming_distractor))
 	prob_correct = I[0]
+	prob_error = 1.0 - prob_correct
+	# import pdb; pdb.set_trace()
+	return prob_error
+	"""
+
+	# following uses delta only with explicit arrays and binom distribution
+	# match_hamming_distribution = np.empty(bl, dtype=np.float64)
+	# distractor_hamming_distribution = np.empty(bl, dtype=np.float64)
+	match_hamming_distribution = np.empty(bl, dtype=np.double)
+	distractor_hamming_distribution = np.empty(bl, dtype=np.double)
+	if mtype == "bind":
+		# to save time over binom
+		mean_hamming_match = delta * bl
+		variance_hamming_match = delta * (1 - delta) * bl
+		sd_hamming_match = math.sqrt(variance_hamming_match)
+		mean_hamming_distractor = 0.5 * bl
+		variance_distractor = 0.5 * (1 - 0.5) * bl
+		sd_hamming_distractor = math.sqrt(variance_distractor)
+	for h in range(bl):
+		if mtype == "bind":
+			# use normal_dist to save time, faster than binom for long vectors
+			match_hamming_distribution[h] = normal_dist(h, mean_hamming_match, sd_hamming_match)
+			distractor_hamming_distribution[h] = normal_dist(h, mean_hamming_distractor, sd_hamming_distractor)
+		else:
+			match_hamming_distribution[h] = binom.pmf(h, bl, delta)
+			distractor_hamming_distribution[h] = binom.pmf(h, bl, 0.5)
+	if mtype == "sdm":
+		plot_dist(match_hamming_distribution, "match_hamming_distribution, delta=%s" % delta)
+		plot_dist(distractor_hamming_distribution, "match_hamming_distribution, delta=%s" % delta)
+	# now calculate total error
+	sum_distractors_less = 0.0
+	prob_correct = 0.0
+	for h in range(0, bl):
+		try:
+			sum_distractors_less += distractor_hamming_distribution[h]
+			prob_correct_one = 1.0 - sum_distractors_less
+			prob_correct += match_hamming_distribution[h] * (prob_correct_one ** num_distractors)
+		except RuntimeWarning as err:
+			print ('Warning at h=%s, %s' % (h, err))
+			print("sum_distractors_less=%s" % sum_distractors_less)
+			print("prob_correct_one=%s" % prob_correct_one)
+			print("match_hamming_distribution[h] = %s" % match_hamming_distribution[h])
+			import pdb; pdb.set_trace()
+
+			sys.exit("aborting")
 	prob_error = 1.0 - prob_correct
 	# import pdb; pdb.set_trace()
 	return prob_error
@@ -321,6 +369,11 @@ def make_plots(plotting_data, xvar):
 	loc = 'upper right' if xvar == "storage" else 'lower right'
 	plt.legend(loc=loc)
 	plt.grid()
+	plt.show()
+
+def plot_dist(dist, title):
+	plt.plot(dist)
+	plt.title(title)
 	plt.show()
 
 
