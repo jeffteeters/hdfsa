@@ -117,10 +117,16 @@ def normal_dist(x , mean , sd):
     prob_density = (1.0 / math.sqrt(2.0*np.pi*sd*sd)) * np.exp(-0.5*((x-mean)/sd)**2)
     return prob_density
 
+def test_pdf_integrate(h, mean, sd):
+	# test integrating pdf
+	weight = normal_dist(h, mean, sd)
+	return weight
+
 def frady_eq_integrand(h, mean_hamming_match, sd_hamming_match, mean_hamming_distractor, sd_hamming_distractor):
 	# equation based on Frady, 2018 2.12
 	# h is the variable for integeration.  Here I think it's related to hamming distance, but not in the Frady paper
-	weight = normal_dist(h, mean_hamming_match, sd_hamming_match)
+	# weight = normal_dist(h, mean_hamming_match, sd_hamming_match)
+	weight = norm(mean_hamming_match, sd_hamming_match).pdf(h)
 	sum_distractors_less = norm(mean_hamming_distractor, sd_hamming_distractor).cdf(h)
 	prob_correct_one = 1.0 - sum_distractors_less
 	num_distractors = 99
@@ -160,9 +166,12 @@ def compute_theoretical_error(sl, mtype):
 	mean_hamming_distractor = 0.5 * bl
 	variance_distractor = 0.5 * (1 - 0.5) * bl
 	sd_hamming_distractor = math.sqrt(variance_distractor)
-	print("mean_hamming_match=%s, sd_hamming_match=%s, mean_hamming_distractor=%s, sd_hamming_distractor=%s" % (
-		mean_hamming_match, sd_hamming_match, mean_hamming_distractor, sd_hamming_distractor))
-	I = quad(frady_eq_integrand, 0, bl, args=(
+	match_sum = quad(test_pdf_integrate, -bl/4, bl, args=(mean_hamming_match, sd_hamming_match ))
+	distractor_sum = quad(test_pdf_integrate, 0, bl, args=(mean_hamming_distractor, sd_hamming_distractor))
+	print("mean_hamming_match=%s, sd_hamming_match=%s, mean_hamming_distractor=%s, sd_hamming_distractor=%s, match_sum=%s"
+		", distractor_sum=%s" % (
+		mean_hamming_match, sd_hamming_match, mean_hamming_distractor, sd_hamming_distractor, match_sum[0], distractor_sum[0]))
+	I = quad(frady_eq_integrand, -bl/4, bl, args=(
 			mean_hamming_match, sd_hamming_match, mean_hamming_distractor, sd_hamming_distractor))
 	prob_correct = I[0]
 	prob_error = 1.0 - prob_correct
