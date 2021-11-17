@@ -514,7 +514,8 @@ class FSA_store:
 		# recall the fsa
 		num_errors = 0
 		nret = 3
-		hdiffs = []
+		bit_error_counts = []
+		hdiff_difs = []
 		item_count = 0
 		vr = random.getrandbits(self.word_length)
 		for state_num in range(self.fsa.num_states):
@@ -534,24 +535,29 @@ class FSA_store:
 				if self.debug:
 					print("find_matches returned: %s" % im_matches)
 				found_i = im_matches[0][0]
+				bit_error_count = im_matches[0][1]  # hamming distance between recalled vector and closest match
 				hdiff_dif = im_matches[1][1] - im_matches[0][1]
 				if found_i != next_state_num:
 					# since this is in error, hdiff_dif needs to be calculated based on hdif to next_state_v
-					hdiff_dif = im_matches[0][1] - gmpy2.popcount(found_v ^ next_state_v)
+					bit_error_count = gmpy2.popcount(found_v ^ next_state_v)
+					hdiff_dif = im_matches[0][1] - bit_error_count
 					num_errors += 1
 					if self.pvals["verbosity"] > 1:
 						print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s, im_matches=%s" % (
 							next_state_num, 
 							found_i, gmpy2.popcount(self.fsa.states_im[found_i] ^ found_v), hdiff_dif, im_matches))
-				hdiffs.append(hdiff_dif)
-		mean = statistics.mean(hdiffs)
-		stdev = statistics.stdev(hdiffs)
-		probability_of_error = scipy.stats.norm(mean, stdev).cdf(0.0)
+				hdiff_difs.append(hdiff_dif)
+				bit_error_counts.append(bit_error_count)
+		mean_hdd = statistics.mean(hdiff_difs)
+		stdev_hdd = statistics.stdev(hdiff_difs)
+		probability_of_error = scipy.stats.norm(mean_hdd, stdev_hdd).cdf(0.0)
 		probability_correct = 1.0 - probability_of_error
 		actual_fraction_error = num_errors / item_count
 		actual_fraction_correct = 1.0 - actual_fraction_error
-		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, probability of error=%.2e" % (num_errors, item_count,
-			mean, stdev, scipy.stats.norm(mean, stdev).cdf(0.0)))
+		mean_bit_error_count = statistics.mean(bit_error_counts)
+		stdev_bit_error_count = statistics.stdev(bit_error_counts)	
+		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, prob error=%.2e" % (num_errors, item_count,
+			mean_hdd, stdev_hdd, scipy.stats.norm(mean_hdd, stdev_hdd).cdf(0.0)))
 		# ? expected_mean, expected_stdev = get_expected_mean_and_stdev(item_count, )
 		# print("Expected: error=%.2e, correct=%.2e; actual: error=%.2e, correct=%.2e" % (
 		# 	probability_of_error, probability_correct, actual_fraction_error,
@@ -559,6 +565,7 @@ class FSA_store:
 		print("error expected=%s actual=%s;  correct expected=%s actual=%s" % (
 			probability_of_error, actual_fraction_error, probability_correct,
 			actual_fraction_correct))
+		print("bit_error_count mean=%s, stdev=%s" % (mean_bit_error_count, stdev_bit_error_count))
 		total_storage_required = self.fsa.bytes_required + self.bytes_required
 		print("Storage required: %s, %s, total: %.3e" % (self.fsa.get_storage_requirements_for_im(),
 			self.get_storage_requirements(), total_storage_required))
@@ -569,7 +576,9 @@ class FSA_store:
 			"actual_fraction_correct": actual_fraction_correct,
 			"probability_of_error": probability_of_error,
 			"probability_correct": probability_correct,
-			"total_storage_required": total_storage_required}
+			"total_storage_required": total_storage_required,
+			"mean_bit_error_count": mean_bit_error_count,
+			"stdev_bit_error_count": stdev_bit_error_count}
 
 	# following classes must or can be overridden by subclasses
 
@@ -697,8 +706,10 @@ class Table_Generator_error_vs_storage():
 		# 	"probability_correct": probability_correct.pvals,
 		# 	"total_storage_required": total_storage_required}
 		assert sinfo["item_count"] == 1000
-		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, storage, mtype, mlen, sinfo["num_errors"],
-			sinfo["actual_fraction_error"], sinfo["probability_of_error"], sinfo["total_storage_required"])
+		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, storage, mtype, mlen, sinfo["num_errors"],
+			sinfo["actual_fraction_error"], sinfo["probability_of_error"], 
+			sinfo["mean_bit_error_count"],sinfo["stdev_bit_error_count"],
+			sinfo["total_storage_required"])
 		return row
 
 	def generate_table(self):
@@ -706,7 +717,8 @@ class Table_Generator_error_vs_storage():
 		fp = open(file_name,'w')
 		fp.write(self.env.get_settings())
 		fp.write("\n-----Data starts here-----\n")
-		fp.write("rid\tstorage\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n")
+		fp.write("rid\tstorage\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\t"
+			"mean_bit_error_count\tstdev_bit_error_count\ttotal_storage_required\n")
 		print("storage\tbind_len\tsdm_len\tparameters")
 		sid = 0
 		for storage in range(self.storage_min, self.storage_max+1, self.storage_step):
@@ -823,7 +835,7 @@ class Table_Generator_error_vs_bitflips():
 		fp.close()
 
 
-def main():
+def main_show_table():
 	# if len(sys.argv) != 2:
 	# 	sys.exit("Usage %s <storage (in bytes)>" % sys.argv[0])
 	# storage = int(sys.argv[1])
