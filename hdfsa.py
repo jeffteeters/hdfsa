@@ -156,7 +156,7 @@ def initialize_binary_matrix(nrows, ncols, debug=False):
 	return bm
 
 
-def find_matches(m, b, nret, index_only=False, debug=False):
+def find_matches(m, b, nret, index_only=False, debug=False, include_stats=False):
 	# m is 2-d array of binary values, first dimension is value index, second is binary number
 	# b is binary number to match
 	# nret is number of top matches to return
@@ -177,6 +177,11 @@ def find_matches(m, b, nret, index_only=False, debug=False):
 	top_matches = matches[0:nret]
 	if index_only:
 		top_matches = [x[0] for x in top_matches]
+	if include_stats:
+		dhds = [x[1] for x in matches[1:]]
+		mean_dhd = statistics.mean(dhds)	# distractor hamming distance
+		stdev_dhd = statistics.stdev(dhds)
+		return (top_matches, mean_dhd, stdev_dhd)
 	return top_matches
 
 def rotate_left(n, width, d = 1):
@@ -516,6 +521,8 @@ class FSA_store:
 		nret = 3
 		bit_error_counts = []
 		hdiff_difs = []
+		mean_dhds = []
+		stdev_dhds = []
 		item_count = 0
 		vr = random.getrandbits(self.word_length)
 		for state_num in range(self.fsa.num_states):
@@ -531,7 +538,10 @@ class FSA_store:
 				if self.debug:
 					print("s%s: a%s, hdist=%s, random=" %(state_num, action_num, gmpy2.popcount(found_v ^ next_state_v)),
 						gmpy2.popcount(found_v ^ vr))
-				im_matches = find_matches(self.fsa.states_im, found_v, nret, debug=self.debug)
+				im_matches, mean_dhd, stdev_dhd = find_matches(self.fsa.states_im, found_v, nret, 
+					debug=self.debug, include_stats=True)
+				mean_dhds.append(mean_dhd)
+				stdev_dhds.append(stdev_dhd)
 				if self.debug:
 					print("find_matches returned: %s" % im_matches)
 				found_i = im_matches[0][0]
@@ -550,6 +560,8 @@ class FSA_store:
 				bit_error_counts.append(bit_error_count)
 		mean_hdd = statistics.mean(hdiff_difs)
 		stdev_hdd = statistics.stdev(hdiff_difs)
+		mean_dhd = statistics.mean(mean_dhds)  # distractor hamming distance (not just closest one)
+		stdev_dhd = statistics.mean(stdev_dhds)
 		probability_of_error = scipy.stats.norm(mean_hdd, stdev_hdd).cdf(0.0)
 		probability_correct = 1.0 - probability_of_error
 		actual_fraction_error = num_errors / item_count
@@ -578,7 +590,9 @@ class FSA_store:
 			"probability_correct": probability_correct,
 			"total_storage_required": total_storage_required,
 			"mean_bit_error_count": mean_bit_error_count,
-			"stdev_bit_error_count": stdev_bit_error_count}
+			"stdev_bit_error_count": stdev_bit_error_count,
+			"mean_dhd": mean_dhd,
+			"stdev_dhd": stdev_dhd}
 
 	# following classes must or can be overridden by subclasses
 
@@ -706,9 +720,10 @@ class Table_Generator_error_vs_storage():
 		# 	"probability_correct": probability_correct.pvals,
 		# 	"total_storage_required": total_storage_required}
 		assert sinfo["item_count"] == 1000
-		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, storage, mtype, mlen, sinfo["num_errors"],
+		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, storage, mtype, mlen, sinfo["num_errors"],
 			sinfo["actual_fraction_error"], sinfo["probability_of_error"], 
 			sinfo["mean_bit_error_count"],sinfo["stdev_bit_error_count"],
+			sinfo["mean_dhd"], sinfo["stdev_dhd"],
 			sinfo["total_storage_required"])
 		return row
 
@@ -718,7 +733,7 @@ class Table_Generator_error_vs_storage():
 		fp.write(self.env.get_settings())
 		fp.write("\n-----Data starts here-----\n")
 		fp.write("rid\tstorage\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\t"
-			"mean_bit_error_count\tstdev_bit_error_count\ttotal_storage_required\n")
+			"mean_bit_error_count\tstdev_bit_error_count\tmean_dhd\tstdev_dhd\ttotal_storage_required\n")
 		print("storage\tbind_len\tsdm_len\tparameters")
 		sid = 0
 		for storage in range(self.storage_min, self.storage_max+1, self.storage_step):

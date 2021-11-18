@@ -33,10 +33,10 @@ def load_data(file_name, xvar):
 	header = fp.readline()
 	# assert header == "rid\t%s\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n" % xvar
 	assert header == ("rid\t%s\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\t"
-		"mean_bit_error_count\tstdev_bit_error_count\ttotal_storage_required\n" % xvar)
+		"mean_bit_error_count\tstdev_bit_error_count\tmean_dhd\tstdev_dhd\ttotal_storage_required\n" % xvar)
 
 	sdata = {}
-	pattern = r"(\d+\.\d+)\t([^\t]+)\t(\w+)\t(\d+)\t(\d+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t(\d+)\n"
+	pattern = r"(\d+\.\d+)\t([^\t]+)\t(\w+)\t(\d+)\t(\d+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t(\d+)\n"
 	# 1.1	100000	bind	7207	641	0.641	0.6433422825527839	99996
 	# 2.2     2.5     sdm     1300    0       0.0     4.427697670830096e-06   672640 # for fdata.txt (bit flips)
 	while True:
@@ -48,7 +48,7 @@ def load_data(file_name, xvar):
 		if not match:
 			sys.exit("Match failed on:\n%s" % line)
 		rid, xval, mtype, mlen, error_count, fraction_error, perror, mean_bit_error_count, \
-			stdev_bit_error_count, storage_required = match.group(1,2,3,4,5,6,7,8,9,10)
+			stdev_bit_error_count, mean_dhd, stdev_dhd, storage_required = match.group(1,2,3,4,5,6,7,8,9,10,11,12)
 
 		# add new line to sdata dictionary
 
@@ -58,9 +58,12 @@ def load_data(file_name, xvar):
 		perror = float(perror)
 		mean_bit_error_count = float(mean_bit_error_count)
 		stdev_bit_error_count = float(stdev_bit_error_count)
+		mean_dhd = float(mean_dhd)
+		stdev_dhd = float(stdev_dhd)
 		if xval not in sdata[mtype]:
 			sdata[mtype][xval] = {"pmin":perror, "pmax":perror, "recs":[], "pelist": [perror],
-			"mean_bit_error_counts": [mean_bit_error_count], "stdev_bit_error_counts": [stdev_bit_error_count]}
+			"mean_bit_error_counts": [mean_bit_error_count], "stdev_bit_error_counts": [stdev_bit_error_count],
+			"mean_dhds":[mean_dhd], "stdev_dhds":[stdev_dhd]}
 		else:
 			if perror < sdata[mtype][xval]["pmin"]:
 				sdata[mtype][xval]["pmin"] = perror
@@ -69,9 +72,12 @@ def load_data(file_name, xvar):
 			sdata[mtype][xval]["pelist"].append(perror)
 			sdata[mtype][xval]["mean_bit_error_counts"].append(mean_bit_error_count)
 			sdata[mtype][xval]["stdev_bit_error_counts"].append(stdev_bit_error_count)
+			sdata[mtype][xval]["mean_dhds"].append(mean_dhd)
+			sdata[mtype][xval]["stdev_dhds"].append(stdev_dhd)
 		info = {"error_count":int(error_count), "fraction_error":float(fraction_error), "perror":perror,
 		   "storage_required":int(storage_required), "mlen":int(mlen), "error_count":int(error_count),
-		   "mean_bit_error_count": mean_bit_error_count, "stdev_bit_error_count":stdev_bit_error_count }
+		   "mean_bit_error_count": mean_bit_error_count, "stdev_bit_error_count":stdev_bit_error_count,
+		   "mean_dhd":mean_dhd,"stdev_dhd":stdev_dhd }
 		sdata[mtype][xval]["recs"].append(info)
 	fp.close()
 	return sdata
@@ -87,12 +93,16 @@ def compute_plotting_data(sdata, xvar):
 	add_theoretical = xvar == "storage"
 	bit_error_counts = {}
 	bit_error_counts_ebar = {}
+	mean_dhds = {}
+	stdev_dhds = {}
 	for mtype in sdata:
 		xvals[mtype] = sorted(list(sdata[mtype].keys()))  # will be sorted storage (or pflips)
 		yvals[mtype] = []
 		ebar[mtype] = []
 		bit_error_counts[mtype] = []
 		bit_error_counts_ebar[mtype] = []
+		mean_dhds[mtype] = []
+		stdev_dhds[mtype] = []
 		for xval in xvals[mtype]:
 			# pmid = (sdata[mtype][xval]["pmin"] + sdata[mtype][xval]["pmax"]) / 2.0
 			pmid = statistics.mean(sdata[mtype][xval]["pelist"])
@@ -103,9 +113,12 @@ def compute_plotting_data(sdata, xvar):
 			# save bit_count_errors
 			mean_bit_error_count = statistics.mean(sdata[mtype][xval]["mean_bit_error_counts"])
 			stdev_bit_error_count = statistics.mean(sdata[mtype][xval]["stdev_bit_error_counts"])
+			mean_dhd = statistics.mean(sdata[mtype][xval]["mean_dhds"])
+			stdev_dhd = statistics.mean(sdata[mtype][xval]["stdev_dhds"])
 			bit_error_counts[mtype].append(mean_bit_error_count)
 			bit_error_counts_ebar[mtype].append(stdev_bit_error_count / 2)
-
+			mean_dhds[mtype].append(mean_dhd)
+			stdev_dhds[mtype].append(stdev_dhd / 2)
 		if add_theoretical:
 			storage_lengths = get_storage_lengths(xvals, mtype, sdata)
 			if mtype == "bind":
@@ -126,6 +139,7 @@ def compute_plotting_data(sdata, xvar):
 		"bit_error_counts":bit_error_counts,
 		"bit_error_counts_ebar":bit_error_counts_ebar,
 		"theory_sdm_bit_error_counts": theory_sdm_bit_error_counts,
+		"mean_dhd":mean_dhds, "stdev_dhd":stdev_dhds,
 		}
 	return plotting_data
 
@@ -389,13 +403,17 @@ def make_plots(plotting_data, xvar):
 	bit_error_counts = plotting_data["bit_error_counts"]
 	bit_error_counts_ebar = plotting_data["bit_error_counts_ebar"]
 	theory_sdm_bit_error_counts = plotting_data["theory_sdm_bit_error_counts"]
+	mean_dhd = plotting_data["mean_dhd"]
+	stdev_dhd = plotting_data["stdev_dhd"]
 
 
 	# plot bit_error_counts separately
 	for mtype in xvals:
 		fig = plt.figure()
 		label = "bit_error_counts for %s" % mtype
+		# bit error count is hamming distance to correct item in item memory
 		plt.errorbar(xvals[mtype], bit_error_counts[mtype], yerr=bit_error_counts_ebar[mtype], label="found", fmt="-o")
+		# plt.errorbar(xvals[mtype], mean_dhd[mtype], yerr=stdev_dhd[mtype], label="found", fmt="-o")
 		if mtype == "sdm":
 			plt.errorbar(xvals[mtype], theory_sdm_bit_error_counts, label="theory", fmt="-o")
 		plt.title(label)
