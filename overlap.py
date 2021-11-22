@@ -3,6 +3,7 @@ import argparse
 import sys
 import numpy as np
 import math
+from scipy.stats import norm
 
 
 class Env:
@@ -77,21 +78,41 @@ class SDM_tester():
 		self.recall_items()
 
 	def save_items(self):
+		if self.pvals["debug"]:
+			print("save_items, before counters=\n%s" % self.sdm_counters)
 		for i in range(self.pvals["num_states"]):
-			self.sdm_counters[self.item_rows[i:]] += 1 if self.item_values[i] == 1 else -1
+			self.sdm_counters[self.item_rows[i,:]] += 1 if self.item_values[i] == 1 else -1
+			if self.pvals["debug"]:
+				print("after saving %i, counters=%s" % (i, self.sdm_counters))
 		if self.pvals["debug"]:
 			print("sdm_counters\n%s" % self.sdm_counters)
 
 	def recall_items(self):
 		recalled_values = np.empty(self.pvals["num_states"], dtype=np.int8)
+		if self.pvals["debug"]:
+			print("recalling values:")
 		for i in range(self.pvals["num_states"]):
-			csum = np.sum(self.sdm_counters[self.item_rows[i:]])
+			csum = np.sum(self.sdm_counters[self.item_rows[i,:]])
 			recalled_values[i] = 1 if csum >= 0 else 0
+			if self.pvals["debug"]:
+				print("%s - csum=%s" % (i, csum))
 		num_correct = np.count_nonzero( recalled_values == self.item_values)
-		print("num_correct = %s / %s (%s%%)" % (num_correct, self.pvals["num_states"], 
-			round(num_correct * 100.0 / self.pvals["num_states"], 1)))
+		percent_expected_correct = self.compute_percent_expected_correct()
+		print("num_correct = %s / %s (%s%%), expected=%s%%" % (num_correct, self.pvals["num_states"], 
+			round(num_correct * 100.0 / self.pvals["num_states"], 1), percent_expected_correct))
 		if self.pvals["debug"]:
 			print("stored values, recalled values=\n%s\n%s" % (self.item_values, recalled_values))
+
+	def compute_percent_expected_correct(self):
+		# compute theoretical sdm bit error based on Pentti's book chapter
+		pact = self.pvals["activation_count"] / self.pvals["num_rows"]
+		mean = self.pvals["activation_count"]
+		num_entities_stored = self.pvals["num_states"]
+		sdm_num_rows = self.pvals["num_rows"]
+		standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows)))
+		probability_single_bit_failure = norm(0, 1).cdf(-mean/standard_deviation)
+		percent_expected_correct = round((1 - probability_single_bit_failure) * 100.0, 1)
+		return percent_expected_correct
 
 
 class Hit_Counter():
