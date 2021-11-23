@@ -98,8 +98,9 @@ class SDM_tester():
 				print("%s - csum=%s" % (i, csum))
 		num_correct = np.count_nonzero( recalled_values == self.item_values)
 		percent_expected_correct = self.compute_percent_expected_correct()
-		print("num_correct = %s / %s (%s%%), expected=%s%%" % (num_correct, self.pvals["num_states"], 
-			round(num_correct * 100.0 / self.pvals["num_states"], 1), percent_expected_correct))
+		hamming_if_512 = 512 * ((self.pvals["num_states"] - num_correct) / self.pvals["num_states"])
+		print("num_correct = %s / %s (%s%%), expected=%s%%, hamming_if_512=%s" % (num_correct, self.pvals["num_states"], 
+			round(num_correct * 100.0 / self.pvals["num_states"], 1), percent_expected_correct, hamming_if_512))
 		if self.pvals["debug"]:
 			print("stored values, recalled values=\n%s\n%s" % (self.item_values, recalled_values))
 

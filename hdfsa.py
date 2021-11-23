@@ -18,7 +18,7 @@ from gmpy2 import xmpz
 import statistics
 import scipy.stats
 import os.path
-
+import math
 
 byteorder = "big" # sys.byteorder
 
@@ -155,13 +155,67 @@ def initialize_binary_matrix(nrows, ncols, debug=False):
 		bm.append(intval)
 	return bm
 
+def pseudo_random_choice(istart, iend, n, seed):
+	# returns list of n values that are in the range(istart, iend).  seed is an integer
+	# random number seed which should be > iend.
+	selected_vals = []
+	available_vals = list(range(istart, iend))
+	while len(selected_vals) < n:
+		index = seed % len(available_vals)
+		selected_vals.append(available_vals.pop(index))
+	return selected_vals
 
-def find_matches(m, b, nret, index_only=False, debug=False, include_stats=False):
+def select_top_matches_with_possible_ties(matches, nret, b, debug=False):
+	# check for multiple items having same hamming distance as that at nret
+	# if so, select randomly between them
+	# find number of items that have same hamming distance as last one to make the cut
+	j = 0
+	last_hamming = matches[nret -1][1]
+	while nret+j < len(matches) and matches[nret + j][1] == last_hamming:
+		j += 1
+	if j > 0:
+		# search for previous matches with same hamming distance
+		k = -2
+		while nret + k >=0 and matches[nret + k][1] == last_hamming:
+			k = k -1
+		istart = k+nret+1
+		iend = j+nret
+		num_needed = nret - istart
+		# print("num_needed=%s of %s" % (num_needed, iend - istart))
+		selected_vals = pseudo_random_choice(istart, iend, num_needed, b)
+		selected_vals.sort()
+		if debug:
+			print("istart = %s, iend=%s, num_needed=%s, selected_values=%s" % (istart, iend,
+				num_needed, selected_vals))
+		top_matches = matches[0:istart]
+		for i in selected_vals:
+			top_matches.append(matches[i])
+	else:
+		if debug:
+			print("No block at end")
+		top_matches = matches[0:nret]
+	return top_matches
+
+def test_select_top_matches_with_possible_ties():
+	matches = [(0, 3), (1, 3), (2, 8), (3, 8), (4, 8), (5, 8), (6, 9), (7, 9), (8, 10) ]
+	print("matches = %s" % matches)
+	seed = randrange(1000000000)
+	for nret in range(1, len(matches)+1):
+		print("nret=%s"% nret)
+		top_matches = select_top_matches_with_possible_ties(matches, nret, seed, debug=True)
+		print(top_matches)
+
+
+
+def find_matches(m, b, nret, index_only=False, debug=False, include_stats=False, distribute_ties=False):
 	# m is 2-d array of binary values, first dimension is value index, second is binary number
 	# b is binary number to match
 	# nret is number of top matches to return
 	# returns sorted tuple (i, c) where i is index and c is number of non-matching bits (0 is perfect match)
 	# if index_only is True, only return the indices, not the c
+	# if distribute_ties is True, check for multiple items with same hamming distance, and select between them
+	# in a pseudorandom way.  This is used when matching to hard location addresses.
+	# distribute_ties=False
 	matches = []
 	for i in range(len(m)):
 		try:
@@ -174,10 +228,23 @@ def find_matches(m, b, nret, index_only=False, debug=False, include_stats=False)
 		print("matches =\n%s" % matches)
 	# find top nret matches
 	matches.sort(key = lambda y: (y[1], y[0]))
-	top_matches = matches[0:nret]
+	if distribute_ties:
+		top_matches = select_top_matches_with_possible_ties(matches, nret, b)
+	else:
+		top_matches = matches[0:nret]
 	if index_only:
 		top_matches = [x[0] for x in top_matches]
 	if include_stats:
+		# # find number of items that have same hamming distance, print that to see if this is a problem
+		# j = 0
+		# while matches[nret + j][1] == matches[nret -1][1]:
+		# 	j += 1
+		# if j > 0:
+		# 	# search for previous matches with same hamming distance
+		# 	k = -1
+		# 	while nert + k >=0 and matches[nret + k][1] == matches[nret -1][1]:
+		# 		k = k -1
+		# 	print("Found %s matches to hamming distance %s" % (j, matches[nret -1]))
 		dhds = [x[1] for x in matches[1:]]
 		mean_dhd = statistics.mean(dhds)	# distractor hamming distance
 		stdev_dhd = statistics.stdev(dhds)
@@ -326,7 +393,7 @@ class Sdm:
 
 	def store(self, address, data):
 		# store binary word data at top nact addresses matching address
-		top_matches = find_matches(self.addresses, address, self.nact, index_only = True)
+		top_matches = find_matches(self.addresses, address, self.nact, index_only = True, distribute_ties=True)
 		d = int2iar(data, self.word_length)
 		for i in top_matches:
 			self.data_array[i] += d
@@ -343,6 +410,12 @@ class Sdm:
 
 	def show_hits(self):
 		# display histogram of overlapping hits
+		mean_hits = np.mean(self.hits)
+		stdev_hits = np.std(self.hits)
+		predicted_mean = np.sum(self.hits) / self.num_rows
+		predicted_stdev = math.sqrt(predicted_mean)
+		print("hits mean=%s, predicted_mean=%s, stdev=%s, predicted_stdev=%s, sum=%s, num_rows=%s" % (
+			mean_hits, predicted_mean, stdev_hits, predicted_stdev, np.sum(self.hits), self.num_rows))
 		values, counts = np.unique(self.hits, return_counts=True)
 		vc = [(values[i], counts[i]) for i in range(len(values))]
 		vc.sort(key = lambda y: (y[0], y[1]))
@@ -350,7 +423,7 @@ class Sdm:
 		pp.pprint(vc)
 
 	def read(self, address):
-		top_matches = find_matches(self.addresses, address, self.nact, index_only = True)
+		top_matches = find_matches(self.addresses, address, self.nact, index_only = True, distribute_ties=True)
 		i = top_matches[0]
 		isum = np.int32(self.data_array[i].copy())  # np.int32 is to convert to int32 to have range for sum
 		for i in top_matches[1:]:
@@ -653,6 +726,7 @@ class FSA_sdm_store(FSA_store):
 	def finalize_store(self):
 		if self.pvals["noise_percent"] > 0:
 			self.sdm.add_noise()
+		self.sdm.show_hits()
 
 	def recall_transition(self, state_v, action_v):
 		# recall next_state_v from state_v and action_v
@@ -881,6 +955,7 @@ def main():
 		FSA_combo_store(fsa, env.pvals["sdm_word_length"], env.pvals["debug"], env.pvals)
 
 main()
+# test_select_top_matches_with_possible_ties()
 # Bundle.test()
 # Sdm.test()
 
