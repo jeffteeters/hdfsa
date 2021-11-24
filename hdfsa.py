@@ -40,7 +40,9 @@ class Env:
 		{ "name":"sdm_word_length", "kw":{"help":"Word length for SDM memory, 0 to disable", "type":int},
 	 	  "flag":"w", "required_init":"i", "default":512 },
 		{ "name":"sdm_method", "kw":{"help":"0-normal SDM, 1-bind SDM, 2-both (combo)", "type":int},
-	 	  "flag":"o", "required_init":"i", "default":0 },	 	  
+	 	  "flag":"o", "required_init":"i", "default":0 },
+	 	{ "name":"sdm_address_method", "kw":{"help":"0-hamming (normal), 1-np.random_choice", "type":int},
+	 	  "flag":"k", "required_init":"i", "default":0 },
 	 	{ "name":"bind_word_length", "kw":{"help":"Word length for binding memory, 0 to disable", "type":int},
 	 	  "flag":"b", "required_init":"i", "default":512 },
 	 	{ "name":"num_rows", "kw":{"help":"Number rows in sdm memory","type":int},
@@ -205,9 +207,16 @@ def test_select_top_matches_with_possible_ties():
 		top_matches = select_top_matches_with_possible_ties(matches, nret, seed, debug=True)
 		print(top_matches)
 
+def sdm_random_addresses(sdm_num_rows, b, nret, debug):
+	# return list of random address associated with b, returning the same list for each b
+	if not hasattr(sdm_random_addresses, "row_cache"):
+		sdm_random_addresses.row_cache = {}  # it doesn't exist yet, so initialize it
+	if b not in sdm_random_addresses.row_cache:
+		sdm_random_addresses.row_cache[b] = np.random.choice(sdm_num_rows, size=nret, replace=False)
+	return sdm_random_addresses.row_cache[b]
 
-
-def find_matches(m, b, nret, index_only=False, debug=False, include_stats=False, distribute_ties=False):
+def find_matches(m, b, nret, index_only=False, debug=False, include_stats=False, distribute_ties=False,
+		sdm_address_method=0):
 	# m is 2-d array of binary values, first dimension is value index, second is binary number
 	# b is binary number to match
 	# nret is number of top matches to return
@@ -215,6 +224,13 @@ def find_matches(m, b, nret, index_only=False, debug=False, include_stats=False,
 	# if index_only is True, only return the indices, not the c
 	# if distribute_ties is True, check for multiple items with same hamming distance, and select between them
 	# in a pseudorandom way.  This is used when matching to hard location addresses.
+	# If sdm_addres_method is 1, then use randomlly selected coordinates rather than hamming distance match to address
+	# This is used to debug possible problem with hamming distance method
+	if sdm_address_method == 1:
+		sdm_num_rows = len(m)
+		assert index_only
+		assert not include_stats
+		return sdm_random_addresses(sdm_num_rows, b, nret, debug)
 	# distribute_ties=False
 	matches = []
 	for i in range(len(m)):
@@ -284,7 +300,7 @@ def int2iar(n, width):
 	# returns numpy int8 array with: where n bit is zero, -1, where n bit is one, +1
 	bool_vals = list(xmpz(n).iter_bits(stop=width))
 	s = np.where(bool_vals, 1, -1)
-	s = np.flipud(s)   # flip for most significant bit is first
+	s = np.flipud(s)   # flip so most significant bit is first
 	return s
 
 
@@ -375,10 +391,10 @@ class SdmA(Memory):
 
 # """
 
-
 class Sdm:
 	# implements a sparse distributed memory
-	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, noise_percent=0, debug=False):
+	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, noise_percent=0,
+		sdm_address_method=0, debug=False):
 		# nact - number of active addresses used (top matches) for reading or writing
 		self.address_length = address_length
 		self.word_length = word_length
@@ -388,18 +404,45 @@ class Sdm:
 		self.data_array = np.zeros((num_rows, word_length), dtype=np.int16)
 		self.addresses = initialize_binary_matrix(num_rows, word_length)
 		self.debug = debug
+		self.sdm_address_method = sdm_address_method
 		self.fmt = "0%sb" % word_length
 		self.hits = np.zeros((num_rows,), dtype=np.int16)
+		self.stored = {} # stores number of times value stored and read [<data>, <store_count>, <read_count>]
 
 	def store(self, address, data):
 		# store binary word data at top nact addresses matching address
-		top_matches = find_matches(self.addresses, address, self.nact, index_only = True, distribute_ties=True)
+		top_matches = find_matches(self.addresses, address, self.nact, index_only = True, distribute_ties=True,
+			sdm_address_method=self.sdm_address_method)
 		d = int2iar(data, self.word_length)
 		for i in top_matches:
 			self.data_array[i] += d
 			self.hits[i] += 1
 		if self.debug:
 			print("store\n addr=%s\n data=%s" % (format(address, self.fmt), format(data, self.fmt)))
+		self.save_stored(address, data, action="store")
+
+
+	def save_stored(self, address, data, action):
+		assert action in ("store", "read")
+		if address not in self.stored:
+			if action == "read":
+				print("attempt to read value that is not stored")
+				return
+			self.stored[address] = [data, 1, 0]
+			return
+		if action == "store":
+			print("storing multiple times at same address")
+			return
+		# reading at address
+		self.stored[address][2] += 1
+
+	def show_stored(self):
+		not_read_count = 0
+		for b in self.stored.keys():
+			if self.stored[b][2] == 0:
+				not_read_count += 1
+		print("Numer of items stored = %s, not_read_count=%s" % (len(self.stored), not_read_count))
+
 
 	def add_noise(self):
 		# add noise to counters to test noise resiliency
@@ -410,6 +453,10 @@ class Sdm:
 
 	def show_hits(self):
 		# display histogram of overlapping hits
+		midpoint = int(self.num_rows / 2)
+		first_half_count = np.sum(self.hits[0:midpoint])
+		second_half_count = np.sum(self.hits[midpoint:])
+		print("first_half_count: %s, second_half_count %s" % (first_half_count, second_half_count))
 		mean_hits = np.mean(self.hits)
 		stdev_hits = np.std(self.hits)
 		predicted_mean = np.sum(self.hits) / self.num_rows
@@ -423,7 +470,8 @@ class Sdm:
 		pp.pprint(vc)
 
 	def read(self, address):
-		top_matches = find_matches(self.addresses, address, self.nact, index_only = True, distribute_ties=True)
+		top_matches = find_matches(self.addresses, address, self.nact, index_only = True,
+			distribute_ties=True, sdm_address_method=self.sdm_address_method)
 		i = top_matches[0]
 		isum = np.int32(self.data_array[i].copy())  # np.int32 is to convert to int32 to have range for sum
 		for i in top_matches[1:]:
@@ -432,12 +480,13 @@ class Sdm:
 		if self.debug:
 			print("read\n addr=%s\n top_matches=%s\n data=%s\nisum=%s," % (format(address, self.fmt), top_matches,
 				format(isum2, self.fmt), isum))
+		# self.save_stored(address, None, action="read")
 		return isum2
 
 	def test():
 		# test sdm
-		word_length = 30
-		num_rows = 512
+		word_length = 512
+		num_rows = 10
 		nact = 5
 		debug = True
 		sdm = Sdm(address_length=word_length, word_length=word_length, num_rows=num_rows, nact=nact, debug=debug)
@@ -458,10 +507,6 @@ class Sdm:
 		print("s2 = %s" % format(s2, fmt))
 		print("r2 = %s, diff=%s" % (format(r2, fmt), gmpy2.popcount(s2^r2)))
 		print("random distance: %s, %s" % (gmpy2.popcount(sr^s1), gmpy2.popcount(sr^s2)))
-
-	# def clear(self):
-	# 	# set data_array contents to zero
-	# 	self.data_array.fill(0)
 
 class Bundle:
 	# bundle in hd vector
@@ -562,7 +607,7 @@ class FSA:
 class FSA_store:
 	# abstract class for storing FSA.  Must subclass to implement different storage methods
 
-	def __init__(self, fsa, word_length, debug, pvals=None):
+	def __init__(self, fsa, word_length, debug, pvals):
 		if word_length == 0:
 			# don't process if wordlength is zero
 			return
@@ -629,6 +674,8 @@ class FSA_store:
 						print("error, expected state=s%s, found_state=s%s, found_hdif=%s, hdif_dif=%s, im_matches=%s" % (
 							next_state_num, 
 							found_i, gmpy2.popcount(self.fsa.states_im[found_i] ^ found_v), hdiff_dif, im_matches))
+				else:
+					assert gmpy2.popcount(found_v ^ next_state_v) == bit_error_count
 				hdiff_difs.append(hdiff_dif)
 				bit_error_counts.append(bit_error_count)
 		mean_hdd = statistics.mean(hdiff_difs)
@@ -639,6 +686,7 @@ class FSA_store:
 		probability_correct = 1.0 - probability_of_error
 		actual_fraction_error = num_errors / item_count
 		actual_fraction_correct = 1.0 - actual_fraction_error
+		# print("bit_error_counts=%s" % bit_error_counts)
 		mean_bit_error_count = statistics.mean(bit_error_counts)
 		stdev_bit_error_count = statistics.stdev(bit_error_counts)	
 		print("num_errors=%s/%s, hdiff avg=%0.1f, std=%0.1f, prob error=%.2e" % (num_errors, item_count,
@@ -717,20 +765,26 @@ class FSA_sdm_store(FSA_store):
 	def initialize(self):
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
 			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"],
-			noise_percent=self.pvals["noise_percent"], debug=self.debug)
+			noise_percent=self.pvals["noise_percent"], sdm_address_method=self.pvals["sdm_address_method"],
+			debug=self.debug)
 		self.bytes_required = self.word_length * self.pvals["num_rows"]
 
 	def save_transition(self, state_v, action_v, next_state_v):
-		self.sdm.store(state_v ^ action_v, next_state_v)
+		# self.sdm.store(state_v ^ action_v, next_state_v)
+		# store binding with state and action so all next_states stored are unique
+		self.sdm.store(state_v ^ action_v, state_v ^ action_v ^ next_state_v)
 
 	def finalize_store(self):
 		if self.pvals["noise_percent"] > 0:
 			self.sdm.add_noise()
-		self.sdm.show_hits()
+		# self.sdm.show_hits()
 
 	def recall_transition(self, state_v, action_v):
 		# recall next_state_v from state_v and action_v
-		return self.sdm.read(state_v ^ action_v)
+		# return self.sdm.read(state_v ^ action_v)
+		found_v = self.sdm.read(state_v ^ action_v)
+		# unbind with state and action
+		return state_v ^ action_v ^ found_v
 
 	def get_storage_requirements(self):
 		return ("sdm counter: %s bytes" % (self.word_length * self.pvals["num_rows"]))
@@ -742,7 +796,8 @@ class FSA_combo_store(FSA_store):
 	def initialize(self):
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
 			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"],
-			noise_percent=self.pvals["noise_percent"], debug=self.debug)
+			noise_percent=self.pvals["noise_percent"], sdm_address_method=self.pvals["sdm_address_method"],
+			debug=self.debug)
 		self.bytes_required = self.word_length * self.pvals["num_rows"]
 
 	def save_transition(self, state_v, action_v, next_state_v):
