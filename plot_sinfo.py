@@ -414,7 +414,8 @@ def make_plots(plotting_data, xvar):
 		# bit error count is hamming distance to correct item in item memory
 		plt.errorbar(xvals[mtype], bit_error_counts[mtype], yerr=bit_error_counts_ebar[mtype], label="found", fmt="-o")
 		# plt.errorbar(xvals[mtype], mean_dhd[mtype], yerr=stdev_dhd[mtype], label="found", fmt="-o")
-		if mtype == "sdm":
+		# if mtype == "sdm":
+		if theory_sdm_bit_error_counts is not None:
 			plt.errorbar(xvals[mtype], theory_sdm_bit_error_counts, label="theory", fmt="-o")
 		plt.title(label)
 		plt.legend(loc='upper right')

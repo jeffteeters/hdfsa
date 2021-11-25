@@ -949,8 +949,14 @@ class Table_Generator_error_vs_bitflips():
 		# 	"probability_correct": probability_correct.pvals,
 		# 	"total_storage_required": total_storage_required}
 		assert sinfo["item_count"] == 1000
-		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, pflip, mtype, mlen, sinfo["num_errors"],
-			sinfo["actual_fraction_error"], sinfo["probability_of_error"], sinfo["total_storage_required"])
+		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, pflip, mtype, mlen, sinfo["num_errors"],
+			sinfo["actual_fraction_error"], sinfo["probability_of_error"], 
+			sinfo["mean_bit_error_count"],sinfo["stdev_bit_error_count"],
+			sinfo["mean_dhd"], sinfo["stdev_dhd"],
+			sinfo["total_storage_required"])
+		return row
+
+
 		return row
 
 	def generate_table(self):
@@ -958,7 +964,9 @@ class Table_Generator_error_vs_bitflips():
 		fp = open(file_name,'w')
 		fp.write(self.env.get_settings())
 		fp.write("\n-----Data starts here-----\n")
-		fp.write("rid\tpflip\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\ttotal_storage_required\n")
+		fp.write("rid\t%s\tmtype\tmem_len\terror_count\tfraction_error\tprobability_of_error\t"
+		"mean_bit_error_count\tstdev_bit_error_count\tmean_dhd\tstdev_dhd\ttotal_storage_required\n" % "pflip")
+
 		print("pflip\tparameters")
 		fid = 0
 		pflip = self.pflip_min
