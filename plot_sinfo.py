@@ -90,7 +90,8 @@ def compute_plotting_data(sdata, xvar):
 	xvals = {}
 	yvals = {}
 	ebar = {}
-	add_theoretical = xvar == "storage"
+	add_theoretical_storage = xvar == "storage"
+	add_theoretical_pflips = xvar == "pflip"
 	bit_error_counts = {}
 	bit_error_counts_ebar = {}
 	mean_dhds = {}
@@ -119,7 +120,7 @@ def compute_plotting_data(sdata, xvar):
 			bit_error_counts_ebar[mtype].append(stdev_bit_error_count / 2)
 			mean_dhds[mtype].append(mean_dhd)
 			stdev_dhds[mtype].append(stdev_dhd / 2)
-		if add_theoretical:
+		if add_theoretical_storage:
 			storage_lengths = get_storage_lengths(xvals, mtype, sdata)
 			if mtype == "bind":
 				theoretical_bundle_err = [ compute_theoretical_error(sl, mtype) for sl in storage_lengths]
@@ -128,6 +129,13 @@ def compute_plotting_data(sdata, xvar):
 				assert mtype == "sdm"
 				theoretical_sdm_err = [ compute_theoretical_error(sl, mtype) for sl in storage_lengths]
 				theory_sdm_bit_error_counts = [compute_theoretical_sdm_bit_error_count(sl) for sl in storage_lengths]
+		elif add_theoretical_pflips and mtype == "sdm":
+			# pflips = get_storage_lengths(xvals, mtype, sdata)
+			pflips = xvals[mtype]
+			import pdb; pdb.set_trace()
+			theoretical_bundle_err = None
+			theoretical_sdm_err = None
+			theory_sdm_bit_error_counts = [compute_theoretical_sdm_bit_error_count_from_pflips(pf) for pf in pflips]
 		else:
 			theoretical_bundle_err = None
 			theoretical_sdm_err = None
@@ -191,6 +199,43 @@ def compute_theoretical_sdm_bit_error_count(sl):
 	print("sl=%s, probability_single_bit_failure=%s, expected_error_count=%s" % (sl, 
 		probability_single_bit_failure, expected_error_count))
 	return expected_error_count
+
+def compute_theoretical_sdm_bit_error_count_from_pflips(pf):
+	# compute theoretical bit count error based on difference of two distributions
+	k = 1000  # number of items stored in SDM
+	word_length = 512
+	sdm_num_rows = 1939
+	sdm_activation_count = round(sdm_num_rows / 100)  # used in hdfsa.py
+	noise_percent = pf
+	fraction_flipped = noise_percent / 100.0
+	fraction_upright = 1.0 - fraction_flipped
+	nact_flipped = sdm_activation_count * fraction_flipped
+	nact_upright = sdm_activation_count * fraction_upright
+	print("pf=%s, fraction_flipped=%s, fraction_upright=%s, nact_flipped=%s, nact_upright=%s" % (pf,
+		fraction_flipped, fraction_upright, nact_flipped, nact_upright))
+	mean_flipped, variance_flipped = compute_distribution_for_specific_nact(nact_flipped, sdm_num_rows, k)
+	mean_upright, variance_upright = compute_distribution_for_specific_nact(nact_upright, sdm_num_rows, k)
+	mean_combined = fraction_upright * mean_upright - fraction_flipped * mean_flipped
+	# following is not sufficient
+	variance_combined = (fraction_upright * variance_upright + fraction_flipped * variance_flipped)
+	# from: https://stats.stackexchange.com/questions/205126/standard-deviation-for-weighted-sum-of-normal-distributions
+	variance_combined += fraction_flipped * fraction_upright * (mean_flipped - mean_upright)**2
+	print("mean_flipped=%s, variance_flipped=%s, mean_upright=%s, variance_upright=%s, mean_combined=%s, variance_combined=%s" % (
+		mean_flipped, variance_flipped, mean_upright, variance_upright, mean_combined, variance_combined))
+	standard_deviation_combined = math.sqrt(variance_combined)
+	probability_single_bit_failure = norm(0, 1).cdf(-mean_combined/standard_deviation_combined)
+	# percent_expected_correct = round((1 - probability_single_bit_failure) * 100.0, 1)
+	# return percent_expected_correct
+	expected_error_count = probability_single_bit_failure * word_length
+	return expected_error_count
+
+def compute_distribution_for_specific_nact(nact, sdm_num_rows, num_items_stored):
+	# compute mean and standard distribution for a specific activation count
+	pact = nact / sdm_num_rows
+	mean = nact
+	sdm_num_rows = sdm_num_rows
+	variance = mean * (1 + pact * num_items_stored * (1.0 + pact*pact * sdm_num_rows))
+	return (mean, variance)
 
 
 def compute_theoretical_error(sl, mtype):

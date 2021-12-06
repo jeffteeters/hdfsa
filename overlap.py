@@ -122,12 +122,29 @@ class SDM_tester():
 			percent_expected_correct_with_noise = self.compute_percent_expected_correct_with_noise()
 			print("Using changed mean, expected is: %s" % percent_expected_correct_with_noise)
 			percent_expected_correct_with_noise_via_single_mixture = self.compute_percent_expected_correct_with_noise_via_single_mixture()
-			print("Using single_misture, expected is: %s" % percent_expected_correct_with_noise_via_single_mixture)
+			print("Using single_mixture, expected is: %s" % percent_expected_correct_with_noise_via_single_mixture)
+			percent_expected_correct_with_noise_via_single_difference = self.compute_percent_expected_correct_with_noise_via_single_difference()
+			print("Using single_differnce, expected is: %s" % percent_expected_correct_with_noise_via_single_difference)
 
 		if self.pvals["debug"]:
 			print("stored values, recalled values=\n%s\n%s" % (self.item_values, recalled_values))
 
 	def compute_percent_expected_correct(self):
+		# compute theoretical sdm bit error based on Pentti's book chapter
+		nact = self.pvals["activation_count"]
+		test_mean, test_variance = self.compute_distribution_for_specific_nact(nact)
+		pact = self.pvals["activation_count"] / self.pvals["num_rows"]
+		mean = self.pvals["activation_count"]
+		num_entities_stored = self.pvals["num_states"]
+		sdm_num_rows = self.pvals["num_rows"]
+		standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows)))
+		assert math.isclose(test_mean, mean)
+		assert math.isclose(test_variance, standard_deviation**2)
+		probability_single_bit_failure = norm(0, 1).cdf(-mean/standard_deviation)
+		percent_expected_correct = round((1 - probability_single_bit_failure) * 100.0, 1)
+		return percent_expected_correct
+
+	def compute_percent_expected_correct_orig(self):
 		# compute theoretical sdm bit error based on Pentti's book chapter
 		pact = self.pvals["activation_count"] / self.pvals["num_rows"]
 		mean = self.pvals["activation_count"]
@@ -148,17 +165,43 @@ class SDM_tester():
 		variance = mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows))
 		return (mean, variance)
 
+	def compute_percent_expected_correct_with_noise_via_single_difference(self):
+		# use single mixture distributions to compute theoretical sdm bit error
+		fraction_flipped = self.pvals["noise_percent"] / 100.0
+		fraction_upright = 1.0 - fraction_flipped
+		nact_flipped = self.pvals["activation_count"] * fraction_flipped
+		nact_upright = self.pvals["activation_count"] * fraction_upright
+		print("fraction_flipped=%s, fraction_upright=%s, nact_flipped=%s, nact_upright=%s" % (
+			fraction_flipped, fraction_upright, nact_flipped, nact_upright))
+		mean_flipped, variance_flipped = self.compute_distribution_for_specific_nact(nact_flipped)
+		mean_upright, variance_upright = self.compute_distribution_for_specific_nact(nact_upright)
+		mean_combined = fraction_upright * mean_upright - fraction_flipped * mean_flipped
+		# following is not sufficient
+		variance_combined = (fraction_upright * variance_upright + fraction_flipped * variance_flipped)
+		# from: https://stats.stackexchange.com/questions/205126/standard-deviation-for-weighted-sum-of-normal-distributions
+		variance_combined += fraction_flipped * fraction_upright * (mean_flipped - mean_upright)**2
+		print("mean_flipped=%s, variance_flipped=%s, mean_upright=%s, variance_upright=%s, mean_combined=%s, variance_combined=%s" % (
+			mean_flipped, variance_flipped, mean_upright, variance_upright, mean_combined, variance_combined))
+		standard_deviation_combined = math.sqrt(variance_combined)
+		probability_single_bit_failure = norm(0, 1).cdf(-mean_combined/standard_deviation_combined)
+		percent_expected_correct = round((1 - probability_single_bit_failure) * 100.0, 1)
+		return percent_expected_correct
+
 	def compute_percent_expected_correct_with_noise_via_single_mixture(self):
 		# use single mixture distributions to compute theoretical sdm bit error
 		fraction_flipped = self.pvals["noise_percent"] / 100.0
 		fraction_upright = 1.0 - fraction_flipped
 		nact_flipped = self.pvals["activation_count"] * fraction_flipped
-		nact_upright = self.pvals["activation_count"] - fraction_upright
+		nact_upright = self.pvals["activation_count"] * fraction_upright
+		print("fraction_flipped=%s, fraction_upright=%s, nact_flipped=%s, nact_upright=%s" % (
+			fraction_flipped, fraction_upright, nact_flipped, nact_upright))
 		mean_flipped, variance_flipped = self.compute_distribution_for_specific_nact(nact_flipped)
 		mean_upright, variance_upright = self.compute_distribution_for_specific_nact(nact_upright)
 		mean_combined = fraction_upright * mean_upright - fraction_flipped * mean_flipped
 		variance_combined = (fraction_upright * (variance_upright + mean_upright**2)
 			+ fraction_flipped * (variance_flipped + mean_flipped**2)) - mean_combined
+		print("mean_flipped=%s, variance_flipped=%s, mean_upright=%s, variance_upright=%s, mean_combined=%s, variance_combined=%s" % (
+			mean_flipped, variance_flipped, mean_upright, variance_upright, mean_combined, variance_combined))
 		standard_deviation_combined = math.sqrt(variance_combined)
 		probability_single_bit_failure = norm(0, 1).cdf(-mean_combined/standard_deviation_combined)
 		percent_expected_correct = round((1 - probability_single_bit_failure) * 100.0, 1)
