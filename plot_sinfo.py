@@ -132,7 +132,7 @@ def compute_plotting_data(sdata, xvar):
 		elif add_theoretical_pflips and mtype == "sdm":
 			# pflips = get_storage_lengths(xvals, mtype, sdata)
 			pflips = xvals[mtype]
-			import pdb; pdb.set_trace()
+			# import pdb; pdb.set_trace()
 			theoretical_bundle_err = None
 			theoretical_sdm_err = None
 			theory_sdm_bit_error_counts = [compute_theoretical_sdm_bit_error_count_from_pflips(pf) for pf in pflips]
@@ -459,11 +459,15 @@ def make_plots(plotting_data, xvar):
 		# bit error count is hamming distance to correct item in item memory
 		plt.errorbar(xvals[mtype], bit_error_counts[mtype], yerr=bit_error_counts_ebar[mtype], label="found", fmt="-o")
 		# plt.errorbar(xvals[mtype], mean_dhd[mtype], yerr=stdev_dhd[mtype], label="found", fmt="-o")
-		# if mtype == "sdm":
+		if mtype == "sdm":
+			overlap_vals = [55.8, 62.97, 78.8, 92.6, 105.4, 130.5, 149.5, 172.0, 199.1, 227.3, 243.7]
+			plt.errorbar(xvals[mtype], overlap_vals, label="overlap_output", fmt="-o")
 		if theory_sdm_bit_error_counts is not None:
 			plt.errorbar(xvals[mtype], theory_sdm_bit_error_counts, label="theory", fmt="-o")
 		plt.title(label)
-		plt.legend(loc='upper right')
+		plt.legend(loc='lower right')
+		plt.grid(which='both', axis='both')
+		plt.yticks(np.arange(50.0, 275.0, 25.0))
 		plt.show
 
 

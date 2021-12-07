@@ -291,8 +291,21 @@ def add_noise(iar, noise_percent):
 	word_length = len(iar)
 	num_to_flip = int(word_length * noise_percent / 100)
 	rng = np.random.default_rng()
-	idx = rng.choice(word_length, size=num_to_flip)
+	idx = rng.choice(word_length, size=num_to_flip, replace=False, shuffle=False)
 	iar[idx] *= -1
+
+def add_noise_works(iar, noise_percent):
+	# add noise by flipping sign of elements of iar (integer array)
+	# iar must be an numpy int array.  noise_percent is the percent noise, 0 to 100
+	if noise_percent == 0:
+		return
+	word_length = len(iar)
+	num_to_flip = int(word_length * noise_percent / 100)
+	# rng = np.random.default_rng()
+	# idx = rng.choice(word_length, size=num_to_flip)
+	# iar[idx] *= -1
+	indicies = np.random.choice(word_length, size=num_to_flip, replace=False)
+	iar[indicies] *= -1
 
 def int2iar(n, width):
 	# convert n (integer) to int array with integer bits 0, 1 mapped to -1, +1 in the array
