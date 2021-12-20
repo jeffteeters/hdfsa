@@ -190,8 +190,12 @@ def compute_theoretical_sdm_bit_error_count(sl):
 	pact = sdm_activation_count / sdm_num_rows
 	mean = sdm_activation_count
 	num_entities_stored = k
-	# following from Pentti's chapter
+	# following from Pentti's chapter - gives error a little more than found
 	standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows)))
+	# following replaces T with T -1
+	# standard_deviation = math.sqrt(mean * (1 + pact * (num_entities_stored - 1) * (1.0 + pact*pact * sdm_num_rows)))
+	# following same as above, but with the 1.0 replaced by zero, for variance of sum zero - DOES NOT WORK
+	# standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (0.0 + pact*pact * sdm_num_rows)))
 	# average_overlap = ((num_entities_stored - 1) * sdm_activation_count) * (sdm_activation_count / sdm_num_rows)
 		# standard_deviation = math.sqrt(average_overlap * 0.5 * (1 - 0.5)) # compute variance assuming binomonal distribution
 	probability_single_bit_failure = norm(0, 1).cdf(-mean/standard_deviation)
@@ -459,7 +463,7 @@ def make_plots(plotting_data, xvar):
 		# bit error count is hamming distance to correct item in item memory
 		plt.errorbar(xvals[mtype], bit_error_counts[mtype], yerr=bit_error_counts_ebar[mtype], label="found", fmt="-o")
 		# plt.errorbar(xvals[mtype], mean_dhd[mtype], yerr=stdev_dhd[mtype], label="found", fmt="-o")
-		if mtype == "sdm":
+		if mtype == "sdm" and xvar == "pflip":
 			overlap_vals = [55.8, 62.97, 78.8, 92.6, 105.4, 130.5, 149.5, 172.0, 199.1, 227.3, 243.7]
 			plt.errorbar(xvals[mtype], overlap_vals, label="overlap_output", fmt="-o")
 		if theory_sdm_bit_error_counts is not None:
