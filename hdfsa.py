@@ -58,7 +58,13 @@ class Env:
 		{ "name":"generate_error_vs_bitflips_table", "kw":{"help":"Generate table to make plots (error vs bithlips)","type":int, "choices":[0, 1]},
 		  "flag":"f", "required_init":"", "default":0},
 		{ "name":"error_vs_bitflips_table_start_at_equal_storage", "kw":{"help":"Start at equal storage for error vs bithlips table","type":int, "choices":[0, 1]},
-		  "flag":"j", "required_init":"", "default":0},	  
+		  "flag":"j", "required_init":"", "default":0},
+		{ "name":"table_start", "kw":{"help":"Start value for table generation (storage or bit flip percent)","type":int},
+		  "flag":"x", "required_init":"", "default":0},
+		{ "name":"table_step", "kw":{"help":"Step value for table generation","type":int},
+		  "flag":"y", "required_init":"", "default":0},
+		{ "name":"table_stop", "kw":{"help":"Stop value for table generation","type":int},
+		  "flag":"z", "required_init":"", "default":0},
 		# { "name":"format", "kw":{"help":"Format used to store items and hard addresses, choices: "
 		#    "int8, np.packbits, bitarray, gmpy2, gmpy2pure, colsum"},
 		#   "flag":"f", "required_init":"i", "default":"int8", "choices":["int8", "np.packbits", "bitarray", "gmpy2",
@@ -844,9 +850,24 @@ class Table_Generator_error_vs_storage():
 		self.pvals = env.pvals
 		self.fsa = fsa
 		self.num_items = fsa.num_states + fsa.num_actions
-		self.storage_min = 100000  # min amount of storage
-		self.storage_max = 1000000 # max amount of storage
-		self.storage_step = 100000 # step size
+		table_start = self.pvals["table_start"]
+		table_step = self.pvals["table_step"]
+		table_stop = self.pvals["table_stop"]
+		if table_start == 0 and table_step == 0 and table_stop == 0:
+			print("table_start, step and stop not specified, defaults are used.")
+			table_start = 100000
+			table_step = 100000
+			table_stop = 1000000
+		assert table_start < table_stop, "table_start (%s) must be less than table_stop (%s)" % (
+			table_start, table_stop)
+		assert table_step > 0, "table_step must be > 0, is %s" % table_step
+		num_steps = int((table_stop - table_start) / table_step)
+		assert num_steps > 3, "number of steps must be > 3, is %s" % num_steps
+		print("table generation start=%s, step=%s, stop=%s, num_steps=%s" % (table_start, table_step,
+			table_stop, num_steps))
+		self.storage_min = table_start  # min amount of storage
+		self.storage_max = table_stop # max amount of storage
+		self.storage_step = table_step # step size
 		assert self.pvals["num_states"] == 100
 		assert self.pvals["num_actions"] == 10
 		assert self.pvals["num_choices"] == 10

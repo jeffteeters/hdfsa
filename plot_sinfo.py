@@ -127,6 +127,10 @@ def compute_plotting_data(sdata, xvar):
 				theory_sdm_bit_error_counts = None
 			else:
 				assert mtype == "sdm"
+				print("** == sdm storage lengths=%s" % storage_lengths)
+				print("xvals['sdm']=%s" % xvals["sdm"])
+				print("yvals['sdm']=%s" % yvals["sdm"])
+				print("ebars['sdm']=%s" % ebar["sdm"])
 				theoretical_sdm_err = [ compute_theoretical_error(sl, mtype) for sl in storage_lengths]
 				theory_sdm_bit_error_counts = [compute_theoretical_sdm_bit_error_count(sl) for sl in storage_lengths]
 		elif add_theoretical_pflips and mtype == "sdm":
@@ -243,7 +247,7 @@ def compute_distribution_for_specific_nact(nact, sdm_num_rows, num_items_stored)
 
 
 def compute_theoretical_error(sl, mtype):
-	# compute theoretical error based on storage lenght.  if mtype bind (bundle) sl is bundle length (bl)
+	# compute theoretical error based on storage length.  if mtype bind (bundle) sl is bundle length (bl)
 	# if mtype is sdm, sl is number of rows in SDM
 	k = 1000  # number of items stored in bundle
 	assert mtype in ("sdm", "bind")
@@ -490,7 +494,7 @@ def make_plots(plotting_data, xvar):
 	plt.title(title)
 	xlabel = "Storage (bytes)" if xvar == "storage" else '% bits flipped'
 	plt.xlabel(xlabel)
-	if xvar == "storage":
+	if False and xvar == "storage":
 		xaxis_labels = ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "1e6" ]
 		plt.xticks(xvals[mtype],xaxis_labels)
 	ylabel = "Fraction error"
