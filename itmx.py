@@ -74,7 +74,7 @@ class Figure:
 	def __init__(self, ptype="errorbar", nbins=None,
 			title=None, xvals=None, grid=False, xlabel=None, ylabel=None,
 			xaxis_labels=None, legend_location=None,
-			yvals=None, ebar=None, legend=None, fmt="-o"):
+			yvals=None, ebar=None, legend=None, fmt="-o", logyscale=False):
 		assert ptype in ("errorbar", "hist")
 		self.ptype = ptype
 		self.nbins = nbins
@@ -88,6 +88,7 @@ class Figure:
 		self.line_info = []
 		self.legend = legend
 		self.fmt = fmt
+		self.logyscale = logyscale
 		if yvals is not None:
 			assert ptype == "errorbar"
 			self.add_line(yvals, ebar, legend, fmt)
@@ -118,6 +119,8 @@ class Figure:
 			plt.legend(loc=self.legend_location)
 		if self.grid:
 			plt.grid()
+		if self.logyscale:
+			plt.yscale('log')
 		plt.show()
 
 
@@ -248,7 +251,7 @@ class Calculator:
 		fig = Figure(title="Recall error vs bit flips", xvals=self.xvals, grid=True,
 			xlabel="bit flips (%)", ylabel="recall error (percent)", xaxis_labels=None,
 			legend_location="upper left",
-			yvals=yvals, ebar=None, legend="recall error")
+			yvals=yvals, ebar=None, legend="recall error", logyscale=True)
 		theory_error = self.compute_theoretical_recall_error()
 		fig.add_line(theory_error, legend="Theoretical error")
 		self.figures.append(fig)
@@ -283,13 +286,14 @@ class Calculator:
 				match_hamming.append(math.comb(wl, k) * pflip ** k * (1.0-pflip) ** (wl-k))
 				distractor_hamming.append(math.comb(wl, k) * pdist ** k * (1.0-pdist) ** (wl-k))
 			# print("sum match_hamming=%s, distractor_hamming=%s" % (sum(match_hamming), sum(distractor_hamming)))
-			fig = Figure(title="match and distractor hamming distributions for %s%% bit flips" % xval,
-				xvals=range(wl), grid=False,
-				xlabel="Hamming distance", ylabel="Probability", xaxis_labels=None,
-				legend_location="upper right",
-				yvals=match_hamming, ebar=None, legend="match_hamming", fmt="-g")
-			fig.add_line(distractor_hamming, legend="distractor_hamming", fmt="-m")
-			self.figures.append(fig)
+			if self.env.pvals["show_histograms"]:
+				fig = Figure(title="match and distractor hamming distributions for %s%% bit flips" % xval,
+					xvals=range(wl), grid=False,
+					xlabel="Hamming distance", ylabel="Probability", xaxis_labels=None,
+					legend_location="upper right",
+					yvals=match_hamming, ebar=None, legend="match_hamming", fmt="-g")
+				fig.add_line(distractor_hamming, legend="distractor_hamming", fmt="-m")
+				self.figures.append(fig)
 			dhg = 1.0 # fraction distractor hamming greater than match hamming
 			pcor = 0.0  # probability correct
 			for k in range(wl):
