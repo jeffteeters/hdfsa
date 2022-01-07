@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import sys
 import statistics
 import math
+from fractions import Fraction
+from scipy import special
 
 class Env:
 	# stores environment settings and data arrays
@@ -13,19 +15,19 @@ class Env:
 	# command line arguments
 	parms = [
 		{ "name":"num_items", "kw":{"help":"Number of items in item memory", "type":int},
-	 	  "flag":"s", "required_init":"i", "default":100 },
-	 	{ "name":"word_length", "kw":{"help":"Word length for item memory, 0 to disable", "type":int},
-	 	  "flag":"w", "required_init":"i", "default":512 },
-	 	{ "name":"num_trials", "kw":{"help":"Number of trials to run (used when generating table)", "type":int},
-	 	  "flag":"t", "required_init":"i", "default":3 },
-	 	{ "name":"loop_start", "kw":{"help":"Start value for loop","type":int},
+		  "flag":"s", "required_init":"i", "default":101 },
+		{ "name":"word_length", "kw":{"help":"Word length for item memory, 0 to disable", "type":int},
+		  "flag":"w", "required_init":"i", "default":512 },
+		{ "name":"num_trials", "kw":{"help":"Number of trials to run (used when generating table)", "type":int},
+		  "flag":"t", "required_init":"i", "default":3 },
+		{ "name":"loop_start", "kw":{"help":"Start value for loop","type":int},
 		  "flag":"x", "required_init":"", "default":0},
 		{ "name":"loop_step", "kw":{"help":"Step value for loop","type":int},
 		  "flag":"y", "required_init":"", "default":5},
 		{ "name":"loop_stop", "kw":{"help":"Stop value for loop","type":int},
 		  "flag":"z", "required_init":"", "default":50},
-		{ "name":"values_to_plot", "kw":{"help":"Values to plot.  l-loop variable, e-prob error","type":str,
-			"choices":["l", "e"]}, "flag":"p", "required_init":"", "default":"l"},
+		{ "name":"values_to_plot", "kw":{"help":"Values to plot.  l-loop variable, e-prob error, e-dplen, g-gallen","type":str,
+			"choices":["l", "e", "d", "g"]}, "flag":"p", "required_init":"", "default":"l"},
 		{ "name":"show_histograms", "kw":{"help":"Show histograms","type":int,
 			"choices":[0, 1]}, "flag":"H", "default":0},
 		{ "name":"seed", "kw":{"help":"Random number seed","type":int},
@@ -141,6 +143,8 @@ class Calculator:
 			self.calculate_loop_values(0.5)
 		elif values_to_plot == "e":
 			self.calculate_item_memory_match_values()
+		elif values_to_plot in ("d", "g"):
+			self.test_dplen_function()
 		else:
 			sys.exit("values_to_plot '%s' not implemented" % values_to_plot)
 
@@ -171,11 +175,11 @@ class Calculator:
 		else:
 			nbins = int(xv_range) + 1
 		# if xv_range < 10:
-		# 	nbins = 10
+		#   nbins = 10
 		# elif xv_range > 100:
-		# 	nbins = 100
+		#   nbins = 100
 		# else:
-		# 	nbins = int(xv_range) + 1
+		#   nbins = int(xv_range) + 1
 		return nbins
 
 	def calculate_item_memory_match_values(self):
@@ -226,11 +230,11 @@ class Calculator:
 			# mean_hamming_to_closest_distractor = statistics.mean(hamming_to_closest_distractor)
 			# stdev_hamming_to_closest_distractor = statistics.stdev(hamming_to_closest_distractor)
 			# hamming_to_closest_distractor_all.append((mean_hamming_to_closest_distractor,
-			# 		stdev_hamming_to_closest_distractor))
+			#       stdev_hamming_to_closest_distractor))
 			# if self.env.pvals["debug"]:
-			# 	print("hamming_to_closest_distractor=%s" % hamming_to_closest_distractor)
-			# 	print("mean=%s, stdev=%s" % (mean_hamming_to_closest_distractor, stdev_hamming_to_closest_distractor))
-			# 	import pdb; pdb.set_trace()
+			#   print("hamming_to_closest_distractor=%s" % hamming_to_closest_distractor)
+			#   print("mean=%s, stdev=%s" % (mean_hamming_to_closest_distractor, stdev_hamming_to_closest_distractor))
+			#   import pdb; pdb.set_trace()
 		# make plots
 		# plot histograms for each xval
 		if self.env.pvals["show_histograms"]:
@@ -265,9 +269,9 @@ class Calculator:
 		# yham = [hamming_to_closest_distractor_all[i][0] * 100.0 / word_length for i in range(num_xvals)]
 		# yhamebar = [hamming_to_closest_distractor_all[i][1] * 50.0 / word_length for i in range(num_xvals)]
 		# fig = Figure(title="Distractor hamming % vs bit flips", xvals=self.xvals, grid=True,
-		# 	xlabel="bit flips (%)", ylabel="Hamming difference (percent)", xaxis_labels=None,
-		# 	legend_location="lower right",
-		# 	yvals=yham, ebar=yhamebar, legend="Distractor hamming diff (%)")
+		#   xlabel="bit flips (%)", ylabel="Hamming difference (percent)", xaxis_labels=None,
+		#   legend_location="lower right",
+		#   yvals=yham, ebar=yhamebar, legend="Distractor hamming diff (%)")
 
 		# fig.add_line(yham, ebar=yhamebar, legend="Distractor hamming diff (%)")
 		self.figures.append(fig)
@@ -278,13 +282,15 @@ class Calculator:
 		wl = self.env.pvals["word_length"]
 		num_distractors = self.env.pvals["num_items"] - 1
 		for xval in self.xvals:
-			pflip = xval / 100.0  # probability of bit flip
-			pdist = 0.5  # probability of distractor bit matching
+			print(xval)
+			pflip = Fraction(xval, 100)  # probability of bit flip
+			pdist = Fraction(1, 2) # probability of distractor bit matching
 			match_hamming = []
 			distractor_hamming = []
 			for k in range(wl):
-				match_hamming.append(math.comb(wl, k) * pflip ** k * (1.0-pflip) ** (wl-k))
-				distractor_hamming.append(math.comb(wl, k) * pdist ** k * (1.0-pdist) ** (wl-k))
+				ncomb = Fraction(math.comb(wl, k))
+				match_hamming.append(ncomb * pflip ** k * (1-pflip) ** (wl-k))
+				distractor_hamming.append(ncomb * pdist ** k * (1-pdist) ** (wl-k))
 			# print("sum match_hamming=%s, distractor_hamming=%s" % (sum(match_hamming), sum(distractor_hamming)))
 			if self.env.pvals["show_histograms"]:
 				fig = Figure(title="match and distractor hamming distributions for %s%% bit flips" % xval,
@@ -294,13 +300,108 @@ class Calculator:
 					yvals=match_hamming, ebar=None, legend="match_hamming", fmt="-g")
 				fig.add_line(distractor_hamming, legend="distractor_hamming", fmt="-m")
 				self.figures.append(fig)
-			dhg = 1.0 # fraction distractor hamming greater than match hamming
-			pcor = 0.0  # probability correct
+			dhg = Fraction(1) # fraction distractor hamming greater than match hamming
+			pcor = Fraction(0)  # probability correct
 			for k in range(wl):
 				dhg -= distractor_hamming[k]
 				pcor += match_hamming[k] * dhg ** num_distractors
-			error.append((1.0 - pcor) * 100.0)  # convert to percent
+			error.append(float((1 - pcor) * 100))  # convert to percent
 		return error
+
+	def dplen(self, mm, per):
+		# calculate vector length requred to store bundle at per accuracy
+		# mm - mean of match distribution (single bit error rate, 0< mm < 0.5)
+		# per - desired probability of error on recall (e.g. 0.000001)
+		n = (-2*(-0.25 - mm + mm**2)*special.erfinv(-1 + 2*per)**2)/(0.5 - mm)**2
+		return round(n) + 1
+
+	def bunlen(self, k, per):
+		# calculated bundle length needed to store k items with accuracy per
+		return self.dplen(0.5 - 0.4 / math.sqrt(k - 0.44), per)
+
+	def gallen(self, s, per):
+		# calculate required length using formula in Gallent paper
+		return round(2*(-1 + 2*s)*special.erfcinv(2*per)**2)
+
+	def test_dplen_function_orig(self):
+		kvals = [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
+		print("Bundle length for per and number of items (k):")
+		print("per\t%s" % "\t".join(map(str,kvals)))
+		for ex in range(3, 8):
+			per = 10**(-ex)
+			bundle_lengths = [self.bunlen(k, per) for k in kvals]
+			print("%s\t%s" % (per, "\t".join(map(str,bundle_lengths))))
+		sys.exit("Aborting.")
+
+	def test_dplen_function(self):
+		kvals = [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
+		call_gallen = self.env.pvals["values_to_plot"] == "g"
+		method_msg = "gallen" if call_gallen else "bunlen"
+		method = self.gallen if call_gallen else self.bunlen
+		print("Bundle length for per and number of items (k), using method '%s':" % method_msg)
+		print("per\t%s" % "\t".join(map(str,kvals)))
+		for ex in range(3, 8):
+			per = 10**(-ex)
+			# bundle_lengths = [self.bunlen(k, per) for k in kvals]
+			bundle_lengths = [method(k, per) for k in kvals]
+			print("%s\t%s" % (per, "\t".join(map(str,bundle_lengths))))
+		sys.exit("Aborting.")
+
+	def test_dplen_function_draft(self):
+		kvals = [5, 11, 21, 51, 100, 250, 500, 750, 1000, 2000, 3000]
+		print("Bundle length for per and number of items (k):")
+		if self.env.pvals["loop_step"] != 1 or self.xvals[-1] > 20:
+			# loop_steps is negative exponent, not specified.  Use defautt
+			exps = list(range(3,8,1))
+		else:
+			exps = self.xvals
+		# compute all bundle lengths
+		bundle_lengths = {}
+		for ex in exps:
+			per = 10**(-ex)
+			bundle_lengths[ex] = [self.bunlen(k, per) for k in kvals]
+		# create item memory for largest bundle
+		num_items = self.env.pvals["num_items"]
+		longest_length = bundle_lengths[exps[-1]][-1]
+		item_memory = np.random.randint(0, high=2, size=(num_items, longest_length), dtype=np.int8)
+		item_memory[item_memory == 0] = -1
+		# create counter vector (to make bundle) of longest length
+		counter = np.empty(longest_length, dtype=int16)
+		bundle = np.empty(longest_length, dtype=int8)
+		# now loop through each option, storing and recalling and calculating stats
+		stats={}
+		for ex in exps:
+			stats[ex] = []
+			for ik in range(kvals):
+				bl = bundle_lengths[ex][ik]
+				info = {"bl":bl, "ncorrect":0, "nfail":0}
+				# make sure do at least 1000 matches for each k
+				ibase = 0  # index to starting item in item_index
+				while info["ncorrect"] + info["nfail"] < 1000:
+					counter[0:bl] = 0
+					# store items
+					for i in range(kvals[ik]):
+						pass_number = int((i+ibase) / num_items)
+						item_index = (i+ibase) % num_items
+						counter[0:bl] += np.roll(item_memory[item_index][0:bl], pass_number)
+					# threshold counter to make bundle
+					bundle[counter[0:bl]>0] = 1
+					bundle[counter[0:bl]<=0] = -1
+					# recall items
+					for i in range(kvals[ik]):
+						pass_number = int((i+ibase) / num_items)
+						item_index = (i+ibase) % num_items
+						original_item = np.roll(item_memory[item_index][0:bl], pass_number)
+						hamming_match = self.hamming(original_item, np.roll(bundle[0:bl], pass_number))
+						for j in range(num_items):
+							if j == item_index:
+								continue
+							hamming_distractor = self.hamming(item_memory[j])
+						counter[0:bl] += np.roll(item_memory[item_index][0:bl], pass_number)
+
+
+
+		sys.exit("Aborting.")
 
 
 def main():

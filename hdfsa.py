@@ -19,6 +19,7 @@ import statistics
 import scipy.stats
 import os.path
 import math
+from datetime import datetime
 
 byteorder = "big" # sys.byteorder
 
@@ -28,11 +29,11 @@ class Env:
 	# command line arguments
 	parms = [
 		{ "name":"num_states", "kw":{"help":"Number of states in finite-state automaton", "type":int},
-	 	  "flag":"s", "required_init":"i", "default":20 },
+	 	  "flag":"s", "required_init":"i", "default":100 },
 		{ "name":"num_actions", "kw":{"help":"Number of actions in finite-state automaton", "type":int},
 	 	  "flag":"r", "required_init":"i", "default":10 },
 	 	{ "name":"num_choices", "kw":{"help":"Number of actions per state in finite-state automaton", "type":int},
-	 	  "flag":"c", "required_init":"i", "default":3 },
+	 	  "flag":"c", "required_init":"i", "default":10 },
 	 	{ "name":"num_trials", "kw":{"help":"Number of trials to run (used when generating table)", "type":int},
 	 	  "flag":"t", "required_init":"i", "default":3 },
 	 	{ "name":"verbosity", "kw":{"help":"Verbosity of output, 0-minimum, 1-show fsa, 2-show errors", "type":int},
@@ -60,11 +61,13 @@ class Env:
 		{ "name":"error_vs_bitflips_table_start_at_equal_storage", "kw":{"help":"Start at equal storage for error vs bithlips table","type":int, "choices":[0, 1]},
 		  "flag":"j", "required_init":"", "default":0},
 		{ "name":"table_start", "kw":{"help":"Start value for table generation (storage or bit flip percent)","type":int},
-		  "flag":"x", "required_init":"", "default":0},
+		  "flag":"x", "required_init":"", "default":100000},
 		{ "name":"table_step", "kw":{"help":"Step value for table generation","type":int},
-		  "flag":"y", "required_init":"", "default":0},
+		  "flag":"y", "required_init":"", "default":100000},
 		{ "name":"table_stop", "kw":{"help":"Stop value for table generation","type":int},
-		  "flag":"z", "required_init":"", "default":0},
+		  "flag":"z", "required_init":"", "default":1000000},
+		{ "name":"exclude_item_memory", "kw":{"help":"Exclude item memory and address sizes when calculating storage requirements",
+			"type":int, "choices":[0, 1]}, "flag":"q", "required_init":"", "default":0},
 		# { "name":"format", "kw":{"help":"Format used to store items and hard addresses, choices: "
 		#    "int8, np.packbits, bitarray, gmpy2, gmpy2pure, colsum"},
 		#   "flag":"f", "required_init":"i", "default":"int8", "choices":["int8", "np.packbits", "bitarray", "gmpy2",
@@ -107,7 +110,9 @@ class Env:
 		# 	print("%s %s: %s" % (p["flag"], p["name"], self.pvals[p["name"]]))
 
 	def get_settings(self):
-		msg = "Arguments:\n"
+		msg = "Started at: %s\n" % datetime.now()
+		msg += "Comment: after fixing sdm size to include address memory"
+		msg += "Arguments:\n"
 		msg += " ".join(sys.argv)
 		msg += "\nSettings:\n"
 		for p in self.parms:
@@ -619,6 +624,7 @@ class FSA:
 		self.actions_im = initialize_binary_matrix(self.num_actions, word_length, self.debug)
 		self.bytes_required = int((self.num_states + self.num_actions) * word_length / 8)
 
+
 	def get_storage_requirements_for_im(self):
 		return "im: %s bytes" % int((self.num_states + self.num_actions) * self.word_length / 8)
 
@@ -718,7 +724,10 @@ class FSA_store:
 			probability_of_error, actual_fraction_error, probability_correct,
 			actual_fraction_correct))
 		print("bit_error_count mean=%s, stdev=%s" % (mean_bit_error_count, stdev_bit_error_count))
-		total_storage_required = self.fsa.bytes_required + self.bytes_required
+		if self.pvals["exclude_item_memory"]:
+			total_storage_required = self.bytes_required
+		else:
+			total_storage_required = self.fsa.bytes_required + self.bytes_required
 		print("Storage required: %s, %s, total: %.3e" % (self.fsa.get_storage_requirements_for_im(),
 			self.get_storage_requirements(), total_storage_required))
 
@@ -786,7 +795,7 @@ class FSA_sdm_store(FSA_store):
 			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"],
 			noise_percent=self.pvals["noise_percent"], sdm_address_method=self.pvals["sdm_address_method"],
 			debug=self.debug)
-		self.bytes_required = self.word_length * self.pvals["num_rows"]
+		self.bytes_required = (self.word_length + int(self.word_length / 8)) * self.pvals["num_rows"]
 
 	def save_transition(self, state_v, action_v, next_state_v):
 		# self.sdm.store(state_v ^ action_v, next_state_v)
@@ -853,11 +862,6 @@ class Table_Generator_error_vs_storage():
 		table_start = self.pvals["table_start"]
 		table_step = self.pvals["table_step"]
 		table_stop = self.pvals["table_stop"]
-		if table_start == 0 and table_step == 0 and table_stop == 0:
-			print("table_start, step and stop not specified, defaults are used.")
-			table_start = 100000
-			table_step = 100000
-			table_stop = 1000000
 		assert table_start < table_stop, "table_start (%s) must be less than table_stop (%s)" % (
 			table_start, table_stop)
 		assert table_step > 0, "table_step must be > 0, is %s" % table_step
@@ -868,10 +872,10 @@ class Table_Generator_error_vs_storage():
 		self.storage_min = table_start  # min amount of storage
 		self.storage_max = table_stop # max amount of storage
 		self.storage_step = table_step # step size
-		assert self.pvals["num_states"] == 100
-		assert self.pvals["num_actions"] == 10
-		assert self.pvals["num_choices"] == 10
-		assert self.pvals["sdm_word_length"] == 512
+		# assert self.pvals["num_states"] == 100
+		# assert self.pvals["num_actions"] == 10
+		# assert self.pvals["num_choices"] == 10
+		# assert self.pvals["sdm_word_length"] == 512
 		self.generate_table()
 
 	def format_info(self, rid, storage, mtype, mlen, sinfo):
@@ -882,7 +886,7 @@ class Table_Generator_error_vs_storage():
 		# 	"probability_of_error": probability_of_error,
 		# 	"probability_correct": probability_correct.pvals,
 		# 	"total_storage_required": total_storage_required}
-		assert sinfo["item_count"] == 1000
+		# assert sinfo["item_count"] == 1000
 		row = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (rid, storage, mtype, mlen, sinfo["num_errors"],
 			sinfo["actual_fraction_error"], sinfo["probability_of_error"], 
 			sinfo["mean_bit_error_count"],sinfo["stdev_bit_error_count"],
@@ -916,18 +920,23 @@ class Table_Generator_error_vs_storage():
 				fp.write(self.format_info(rid, storage, "bind", bind_l, fbs.sinfo))
 				fss = FSA_sdm_store(self.fsa, self.pvals["sdm_word_length"], self.pvals["debug"], self.pvals)
 				fp.write(self.format_info(rid, storage, "sdm", sdm_num_rows, fss.sinfo))
+				# fp.flush()
 		fp.close()
 
 	def bind_len(self, storage):
+		num_items_needing_memory = self.num_items if self.pvals["exclude_item_memory"] == 0 else 0
 		# given storage in bytes, compute vector length to use that storage
-		length = round((storage * 8) / (self.num_items + 1))
+		length = round((storage * 8) / (num_items_needing_memory + 1))
 		return length
 
 	def sdm_len(self, storage):
 		# given storage in bytes, compute # rows in SDM memory to use that storage
 		sdm_word_length = self.pvals["sdm_word_length"] # num bites in sdm address and memory
-		length = round((storage - (self.num_items * sdm_word_length / 8)) / sdm_word_length)
-		return length
+		num_items_needing_memory = self.num_items if self.pvals["exclude_item_memory"] == 0 else 0
+		bytes_for_item_memory = round(num_items_needing_memory * sdm_word_length / 8)
+		bytes_per_row = sdm_word_length + sdm_word_length / 8  # bytes needed for counters and address
+		num_rows = round((storage - bytes_for_item_memory) / bytes_per_row)
+		return num_rows
 
 
 class Table_Generator_error_vs_bitflips():
