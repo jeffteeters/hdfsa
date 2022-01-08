@@ -8,6 +8,12 @@ import statistics
 import math
 from fractions import Fraction
 from scipy import special
+import random
+import gmpy2
+from gmpy2 import xmpz
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
+import sdm
 
 class Env:
 	# stores environment settings and data arrays
@@ -26,7 +32,7 @@ class Env:
 		  "flag":"y", "required_init":"", "default":5},
 		{ "name":"loop_stop", "kw":{"help":"Stop value for loop","type":int},
 		  "flag":"z", "required_init":"", "default":50},
-		{ "name":"values_to_plot", "kw":{"help":"Values to plot.  l-loop variable, e-prob error, e-dplen, g-gallen","type":str,
+		{ "name":"values_to_plot", "kw":{"help":"Values to plot.  l-loop variable, e-prob error, d-dplen, g-gallen","type":str,
 			"choices":["l", "e", "d", "g"]}, "flag":"p", "required_init":"", "default":"l"},
 		{ "name":"show_histograms", "kw":{"help":"Show histograms","type":int,
 			"choices":[0, 1]}, "flag":"H", "default":0},
@@ -164,8 +170,12 @@ class Calculator:
 		self.figures.append(fig)
 
 	def hamming(self, a, b):
-		# return hamming distance between binary vectors a and b
+		# return hamming distance between binary vectors (ndarray) a and b
 		return np.count_nonzero(a!=b)
+
+	def int_hamming(self, a, b):
+		# return hamming distance between binary vectors (int) a and b
+		return gmpy2.popcount(a^b)
 
 	def get_nbins(self, xv):
 		# calculate number of bins to use in histogram for values in xv
@@ -183,6 +193,8 @@ class Calculator:
 		return nbins
 
 	def calculate_item_memory_match_values(self):
+		# display plot of recall error (correctly matching corrupted item to correct item in item memory)
+		# vs bit flips, plot along with theoretical recall based on Frady sequence paper
 		num_items = self.env.pvals["num_items"]
 		word_length = self.env.pvals["word_length"]
 		item_memory = np.random.randint(0, high=2, size=(num_items, word_length), dtype=np.int8)
@@ -333,7 +345,7 @@ class Calculator:
 			print("%s\t%s" % (per, "\t".join(map(str,bundle_lengths))))
 		sys.exit("Aborting.")
 
-	def test_dplen_function(self):
+	def test_dplen_function_txt(self):
 		kvals = [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
 		call_gallen = self.env.pvals["values_to_plot"] == "g"
 		method_msg = "gallen" if call_gallen else "bunlen"
@@ -347,12 +359,12 @@ class Calculator:
 			print("%s\t%s" % (per, "\t".join(map(str,bundle_lengths))))
 		sys.exit("Aborting.")
 
-	def test_dplen_function_draft(self):
+	def test_dplen_function(self):
+		# test function that returns length of vector needed for particular error rate
 		kvals = [5, 11, 21, 51, 100, 250, 500, 750, 1000, 2000, 3000]
-		print("Bundle length for per and number of items (k):")
 		if self.env.pvals["loop_step"] != 1 or self.xvals[-1] > 20:
 			# loop_steps is negative exponent, not specified.  Use defautt
-			exps = list(range(3,8,1))
+			exps = list(range(1,3,1))
 		else:
 			exps = self.xvals
 		# compute all bundle lengths
@@ -360,47 +372,82 @@ class Calculator:
 		for ex in exps:
 			per = 10**(-ex)
 			bundle_lengths[ex] = [self.bunlen(k, per) for k in kvals]
-		# create item memory for largest bundle
-		num_items = self.env.pvals["num_items"]
+		# create address, data and distractor arrays (long random integers)
+		# make sure do at least 200 trials for each k. 
+		num_trials = self.env.pvals["num_trials"]
+		if num_trials < 200:
+			num_trials = 200
 		longest_length = bundle_lengths[exps[-1]][-1]
-		item_memory = np.random.randint(0, high=2, size=(num_items, longest_length), dtype=np.int8)
-		item_memory[item_memory == 0] = -1
-		# create counter vector (to make bundle) of longest length
-		counter = np.empty(longest_length, dtype=int16)
-		bundle = np.empty(longest_length, dtype=int8)
+		addr_base = xmpz(random.getrandbits(num_trials + longest_length))
+		data_base = xmpz(random.getrandbits(num_trials + longest_length))
+		faux_base = xmpz(random.getrandbits(num_trials + longest_length))
 		# now loop through each option, storing and recalling and calculating stats
 		stats={}
+		debug = self.env.pvals["debug"]
 		for ex in exps:
+			print("ex=%s" % ex)
 			stats[ex] = []
-			for ik in range(kvals):
+			for ik in range(len(kvals)):
 				bl = bundle_lengths[ex][ik]
-				info = {"bl":bl, "ncorrect":0, "nfail":0}
-				# make sure do at least 1000 matches for each k
-				ibase = 0  # index to starting item in item_index
-				while info["ncorrect"] + info["nfail"] < 1000:
-					counter[0:bl] = 0
+				fmt = "0%sb" % bl
+				info = {"k":kvals[ik], "bl":bl, "ntrials":0, "nfail":0}
+				match_hammings = []
+				distractor_hammings = []
+				ibase = 0  # index to starting item in base arrays
+				while info["ntrials"] < num_trials:
+					# create bundle
+					bun = sdm.Bundle(bl)
 					# store items
 					for i in range(kvals[ik]):
-						pass_number = int((i+ibase) / num_items)
-						item_index = (i+ibase) % num_items
-						counter[0:bl] += np.roll(item_memory[item_index][0:bl], pass_number)
-					# threshold counter to make bundle
-					bundle[counter[0:bl]>0] = 1
-					bundle[counter[0:bl]<=0] = -1
+						addr = addr_base[ibase+i:ibase+i+bl]
+						data = data_base[ibase+i:ibase+i+bl]
+						if i == 1 and debug:
+							print("storing:")
+							print("addr=%s" % format(addr, fmt))
+							print("data=%s" % format(data, fmt))
+						bun.bind_store(addr, data)
 					# recall items
+					trace = bun.binarize()
+					if debug:
+						print("bl=%s, trace=%s" % (bl, format(trace, fmt)))
 					for i in range(kvals[ik]):
-						pass_number = int((i+ibase) / num_items)
-						item_index = (i+ibase) % num_items
-						original_item = np.roll(item_memory[item_index][0:bl], pass_number)
-						hamming_match = self.hamming(original_item, np.roll(bundle[0:bl], pass_number))
-						for j in range(num_items):
-							if j == item_index:
-								continue
-							hamming_distractor = self.hamming(item_memory[j])
-						counter[0:bl] += np.roll(item_memory[item_index][0:bl], pass_number)
-
-
-
+						addr = addr_base[ibase+i:ibase+i+bl]
+						data = data_base[ibase+i:ibase+i+bl]
+						recalled_data = bun.bind_recall(addr)
+						hamming_match = self.int_hamming(data, recalled_data)
+						match_hammings.append(hamming_match)
+						distractor = faux_base[ibase+i:ibase+i+bl]
+						hamming_distractor = self.int_hamming(distractor, recalled_data)
+						distractor_hammings.append(hamming_distractor)
+						if i == 1 and debug:
+							print("recalling:")
+							print("addr=%s" % format(addr, fmt))
+							print("data=%s" % format(data, fmt))
+							print("recd=%s" % format(recalled_data, fmt))
+							print("faux=%s" % format(distractor, fmt))
+							print("bl=%s, hamming match=%s, hamming_distractor=%s" %(bl, hamming_match, hamming_distractor))
+							import pdb; pdb.set_trace()				
+						info["ntrials"] += 1
+						if hamming_distractor <= hamming_match:
+							info["nfail"] += 1
+						if info["ntrials"] >= num_trials:
+							break
+					ibase += kvals[ik]
+					match_hamming_mean = statistics.mean(match_hammings) / bl
+					match_hamming_stdev = statistics.stdev(match_hammings) / bl
+					distractor_hamming_mean = statistics.mean(distractor_hammings) / bl
+					distractor_hamming_stdev = statistics.stdev(distractor_hammings) / bl
+					predicted_match_mean = 0.5 - 0.4 / math.sqrt(kvals[ik] - 0.44)
+					predicted_match_stdev = math.sqrt(predicted_match_mean * (1-predicted_match_mean)/bl)
+					info.update({"match_hamming_mean": match_hamming_mean,
+						"predicted_match_mean":predicted_match_mean,
+						"match_hamming_stdev":match_hamming_stdev,
+						"predicted_match_stdev":predicted_match_stdev,
+						"distractor_hamming_mean": distractor_hamming_mean, "distractor_hamming_stdev":distractor_hamming_stdev})
+				stats[ex].append(info)
+				print(info)
+		print("computed stats are:")
+		pp.pprint(stats)
 		sys.exit("Aborting.")
 
 

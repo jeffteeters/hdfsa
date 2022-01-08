@@ -164,11 +164,20 @@ class Bundle:
 			print("add  %s" % format(v, self.fmt))
 			print("bundle=%s" % self.bundle)
 
+	def bind_store(self, addr, data):
+		# add bind of address and data to bundle
+		self.add(addr^data)
+
+	def bind_recall(self, addr):
+		data = self.bin_bundle ^ addr
+		return data
+
 	def binarize(self):
 		# convert from bundle to binary then to int
 		if self.noise_percent > 0:
 			add_noise(self.bundle, self.noise_percent)
-		return su.iar2int(self.bundle)
+		self.bin_bundle = su.iar2int(self.bundle)
+		return self.bin_bundle
 
 	def test():
 		word_length = 1000
