@@ -394,13 +394,15 @@ class Calculator:
 				match_hammings = []
 				distractor_hammings = []
 				ibase = 0  # index to starting item in base arrays
+				ibend = num_trials
 				while info["ntrials"] < num_trials:
 					# create bundle
 					bun = sdm.Bundle(bl)
 					# store items
 					for i in range(kvals[ik]):
 						addr = addr_base[ibase+i:ibase+i+bl]
-						data = data_base[ibase+i:ibase+i+bl]
+						# data = data_base[ibase+i:ibase+i+bl]
+						data = data_base[ibend-i:ibend-i+bl]
 						if i == 1 and debug:
 							print("storing:")
 							print("addr=%s" % format(addr, fmt))
@@ -412,7 +414,8 @@ class Calculator:
 						print("bl=%s, trace=%s" % (bl, format(trace, fmt)))
 					for i in range(kvals[ik]):
 						addr = addr_base[ibase+i:ibase+i+bl]
-						data = data_base[ibase+i:ibase+i+bl]
+						data = data_base[ibend-i:ibend-i+bl]
+						# data = data_base[ibase+i:ibase+i+bl]
 						recalled_data = bun.bind_recall(addr)
 						hamming_match = self.int_hamming(data, recalled_data)
 						match_hammings.append(hamming_match)
@@ -433,17 +436,18 @@ class Calculator:
 						if info["ntrials"] >= num_trials:
 							break
 					ibase += kvals[ik]
-					match_hamming_mean = statistics.mean(match_hammings) / bl
-					match_hamming_stdev = statistics.stdev(match_hammings) / bl
-					distractor_hamming_mean = statistics.mean(distractor_hammings) / bl
-					distractor_hamming_stdev = statistics.stdev(distractor_hammings) / bl
-					predicted_match_mean = 0.5 - 0.4 / math.sqrt(kvals[ik] - 0.44)
-					predicted_match_stdev = math.sqrt(predicted_match_mean * (1-predicted_match_mean)/bl)
-					info.update({"match_hamming_mean": match_hamming_mean,
-						"predicted_match_mean":predicted_match_mean,
-						"match_hamming_stdev":match_hamming_stdev,
-						"predicted_match_stdev":predicted_match_stdev,
-						"distractor_hamming_mean": distractor_hamming_mean, "distractor_hamming_stdev":distractor_hamming_stdev})
+					ibend -= kvals[ik]
+				match_hamming_mean = statistics.mean(match_hammings) / bl
+				match_hamming_stdev = statistics.stdev(match_hammings) / bl
+				distractor_hamming_mean = statistics.mean(distractor_hammings) / bl
+				distractor_hamming_stdev = statistics.stdev(distractor_hammings) / bl
+				predicted_match_mean = 0.5 - 0.4 / math.sqrt(kvals[ik] - 0.44)
+				predicted_match_stdev = math.sqrt(predicted_match_mean * (1-predicted_match_mean)/bl)
+				info.update({"match_hamming_mean": match_hamming_mean,
+					"predicted_match_mean":predicted_match_mean,
+					"match_hamming_stdev":match_hamming_stdev,
+					"predicted_match_stdev":predicted_match_stdev,
+					"distractor_hamming_mean": distractor_hamming_mean, "distractor_hamming_stdev":distractor_hamming_stdev})
 				stats[ex].append(info)
 				print(info)
 		print("computed stats are:")
