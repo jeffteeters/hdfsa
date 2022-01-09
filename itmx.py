@@ -455,10 +455,12 @@ class Calculator:
 				predicted_distractor_stdev = math.sqrt(0.5 * (1-0.5)/bl)
 				predicted_fail_count = self.prob_negative_after_subtract(predicted_distractor_mean,
 					predicted_distractor_stdev, predicted_match_mean, predicted_match_stdev)
+				predicted_fail_count_stdev = math.sqrt(predicted_fail_count * (1-predicted_fail_count)/ info["ntrials"])
 				expected_fail_count = self.prob_negative_after_subtract(distractor_hamming_mean,
 					distractor_hamming_stdev, match_hamming_mean, match_hamming_stdev)
 				info.update({"theoretical_fail_count": predicted_fail_count,
 					"expected_fail_count": expected_fail_count,
+					"predicted_fail_count_stdev": predicted_fail_count_stdev,
 					# "match_hamming_mean": match_hamming_mean,
 					# "predicted_match_mean":predicted_match_mean,
 					# "match_hamming_stdev":match_hamming_stdev,
@@ -475,13 +477,14 @@ class Calculator:
 			fail_percent = [(stats[per][i]["nfail"]*100.0/ stats[per][i]["ntrials"]) for i in range(len(kvals))]
 			expected_per = [(stats[per][i]["expected_fail_count"]*100.0) for i in range(len(kvals))]
 			theory_per = [(stats[per][i]["theoretical_fail_count"]*100.0) for i in range(len(kvals))]
+			ebar_per = [(stats[per][i]["predicted_fail_count_stdev"]*50.0) for i in range(len(kvals))]
 			title = "Found percent error when bundle length set for %s %%" % per
 			fig = Figure(title=title, xvals=xvals, grid=True,
 				xlabel="Num items / bundle length", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
 				legend_location="upper left",
 				yvals=fail_percent, ebar=None, legend="recall error", logyscale=False)
 			fig.add_line(expected_per, legend="Expected error (from observed hammings)")
-			fig.add_line(theory_per, legend="Theoretical error")
+			fig.add_line(theory_per, ebar=ebar_per, legend="Theoretical error")
 			self.figures.append(fig)
 		#sys.exit("Aborting.")
 
