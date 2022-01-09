@@ -14,6 +14,8 @@ from gmpy2 import xmpz
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 import sdm
+from scipy.stats import norm
+
 
 class Env:
 	# stores environment settings and data arrays
@@ -32,8 +34,9 @@ class Env:
 		  "flag":"y", "required_init":"", "default":5},
 		{ "name":"loop_stop", "kw":{"help":"Stop value for loop","type":int},
 		  "flag":"z", "required_init":"", "default":50},
-		{ "name":"values_to_plot", "kw":{"help":"Values to plot.  l-loop variable, e-prob error, d-dplen, g-gallen","type":str,
-			"choices":["l", "e", "d", "g"]}, "flag":"p", "required_init":"", "default":"l"},
+		{ "name":"values_to_plot", "kw":{"help":"Values to plot.  "
+			"l-loop variable, e-prob error, d-dplen, g-gallen, p-pentti mean","type":str,
+			"choices":["l", "e", "d", "g", "p"]}, "flag":"p", "required_init":"", "default":"l"},
 		{ "name":"show_histograms", "kw":{"help":"Show histograms","type":int,
 			"choices":[0, 1]}, "flag":"H", "default":0},
 		{ "name":"seed", "kw":{"help":"Random number seed","type":int},
@@ -151,6 +154,8 @@ class Calculator:
 			self.calculate_item_memory_match_values()
 		elif values_to_plot in ("d", "g"):
 			self.test_dplen_function()
+		elif values_to_plot == "p":
+			self.show_petti_mean_function()
 		else:
 			sys.exit("values_to_plot '%s' not implemented" % values_to_plot)
 
@@ -320,12 +325,20 @@ class Calculator:
 			error.append(float((1 - pcor) * 100))  # convert to percent
 		return error
 
+	def prob_negative_after_subtract(self, distractor_hamming_mean,
+		distractor_hamming_stdev, match_hamming_mean, match_hamming_stdev):
+		# compute probatility of error given the match and distractor distributions
+		mean_combined = distractor_hamming_mean - match_hamming_mean
+		stdev_combined = math.sqrt(distractor_hamming_stdev**2 + match_hamming_stdev**2)
+		prob_negative = norm.cdf(0.0, loc=mean_combined, scale=stdev_combined)
+		return prob_negative
+
 	def dplen(self, mm, per):
 		# calculate vector length requred to store bundle at per accuracy
 		# mm - mean of match distribution (single bit error rate, 0< mm < 0.5)
 		# per - desired probability of error on recall (e.g. 0.000001)
 		n = (-2*(-0.25 - mm + mm**2)*special.erfinv(-1 + 2*per)**2)/(0.5 - mm)**2
-		return round(n) + 1
+		return round(n)
 
 	def bunlen(self, k, per):
 		# calculated bundle length needed to store k items with accuracy per
@@ -362,33 +375,28 @@ class Calculator:
 	def test_dplen_function(self):
 		# test function that returns length of vector needed for particular error rate
 		kvals = [5, 11, 21, 51, 100, 250, 500, 750, 1000, 2000, 3000]
-		if self.env.pvals["loop_step"] != 1 or self.xvals[-1] > 20:
-			# loop_steps is negative exponent, not specified.  Use defautt
-			exps = list(range(1,3,1))
-		else:
-			exps = self.xvals
+		perrs = [20, 10, 5, 2.5, 1]  # percent error to try
 		# compute all bundle lengths
 		bundle_lengths = {}
-		for ex in exps:
-			per = 10**(-ex)
-			bundle_lengths[ex] = [self.bunlen(k, per) for k in kvals]
+		for per in perrs:
+			bundle_lengths[per] = [self.bunlen(k, per/100.0) for k in kvals]
 		# create address, data and distractor arrays (long random integers)
 		# make sure do at least 200 trials for each k. 
 		num_trials = self.env.pvals["num_trials"]
 		if num_trials < 200:
 			num_trials = 200
-		longest_length = bundle_lengths[exps[-1]][-1]
+		longest_length = bundle_lengths[perrs[-1]][-1]
 		addr_base = xmpz(random.getrandbits(num_trials + longest_length))
 		data_base = xmpz(random.getrandbits(num_trials + longest_length))
 		faux_base = xmpz(random.getrandbits(num_trials + longest_length))
 		# now loop through each option, storing and recalling and calculating stats
 		stats={}
 		debug = self.env.pvals["debug"]
-		for ex in exps:
-			print("ex=%s" % ex)
-			stats[ex] = []
+		for per in perrs:
+			print("per=%s" % per)
+			stats[per] = []
 			for ik in range(len(kvals)):
-				bl = bundle_lengths[ex][ik]
+				bl = bundle_lengths[per][ik]
 				fmt = "0%sb" % bl
 				info = {"k":kvals[ik], "bl":bl, "ntrials":0, "nfail":0}
 				match_hammings = []
@@ -432,7 +440,7 @@ class Calculator:
 							import pdb; pdb.set_trace()				
 						info["ntrials"] += 1
 						if hamming_distractor <= hamming_match:
-							info["nfail"] += 1
+							info["nfail"] += 0.5 if hamming_distractor == hamming_match else 1
 						if info["ntrials"] >= num_trials:
 							break
 					ibase += kvals[ik]
@@ -443,16 +451,63 @@ class Calculator:
 				distractor_hamming_stdev = statistics.stdev(distractor_hammings) / bl
 				predicted_match_mean = 0.5 - 0.4 / math.sqrt(kvals[ik] - 0.44)
 				predicted_match_stdev = math.sqrt(predicted_match_mean * (1-predicted_match_mean)/bl)
-				info.update({"match_hamming_mean": match_hamming_mean,
-					"predicted_match_mean":predicted_match_mean,
-					"match_hamming_stdev":match_hamming_stdev,
-					"predicted_match_stdev":predicted_match_stdev,
-					"distractor_hamming_mean": distractor_hamming_mean, "distractor_hamming_stdev":distractor_hamming_stdev})
-				stats[ex].append(info)
-				print(info)
+				predicted_distractor_mean = 0.5
+				predicted_distractor_stdev = math.sqrt(0.5 * (1-0.5)/bl)
+				predicted_fail_count = self.prob_negative_after_subtract(predicted_distractor_mean,
+					predicted_distractor_stdev, predicted_match_mean, predicted_match_stdev)
+				expected_fail_count = self.prob_negative_after_subtract(distractor_hamming_mean,
+					distractor_hamming_stdev, match_hamming_mean, match_hamming_stdev)
+				info.update({"theoretical_fail_count": predicted_fail_count,
+					"expected_fail_count": expected_fail_count,
+					# "match_hamming_mean": match_hamming_mean,
+					# "predicted_match_mean":predicted_match_mean,
+					# "match_hamming_stdev":match_hamming_stdev,
+					# "predicted_match_stdev":predicted_match_stdev,
+					# "distractor_hamming_mean": distractor_hamming_mean, "distractor_hamming_stdev":distractor_hamming_stdev
+					})
+				stats[per].append(info)
 		print("computed stats are:")
 		pp.pprint(stats)
-		sys.exit("Aborting.")
+		# make plots
+		for per in perrs:
+			xvals = range(len(kvals))
+			xaxis_labels = ["%s/%s" % (kvals[i], bundle_lengths[per][i]) for i in range(len(kvals))]
+			fail_percent = [(stats[per][i]["nfail"]*100.0/ stats[per][i]["ntrials"]) for i in range(len(kvals))]
+			expected_per = [(stats[per][i]["expected_fail_count"]*100.0) for i in range(len(kvals))]
+			theory_per = [(stats[per][i]["theoretical_fail_count"]*100.0) for i in range(len(kvals))]
+			title = "Found percent error when bundle length set for %s %%" % per
+			fig = Figure(title=title, xvals=xvals, grid=True,
+				xlabel="Num items / bundle length", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
+				legend_location="upper left",
+				yvals=fail_percent, ebar=None, legend="recall error", logyscale=False)
+			fig.add_line(expected_per, legend="Expected error (from observed hammings)")
+			fig.add_line(theory_per, legend="Theoretical error")
+			self.figures.append(fig)
+		#sys.exit("Aborting.")
+
+	def show_petti_mean_function(self):
+		# display both approximation and actual value for pentti's mean function
+		kvals = [5, 11, 21, 51, 100, 250, 500, 750, 1000, 2000, 3000] 
+		xvals = range(len(kvals))
+		pentti_approx = []
+		exact_value = []
+		diff = []
+		for k in kvals:
+			pentti_approx.append(0.5 - 0.4 / math.sqrt(k - 0.44))
+			exact_value.append(0.5 - math.comb((k-1), int((k-1)/2))/2**k)
+			diff.append(pentti_approx[-1] - exact_value[-1])
+		title = "Pentti approximation vs exact formula for mean"
+		fig = Figure(title=title, xvals=xvals, grid=True,
+			xlabel="Num items", ylabel="mean hamming distance", xaxis_labels=kvals,
+			legend_location="upper left",
+			yvals=pentti_approx, ebar=None, legend="pentti_approx", logyscale=False)
+		fig.add_line(exact_value, legend="Exact value from combination")
+		self.figures.append(fig)
+		fig = Figure(title="pentti_approx - exact", xvals=xvals, grid=True,
+			xlabel="Num items", ylabel="difference", xaxis_labels=kvals,
+			legend_location="upper left",
+			yvals=diff, ebar=None, legend="pentti_approx - exact", logyscale=False)
+		self.figures.append(fig)
 
 
 def main():
