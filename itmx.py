@@ -15,7 +15,8 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 import sdm
 from scipy.stats import norm
-
+import scipy.integrate as integrate
+import scipy
 
 class Env:
 	# stores environment settings and data arrays
@@ -35,8 +36,8 @@ class Env:
 		{ "name":"loop_stop", "kw":{"help":"Stop value for loop","type":int},
 		  "flag":"z", "required_init":"", "default":50},
 		{ "name":"values_to_plot", "kw":{"help":"Values to plot.  "
-			"l-loop variable, e-prob error, d-dplen, g-gallen, p-pentti mean","type":str,
-			"choices":["l", "e", "d", "g", "p"]}, "flag":"p", "required_init":"", "default":"l"},
+			"l-loop variable, e-prob error, d-dplen, g-gallant, p-pentti mean, f-frady vs gallant","type":str,
+			"choices":["l", "e", "d", "g", "p", "f"]}, "flag":"p", "required_init":"", "default":"l"},
 		{ "name":"show_histograms", "kw":{"help":"Show histograms","type":int,
 			"choices":[0, 1]}, "flag":"H", "default":0},
 		{ "name":"seed", "kw":{"help":"Random number seed","type":int},
@@ -156,6 +157,8 @@ class Calculator:
 			self.test_dplen_function()
 		elif values_to_plot == "p":
 			self.show_petti_mean_function()
+		elif values_to_plot == "f":
+			self.show_frady_vs_gallant_error()
 		else:
 			sys.exit("values_to_plot '%s' not implemented" % values_to_plot)
 
@@ -275,6 +278,10 @@ class Calculator:
 			yvals=yvals, ebar=None, legend="recall error", logyscale=True)
 		theory_error = self.compute_theoretical_recall_error()
 		fig.add_line(theory_error, legend="Theoretical error")
+		frady_error = self.compute_frady_recall_error()
+		fig.add_line(frady_error, legend="Frady error")
+		gallant_error = self.compute_gallant_recall_error()
+		fig.add_line(gallant_error, legend="Gallant error")
 		self.figures.append(fig)
 		margin_mean = [statistics.mean(fs[xval]["margin"]) for xval in self.xvals]
 		margin_ebar = [statistics.stdev(fs[xval]["margin"]) for xval in self.xvals]
@@ -325,6 +332,48 @@ class Calculator:
 			error.append(float((1 - pcor) * 100))  # convert to percent
 		return error
 
+	# Calculate analytical accuracy of the encoding according to the equation for p_corr from 2017 IEEE Tran paper
+	def  p_corr (self, N, D, dp_hit):
+		# print("p_corr, N=%s, D=%s, dp_hit=%s" % (N, D, dp_hit))
+		dp_rej=0.5
+		var_hit = 0.25*N
+		var_rej=var_hit
+		range_var=10 # number of std to take into account
+		fun = lambda u: (1/(np.sqrt(2*np.pi*var_hit)))*np.exp(-((u-N*(dp_rej-dp_hit) )**2)/(2*(var_hit)))*((norm.cdf((u/np.sqrt(var_rej))))**(D-1) ) # analytical equation to calculate the accuracy  
+
+		acc = integrate.quad(fun, (-range_var)*np.sqrt(var_hit), N*dp_rej+range_var*np.sqrt(var_hit)) # integrate over a range of possible values
+		
+		return acc[0]
+
+	def compute_frady_recall_error(self):
+		word_length = self.env.pvals["word_length"]
+		codebook_length = self.env.pvals["num_items"]
+		frady_error = []
+		for xval in self.xvals:
+			pflip = xval / 100
+			# expected_hamming = pflip * word_length
+			frady_error.append((1 - self.p_corr(word_length, codebook_length, pflip))*100.0) # convert to percent
+		return frady_error
+
+	def compute_gallant_recall_error(self):
+		word_length = self.env.pvals["word_length"]
+		codebook_length = self.env.pvals["num_items"]
+		gallant_error = []
+		for xval in self.xvals:
+			pflip = xval / 100
+			match_mean = pflip
+			match_stdev = math.sqrt(match_mean * (1-match_mean)/word_length)
+			distractor_mean = 0.5
+			distractor_stdev = math.sqrt(distractor_mean *(1-distractor_mean)/word_length)
+			combined_mean = distractor_mean - match_mean
+			combined_stdev = math.sqrt(match_stdev**2 + distractor_stdev**2)
+			perror1 = norm.cdf(0.0, loc=combined_mean, scale=combined_stdev)
+			pcorrect_1 = 1.0 - perror1
+			pcorrect_n = pcorrect_1 ** (codebook_length-1)
+			gallant_error.append((1-pcorrect_n)*100.0)
+		return gallant_error
+
+
 	def prob_negative_after_subtract(self, distractor_hamming_mean,
 		distractor_hamming_stdev, match_hamming_mean, match_hamming_stdev):
 		# compute probatility of error given the match and distractor distributions
@@ -344,9 +393,15 @@ class Calculator:
 		# calculated bundle length needed to store k items with accuracy per
 		return self.dplen(0.5 - 0.4 / math.sqrt(k - 0.44), per)
 
-	def gallen(self, s, per):
-		# calculate required length using formula in Gallent paper
+	def gallan(self, s, per):
+		# calculate required length using formula in Gallant paper
 		return round(2*(-1 + 2*s)*special.erfcinv(2*per)**2)
+
+	def bunlenf(self, k, perf, n):
+		# bundle length from final probabability error (perf) taking
+		# into account number of items in bundle (k) and number of other items (n)
+		per = perf/(k*n)
+		return self.bunlen(k, per)
 
 	def test_dplen_function_orig(self):
 		kvals = [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
@@ -360,9 +415,9 @@ class Calculator:
 
 	def test_dplen_function_txt(self):
 		kvals = [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
-		call_gallen = self.env.pvals["values_to_plot"] == "g"
-		method_msg = "gallen" if call_gallen else "bunlen"
-		method = self.gallen if call_gallen else self.bunlen
+		call_gallan = self.env.pvals["values_to_plot"] == "g"
+		method_msg = "gallan" if call_gallan else "bunlen"
+		method = self.gallan if call_gallan else self.bunlen
 		print("Bundle length for per and number of items (k), using method '%s':" % method_msg)
 		print("per\t%s" % "\t".join(map(str,kvals)))
 		for ex in range(3, 8):
@@ -371,6 +426,12 @@ class Calculator:
 			bundle_lengths = [method(k, per) for k in kvals]
 			print("%s\t%s" % (per, "\t".join(map(str,bundle_lengths))))
 		sys.exit("Aborting.")
+
+	def create_binary_matrix(self, num_items, word_length):
+		bm = []
+		for i in range(num_items):
+			bm.append(xmpz(random.getrandbits(word_length)))
+		return bm
 
 	def test_dplen_function(self):
 		# test function that returns length of vector needed for particular error rate
@@ -386,9 +447,10 @@ class Calculator:
 		if num_trials < 200:
 			num_trials = 200
 		longest_length = bundle_lengths[perrs[-1]][-1]
-		addr_base = xmpz(random.getrandbits(num_trials + longest_length))
-		data_base = xmpz(random.getrandbits(num_trials + longest_length))
-		faux_base = xmpz(random.getrandbits(num_trials + longest_length))
+		# addr_base = xmpz(random.getrandbits(num_trials + longest_length))
+		# data_base = xmpz(random.getrandbits(num_trials + longest_length))
+		# faux_base = xmpz(random.getrandbits(num_trials + longest_length))
+		faux_base = xmpz(random.getrandbits(num_trials + longest_length))		
 		# now loop through each option, storing and recalling and calculating stats
 		stats={}
 		debug = self.env.pvals["debug"]
@@ -402,15 +464,19 @@ class Calculator:
 				match_hammings = []
 				distractor_hammings = []
 				ibase = 0  # index to starting item in base arrays
-				ibend = num_trials
+				# ibend = num_trials
 				while info["ntrials"] < num_trials:
-					# create bundle
+					# create bundle and addresses and data to store
 					bun = sdm.Bundle(bl)
+					addr_base = self.create_binary_matrix(kvals[ik], bl)
+					data_base = self.create_binary_matrix(kvals[ik], bl)
 					# store items
 					for i in range(kvals[ik]):
-						addr = addr_base[ibase+i:ibase+i+bl]
+						addr = addr_base[i]
+						data = data_base[i]
+						# addr = addr_base[ibase+i:ibase+i+bl]
 						# data = data_base[ibase+i:ibase+i+bl]
-						data = data_base[ibend-i:ibend-i+bl]
+						# data = data_base[ibend+i][0:ibend-i+bl]
 						if i == 1 and debug:
 							print("storing:")
 							print("addr=%s" % format(addr, fmt))
@@ -421,8 +487,10 @@ class Calculator:
 					if debug:
 						print("bl=%s, trace=%s" % (bl, format(trace, fmt)))
 					for i in range(kvals[ik]):
-						addr = addr_base[ibase+i:ibase+i+bl]
-						data = data_base[ibend-i:ibend-i+bl]
+						addr = addr_base[i]
+						data = data_base[i]
+						# addr = addr_base[ibase+i:ibase+i+bl]
+						# data = data_base[ibend-i:ibend-i+bl]
 						# data = data_base[ibase+i:ibase+i+bl]
 						recalled_data = bun.bind_recall(addr)
 						hamming_match = self.int_hamming(data, recalled_data)
@@ -444,7 +512,7 @@ class Calculator:
 						if info["ntrials"] >= num_trials:
 							break
 					ibase += kvals[ik]
-					ibend -= kvals[ik]
+					# ibend -= kvals[ik]
 				match_hamming_mean = statistics.mean(match_hammings) / bl
 				match_hamming_stdev = statistics.stdev(match_hammings) / bl
 				distractor_hamming_mean = statistics.mean(distractor_hammings) / bl
@@ -477,7 +545,7 @@ class Calculator:
 			fail_percent = [(stats[per][i]["nfail"]*100.0/ stats[per][i]["ntrials"]) for i in range(len(kvals))]
 			expected_per = [(stats[per][i]["expected_fail_count"]*100.0) for i in range(len(kvals))]
 			theory_per = [(stats[per][i]["theoretical_fail_count"]*100.0) for i in range(len(kvals))]
-			ebar_per = [(stats[per][i]["predicted_fail_count_stdev"]*50.0) for i in range(len(kvals))]
+			ebar_per = [(stats[per][i]["predicted_fail_count_stdev"]*100.0) for i in range(len(kvals))]
 			title = "Found percent error when bundle length set for %s %%" % per
 			fig = Figure(title=title, xvals=xvals, grid=True,
 				xlabel="Num items / bundle length", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
@@ -512,6 +580,42 @@ class Calculator:
 			yvals=diff, ebar=None, legend="pentti_approx - exact", logyscale=False)
 		self.figures.append(fig)
 
+	def expectedHamming(self, K):
+		if (K % 2) == 0: # If even number then break ties so add 1
+			K+=1    
+		deltaHam = 0.5 - (scipy.special.binom(K-1, 0.5*(K-1)))/2**K  # Pentti's formula for the expected Hamming distance
+		return deltaHam
+
+
+	def show_frady_vs_gallant_error(self):
+		kvals = [3, 5, 11, 21, 51, 100] # [5, 11, 21, 51, 100, 250, 500, 750, 1000, 2000, 3000]  # [20, 100]
+		xvals = range(len(kvals))
+		codebook_sizes = [30, 50, 100] # , 200, 500, 1000] # [1000]
+		desired_percent_errors = [10, 1, .1, .01, .001]
+		for desired_percent_error in desired_percent_errors:
+			for codebook_size in codebook_sizes:
+				frady_error = []
+				bundle_lengths = []
+				for k in kvals:
+					perf = desired_percent_error / 100
+					per_exact = 1 - math.exp(math.log(1-perf)/(k*(codebook_size-1))) # per_exact
+					delta = self.expectedHamming(k)
+					# bundle_length = self.bunlen(k, per_exact)
+					bundle_length = self.dplen(delta, per_exact)
+					# bundle_length = self.bunlenf(k, perf, codebook_size)
+					bundle_lengths.append(bundle_length)
+					# delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
+
+					frady_pcorrect1 = self.p_corr(bundle_length, codebook_size, delta)
+					frady_pcorrect_all = frady_pcorrect1 ** k
+					frady_error.append((1-frady_pcorrect_all)*100.0)  # convert to percent error
+				title = "Frady error when desired error=%s%% codebook size=%s" % (desired_percent_error, codebook_size)
+				xaxis_labels = ["%s/%s" % (kvals[i], bundle_lengths[i]) for i in range(len(kvals))]
+				fig = Figure(title=title, xvals=xvals, grid=True,
+					xlabel="Num items / bundle length", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
+					legend_location="upper right",
+					yvals=frady_error, ebar=None, legend="frady error", logyscale=False)
+				self.figures.append(fig)
 
 def main():
 	env = Env()

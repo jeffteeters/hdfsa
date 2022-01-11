@@ -1,5 +1,8 @@
 from scipy import special
 import math
+import scipy.integrate as integrate
+import numpy as np
+from scipy.stats import norm
 
 def gallen(s, per):
 	# calculate required length using equation in Gallant paper
@@ -40,6 +43,19 @@ def gallenf(k, perf, n):
 	per = perf/(k*n)
 	return gallen(k, per)
 
+	# Calculate analytical accuracy of the encoding according to the equation for p_corr from 2017 IEEE Tran paper
+def  p_corr (N, D, dp_hit):
+	# dp_hit is the expected hamming distance (per dimension) from recalled vector to matching vector in item memory 
+	# print("p_corr, N=%s, D=%s, dp_hit=%s" % (N, D, dp_hit))
+	dp_rej=0.5
+	var_hit = 0.25*N
+	var_rej=var_hit
+	range_var=10 # number of std to take into account
+	fun = lambda u: (1/(np.sqrt(2*np.pi*var_hit)))*np.exp(-((u-N*(dp_rej-dp_hit) )**2)/(2*(var_hit)))*((norm.cdf((u/np.sqrt(var_rej))))**(D-1) ) # analytical equation to calculate the accuracy
+	acc = integrate.quad(fun, (-range_var)*np.sqrt(var_hit), N*dp_rej+range_var*np.sqrt(var_hit)) # integrate over a range of possible values
+	return acc[0]
+
+
 # calculate vector lengths for cases given in Gallant paper, and also using
 # equations for binary vectors from Pentti's 1997 paper, "Fully Distributed Representation" 
 # S-number of items in bundle, N-number of other items, perf-desired percent error
@@ -50,5 +66,7 @@ cases = [{"label":"Small", "S":20, "N":1000, "perf":1.6},
 for case in cases:
 	dgal = gallenf(case["S"], case["perf"]/100.0, case["N"])
 	dbun = bunlenf(case["S"], case["perf"]/100.0, case["N"])
-	print("%s (S=%s, N=%s, perf=%s), D is: Gallant: %s, bunlen: %s, ratio: %s" % (
-		case["label"],case["S"],case["N"],case["perf"], dgal, dbun, round(dbun / dgal,3)))
+	b_delta = 0.5 - 0.4 / math.sqrt(case["S"] - 0.44) 
+	perr_frady = (1-p_corr(dbun, case["N"], b_delta)) * 100.0  # get error probability from Frady equation
+	print("%s (S=%s, N=%s, perf=%s), D is: Gallant: %s, bunlen: %s, ratio: %s, Frady perror=%s" % (
+		case["label"],case["S"],case["N"],case["perf"], dgal, dbun, round(dbun / dgal,3), perr_frady))
