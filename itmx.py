@@ -17,6 +17,7 @@ import sdm
 from scipy.stats import norm
 import scipy.integrate as integrate
 import scipy
+import capacity_calc_routines as cc
 
 class Env:
 	# stores environment settings and data arrays
@@ -334,7 +335,6 @@ class Calculator:
 
 	# Calculate analytical accuracy of the encoding according to the equation for p_corr from 2017 IEEE Tran paper
 	def  p_corr (self, N, D, dp_hit):
-		# print("p_corr, N=%s, D=%s, dp_hit=%s" % (N, D, dp_hit))
 		dp_rej=0.5
 		var_hit = 0.25*N
 		var_rej=var_hit
@@ -342,7 +342,7 @@ class Calculator:
 		fun = lambda u: (1/(np.sqrt(2*np.pi*var_hit)))*np.exp(-((u-N*(dp_rej-dp_hit) )**2)/(2*(var_hit)))*((norm.cdf((u/np.sqrt(var_rej))))**(D-1) ) # analytical equation to calculate the accuracy  
 
 		acc = integrate.quad(fun, (-range_var)*np.sqrt(var_hit), N*dp_rej+range_var*np.sqrt(var_hit)) # integrate over a range of possible values
-		
+		# print("p_corr, N=%s, D=%s, dp_hit=%s, return=%s" % (N, D, dp_hit, acc[0]))
 		return acc[0]
 
 	def compute_frady_recall_error(self):
@@ -592,8 +592,8 @@ class Calculator:
 		debug = self.env.pvals["debug"]
 		bl = bundle_length
 		num_trials = self.env.pvals["num_trials"]
-		if num_trials < 1000:
-			num_trials = 1000
+		if num_trials < 10000:
+			num_trials = 10000
 		faux_base = xmpz(random.getrandbits(codebook_size + bundle_length))
 		fmt = "0%sb" % bl
 		match_hammings = []
@@ -642,11 +642,11 @@ class Calculator:
 				info["ntrials"] += 1
 				if min_distractor_hamming <= match_hamming:
 					info["nfail"] += 0.5 if min_distractor_hamming == match_hamming else 1
-					print("found fail: bundle_length=%s, k=%s, codebook_size=%s, info=%s" % (bundle_length,
-						k, codebook_size, info ))
+					# print("found fail: bundle_length=%s, k=%s, codebook_size=%s, info=%s" % (bundle_length,
+					# 	k, codebook_size, info ))
 				if info["ntrials"] >= num_trials:
 					break
-			ibase += k
+			# ibase += k
 		return info
 		# match_hamming_mean = statistics.mean(match_hammings) / bl
 		# match_hamming_stdev = statistics.stdev(match_hammings) / bl
@@ -665,39 +665,51 @@ class Calculator:
 
 
 	def show_frady_vs_gallant_error(self):
-		kvals = [5, 11, 21, 51, 100] # [5, 11, 21, 51, 100, 250, 500, 750, 1000, 2000, 3000]  # [20, 100]
+		kvals = [5, 11, 21, 51, 100, 250, 500, 750, 1000, 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
 		xvals = range(len(kvals))
-		codebook_sizes = [1,3, 30,]#  50, 100] # , 200, 500, 1000] # [1000]
-		desired_percent_errors = [10,] # 1, .1, .01, .001]
+		codebook_sizes = [3, 36,100, 200, 500, 1000] # [1000]
+		desired_percent_errors = [10, 1, .1, .01, .001]
+		include_empirical = False
 		for desired_percent_error in desired_percent_errors:
 			for codebook_size in codebook_sizes:
 				frady_error = []
 				sim_error = []
+				emp_error = []
 				bundle_lengths = []
 				for k in kvals:
 					perf = desired_percent_error / 100
 					# per_exact = 1 - math.exp(math.log(1-perf)/(k*(codebook_size-1))) # per_exact
-					per_exact = 1 - math.exp(math.log(1-perf)/(k*(codebook_size))) # per_exact
-					delta = self.expectedHamming(k)
+					# per_exact = 1 - math.exp(math.log(1-perf)/((k*codebook_size))) # per_exact
+					# delta = self.expectedHamming(k)  # fails when k is large
+					delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
+					per_test = 1 - math.exp(math.log(1-perf)/(k* codebook_size))
+					bundle_length = self.dplen(delta, per_test)
 					# bundle_length = self.bunlen(k, per_exact)
-					bundle_length = self.dplen(delta, per_exact)
+					# bundle_length = self.dplen(delta, per_exact)
+					# print("k=%s, delta=%s, per=%s, bundle_length=%s" % (k, delta, per_test, bundle_length))
+					# import pdb; pdb.set_trace()
 					# bundle_length = self.bunlenf(k, perf, codebook_size)
 					bundle_lengths.append(bundle_length)
-					# delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
+					# 
 					frady_pcorrect1 = self.p_corr(bundle_length, codebook_size, delta)
 					frady_pcorrect_all = frady_pcorrect1 ** k
 					frady_error.append((1-frady_pcorrect_all)*100.0)  # convert to percent error
-					info = self.perform_bundle_recall(bundle_length, k, codebook_size) # returns: {"ntrials":0, "nfail":0}
-					print("info for desired_percent_error=%s, codebook_size=%s, k=%s: %s" % (desired_percent_error,
-						codebook_size, k, info))
-					sim_error.append(info["nfail"] * 100.0 / info["ntrials"])
+					# frady_error.append((1-frady_pcorrect1)*100.0)
+					if include_empirical:
+						info = self.perform_bundle_recall(bundle_length, k, codebook_size) # returns: {"ntrials":0, "nfail":0}
+						sim_error.append(info["nfail"] * 100.0 / (info["ntrials"]))
+						emp_error.append((1-cc.AccuracyEmpirical(bundle_length,codebook_size,k)[0]) * 100.0)
+						print("Desired_percent_error=%s, codebook_size=%s, k=%s: info=%s, frady_error=%s, sim_error=%s, AccEmp=%s" % (
+					 		desired_percent_error, codebook_size, k, info, frady_error[-1], sim_error[-1], emp_error[-1]))
 				title = "Frady error when desired error=%s%% codebook size=%s" % (desired_percent_error, codebook_size)
 				xaxis_labels = ["%s/%s" % (kvals[i], bundle_lengths[i]) for i in range(len(kvals))]
 				fig = Figure(title=title, xvals=xvals, grid=True,
 					xlabel="Num items / bundle length", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
 					legend_location="upper right",
 					yvals=frady_error, ebar=None, legend="frady error", logyscale=False)
-				fig.add_line(sim_error, legend="Simulation")
+				if include_empirical:
+					fig.add_line(sim_error, legend="Simulation")
+					fig.add_line(emp_error, legend="AccuracyEmpirical")
 				self.figures.append(fig)
 
 def main():
