@@ -5,10 +5,11 @@ from scipy.stats import norm
 from scipy import special
 import sys
 
-def sdm_size(m, n):
+def system_size(m, n, codebook_length):
 	# m - number rows, n - number of columns in sdm
-	size = m * (1 + 1/8) * n
-	return size
+	sdm_size = m * (1 + 1/8) * n
+	item_memory_size = codebook_length * n / 8
+	return sdm_size + item_memory_size
 
 def single_bit_error_rate(m, k):
 	# m - number of rows, k - number of items stored
@@ -23,7 +24,7 @@ def dplen(delta, per):
 	# delta - mean of match distribution (single bit error rate, 0< delta < 0.5)
 	# per - desired probability of error on recall (e.g. 0.000001)
 	n = (-2*(-0.25 - delta + delta**2)*special.erfinv(-1 + 2*per)**2)/(0.5 - delta)**2
-	return round(n)
+	return n # round(n)
 
 def num_columns(m, k, per):
 	# calculate number of columns in sdm to attain per probability error on recall of single item
@@ -33,12 +34,12 @@ def num_columns(m, k, per):
 	num_cols = dplen(delta, per)
 	return num_cols
 
-def columns_and_size(m, k, per):
+def columns_and_size(m, k, per, codebook_length):
 	num_cols = num_columns(m, k, per)
-	size = sdm_size(m, num_cols)
+	size = system_size(m, num_cols, codebook_length)
 	return (num_cols, size)
 
-def next_m(cur_m, cur_n, step, k, per):
+def next_m(cur_m, cur_n, step, k, per, codebook_length):
 	# advance current m in direction step until n (number of columns) changes
 	# return new_m, new_n, new_size
 	m = cur_m
@@ -46,22 +47,22 @@ def next_m(cur_m, cur_n, step, k, per):
 	count = 0
 	while n == cur_n:
 		m += step
-		n, size = columns_and_size(m, k, per)
+		n, size = columns_and_size(m, k, per, codebook_length)
 		count += 1
 		if count>100:
 			sys.exit("failed to change n in next_m")
 	return (m, n, size)
 
 
-def find_sdm_size(k, per):
+def find_optimal_sdm(k, per, codebook_length):
 	# Find size (# rows and columns) of sdm needed to store k items with final error (perf)
 	# per is probability of at least one error when recalling all items
 	# This makes an estimate of rows and columns and finds the minimum size sdm with
 	# the specified error rate
 
-	m_1 = 2*k  # a guess for current m (number of rows)
-	n_1, size_1 = columns_and_size(m_1, k, per)
-	m_2, n_2, size_2 = next_m(m_1, n_1, +1, k, per)
+	m_1 = int(k/4)  # a guess for current m (number of rows)
+	n_1, size_1 = columns_and_size(m_1, k, per, codebook_length)
+	m_2, n_2, size_2 = next_m(m_1, n_1, +1, k, per, codebook_length)
 	if size_1 < size_2:
 		cur_m, cur_n, cur_size = m_2, n_2, size_2
 		tst_m, tst_n, tst_size = m_1, n_1, size_1
@@ -79,7 +80,7 @@ def find_sdm_size(k, per):
 		if step == -1 and cur_m == 1:
 			# don't go smaller than m == 1
 			break
-		tst_m, tst_n, tst_size = next_m(cur_m, cur_n, step, k, per)
+		tst_m, tst_n, tst_size = next_m(cur_m, cur_n, step, k, per, codebook_length)
 		print("trying: m=%s, n=%s, size=%s" % (tst_m, tst_n, tst_size))
 	return( (cur_m, cur_n, cur_size))
 
@@ -87,16 +88,16 @@ def find_sdm_size(k, per):
 
 def main():
 	kvals = [1000] # [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
-	desired_percent_errors = [0.1] # [10, 1, .1, .01, .001]
-	codebook_sizes = [110] # [3, 36,100, 200, 500, 1000] # [1000]
+	desired_percent_errors = [0.01] # [10, 1, .1, .01, .001]
+	codebook_lengths = [1000] # [3, 36, 110, 200, 500, 1000]
 	for desired_percent_error in desired_percent_errors:
-		for codebook_size in codebook_sizes:
+		for codebook_length in codebook_lengths:
 			for k in kvals:
 				perf = desired_percent_error / 100
-				per = 1 - math.exp(math.log(1-perf)/(k* codebook_size))
-				m, n, size = find_sdm_size(k, per)
-				print("for desired_percent_error=%s%%, codebook_size=%s, k=%s found: m=%s, n=%s, size=%s" % (
-					desired_percent_error, codebook_size, k, m, n, size))
+				per = 1 - math.exp(math.log(1-perf)/(k* codebook_length))
+				m, n, size = find_optimal_sdm(k, per, codebook_length)
+				print("for desired_percent_error=%s%%, codebook_length=%s, k=%s found: m=%s, n=%s, size=%s" % (
+					desired_percent_error, codebook_length, k, m, n, size))
 				sys.exit("stopping after one for testing.")
 
 main()
