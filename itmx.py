@@ -592,8 +592,8 @@ class Calculator:
 		debug = self.env.pvals["debug"]
 		bl = bundle_length
 		num_trials = self.env.pvals["num_trials"]
-		if num_trials < 10000:
-			num_trials = 10000
+		if num_trials < 1000:
+			num_trials = 1000
 		faux_base = xmpz(random.getrandbits(codebook_size + bundle_length))
 		fmt = "0%sb" % bl
 		match_hammings = []
@@ -665,11 +665,11 @@ class Calculator:
 
 
 	def show_frady_vs_gallant_error(self):
-		kvals = [5, 11, 21, 51, 100, 250, 500, 750, 1000, 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
+		kvals = [5, 11, 21, 51, 100, 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
 		xvals = range(len(kvals))
-		codebook_sizes = [3, 36,100, 200, 500, 1000] # [1000]
-		desired_percent_errors = [10, 1, .1, .01, .001]
-		include_empirical = False
+		codebook_sizes = [36,100 ] # , 200, 500, 1000] # [1000]
+		desired_percent_errors = [10, 1] # , .1, .01, .001]
+		include_empirical = True
 		for desired_percent_error in desired_percent_errors:
 			for codebook_size in codebook_sizes:
 				frady_error = []
@@ -682,7 +682,7 @@ class Calculator:
 					# per_exact = 1 - math.exp(math.log(1-perf)/((k*codebook_size))) # per_exact
 					# delta = self.expectedHamming(k)  # fails when k is large
 					delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
-					per_test = 1 - math.exp(math.log(1-perf)/(k* codebook_size))
+					per_test = 1 - math.exp(math.log(1-perf)/(codebook_size))
 					bundle_length = self.dplen(delta, per_test)
 					# bundle_length = self.bunlen(k, per_exact)
 					# bundle_length = self.dplen(delta, per_exact)
@@ -692,7 +692,7 @@ class Calculator:
 					bundle_lengths.append(bundle_length)
 					# 
 					frady_pcorrect1 = self.p_corr(bundle_length, codebook_size, delta)
-					frady_pcorrect_all = frady_pcorrect1 ** k
+					frady_pcorrect_all = frady_pcorrect1 # ** k
 					frady_error.append((1-frady_pcorrect_all)*100.0)  # convert to percent error
 					# frady_error.append((1-frady_pcorrect1)*100.0)
 					if include_empirical:
