@@ -3,6 +3,8 @@ import math
 import scipy.integrate as integrate
 import numpy as np
 from scipy.stats import norm
+import scipy
+
 
 def gallen(s, per):
 	# calculate required length using equation in Gallant paper
@@ -23,6 +25,39 @@ def dplen(mm, per):
 	# paper.)
 	n = (-2*(-0.25 - mm + mm**2)*special.erfinv(-1 + 2*per)**2)/(0.5 - mm)**2
 	return round(n) + 1
+
+def dplen2(mm, per, D):
+	# calculate vector length based on equation 2.25 in the Frady paper
+	beta = 1.08
+	s2 = (4*(math.log(D-1) - math.log(2*per) + math.log((math.sqrt(beta-1)*math.sqrt((2*math.e)/math.pi))/beta)))/beta
+	n = s2 * (mm*(1-mm) + 0.5*(1-0.5))/(0.5 - mm)**2
+	# n = (s2*(1 + 4.*mm - 4.*mm**2))/(1. - 2.*mm)**2
+	return round(n)
+
+def DimensionalityAnalytical(acc,K,D):
+    hamming_sup= expectedHamming(K)
+    delHam=0.5-hamming_sup
+    beta=1.08
+    epsi=(1-acc)
+    N =  (np.log(D-1) - np.log(2*epsi) +  np.log((np.sqrt(beta-1)*np.sqrt((2*np.e)/np.pi))/beta))/(beta*(delHam**2))  
+    
+    return np.round(N)
+
+
+def cs2(per, D):
+	beta = 1.08
+	s2 = (4*(math.log(D-1) - math.log(2*per) + math.log((math.sqrt(beta-1)*math.sqrt((2*math.e)/math.pi))/beta)))/beta
+	print("s2=%s, sqrt(s2)=%s" % (s2, math.sqrt(s2)))
+	return s2
+
+
+#Compute expected Hamming distance
+def  expectedHamming (K):
+    if (K % 2) == 0: # If even number then break ties so add 1
+        K+=1
+    deltaHam = 0.5 - (scipy.special.binom(K-1, 0.5*(K-1)))/2**K  # Pentti's formula for the expected Hamming distance
+    return deltaHam
+
 
 def bunlen(k, per):
 	# calculated bundle length needed to store k items with accuracy per
@@ -64,9 +99,15 @@ cases = [{"label":"Small", "S":20, "N":1000, "perf":1.6},
 	{"label":"Large", "S":1000, "N":1000000, "perf":1.0}]
 
 for case in cases:
-	dgal = gallenf(case["S"], case["perf"]/100.0, case["N"])
-	dbun = bunlenf(case["S"], case["perf"]/100.0, case["N"])
-	b_delta = 0.5 - 0.4 / math.sqrt(case["S"] - 0.44) 
+	k = case["S"]  # number items stored in bundle
+	perf = case["perf"]/100.0   # desired final percent error after recalling all k items once
+	d = case["N"]    # size of item memory
+	dgal = gallenf(k, perf, d)
+	dbun = bunlenf(k, perf, d)
+	b_delta = 0.5 - 0.4 / math.sqrt(case["S"] - 0.44)
+	acc = perf / k
+	dfra = dplen2(b_delta, acc, d)
+	ndenis = DimensionalityAnalytical(acc,k,d)
 	perr_frady = (1-p_corr(dbun, case["N"], b_delta)) * 100.0  # get error probability from Frady equation
-	print("%s (S=%s, N=%s, perf=%s), D is: Gallant: %s, bunlen: %s, ratio: %s, Frady perror=%s" % (
-		case["label"],case["S"],case["N"],case["perf"], dgal, dbun, round(dbun / dgal,3), perr_frady))
+	print("%s (S=%s, N=%s, perf=%s), D is: Gallant: %s, bunlen: %s, fralen=%s, ndenis=%s, ratio: %s, Frady perror=%s" % (
+		case["label"],case["S"],case["N"],case["perf"], dgal, dbun, dfra, ndenis, round(dbun / dgal,3), perr_frady))
