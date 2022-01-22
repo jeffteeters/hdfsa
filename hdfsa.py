@@ -599,6 +599,7 @@ class FSA:
 		self.num_states = num_states
 		self.num_actions = num_actions
 		self.num_choices = num_choices
+		self.num_transitions = num_states * num_choices # number items stored in sdm or the bundle
 		self.debug = debug
 		fsa = []
 		for i in range(num_states):
@@ -894,6 +895,13 @@ class Table_Generator_error_vs_storage():
 			sinfo["total_storage_required"])
 		return row
 
+	def get_sdm_activation_count(self, m, k):
+		# compute number of rows in sdm to be active
+		# m is number of rows in sdm.  k is number of items being stored (1000)
+		# nact = round(sdm_num_rows / 100)  # originally used in hdfsa.py
+		nact = round( m/((2*m*k)**(1/3)) )
+		return nact
+
 	def generate_table(self):
 		file_name = get_file_name("sdata")
 		fp = open(file_name,'w')
@@ -910,7 +918,8 @@ class Table_Generator_error_vs_storage():
 				tid += 1
 				bind_l = self.bind_len(storage)
 				sdm_num_rows = self.sdm_len(storage)
-				sdm_activation_count = round(sdm_num_rows / 100)
+				# sdm_activation_count = round(sdm_num_rows / 100)
+				sdm_activation_count = self.get_sdm_activation_count(sdm_num_rows, self.fsa.num_transitions)
 				parameters = "-b %s -m %s -a %s" % (bind_l, sdm_num_rows, sdm_activation_count)
 				self.pvals["num_rows"] = sdm_num_rows
 				self.pvals["activation_count"] = sdm_activation_count
@@ -968,16 +977,16 @@ class Table_Generator_error_vs_bitflips():
 				# 8.1     800000  bind    57658   0       0.0     0.0005658820455930389   800004
 				# 8.1     800000  sdm     1549    0       0.0     1.14064404735783e-07    800128
 				# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1549 -a 15 -b 57658 -j 1 -f 1
-				assert self.pvals["num_rows"] == 1549
-				assert self.pvals["activation_count"] == 15
+				assert self.pvals["num_rows"] == 1377
+				assert self.pvals["activation_count"] == 10
 				assert self.pvals["bind_word_length"] == 57658
 			elif storage == 1000000:
 				# following settings for 1000000 bytes storage for both
 				# 10.6    1000000 bind    72072   0       0.0     4.0137960109522544e-05  999999
 				# 10.6    1000000 sdm     1939    0       0.0     5.200091764358587e-09   999808
 				# python hdfsa.py -s 100 -a 10 -c 10 -w 512 -m 1939 -a 19 -b 72072 -j 1 -f 1 -t 10
-				assert self.pvals["num_rows"] == 1939
-				assert self.pvals["activation_count"] == 19
+				assert self.pvals["num_rows"] == 1724  # reduced from 1939 for address space
+				assert self.pvals["activation_count"] == 11
 				assert self.pvals["bind_word_length"] == 72072
 			else:
 				sys.exit("Invalid storage size for bit flip table")

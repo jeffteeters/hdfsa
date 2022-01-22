@@ -2,7 +2,7 @@
 import re
 import sys
 import os.path
-
+from fractions import Fraction
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 import statistics
@@ -12,7 +12,7 @@ from scipy.stats import binom
 from scipy.integrate import quad
 import math
 import numpy as np
-
+import scipy.integrate as integrate
 import warnings
 warnings.filterwarnings("error")
 
@@ -96,6 +96,7 @@ def compute_plotting_data(sdata, xvar):
 	bit_error_counts_ebar = {}
 	mean_dhds = {}
 	stdev_dhds = {}
+	theory_bundle_bit_error_counts = None
 	for mtype in sdata:
 		xvals[mtype] = sorted(list(sdata[mtype].keys()))  # will be sorted storage (or pflips)
 		yvals[mtype] = []
@@ -125,13 +126,15 @@ def compute_plotting_data(sdata, xvar):
 			if mtype == "bind":
 				theoretical_bundle_err = [ compute_theoretical_error(sl, mtype) for sl in storage_lengths]
 				theory_sdm_bit_error_counts = None
+				theory_bundle_bit_error_counts = [compute_theoretical_bundle_bit_error_count(sl) for sl in storage_lengths]
 			else:
 				assert mtype == "sdm"
 				print("** == sdm storage lengths=%s" % storage_lengths)
 				print("xvals['sdm']=%s" % xvals["sdm"])
 				print("yvals['sdm']=%s" % yvals["sdm"])
 				print("ebars['sdm']=%s" % ebar["sdm"])
-				theoretical_sdm_err = [ compute_theoretical_error(sl, mtype) for sl in storage_lengths]
+				# theoretical_sdm_err = [ compute_theoretical_error(sl, mtype) for sl in storage_lengths]
+				theoretical_sdm_err = [ compute_theoretical_sdm_error(sl) for sl in storage_lengths]
 				theory_sdm_bit_error_counts = [compute_theoretical_sdm_bit_error_count(sl) for sl in storage_lengths]
 		elif add_theoretical_pflips and mtype == "sdm":
 			# pflips = get_storage_lengths(xvals, mtype, sdata)
@@ -151,6 +154,7 @@ def compute_plotting_data(sdata, xvar):
 		"bit_error_counts":bit_error_counts,
 		"bit_error_counts_ebar":bit_error_counts_ebar,
 		"theory_sdm_bit_error_counts": theory_sdm_bit_error_counts,
+		"theory_bundle_bit_error_counts": theory_bundle_bit_error_counts,
 		"mean_dhd":mean_dhds, "stdev_dhd":stdev_dhds,
 		}
 	return plotting_data
@@ -190,7 +194,7 @@ def compute_theoretical_sdm_bit_error_count(sl):
 	k = 1000  # number of items stored in SDM
 	word_length = 512
 	sdm_num_rows = sl
-	sdm_activation_count = round(sdm_num_rows / 100)  # used in hdfsa.py
+	sdm_activation_count = get_sdm_activation_count(sl, k)  # round(sdm_num_rows / 100)  # used in hdfsa.py
 	pact = sdm_activation_count / sdm_num_rows
 	mean = sdm_activation_count
 	num_entities_stored = k
@@ -210,10 +214,11 @@ def compute_theoretical_sdm_bit_error_count(sl):
 
 def compute_theoretical_sdm_bit_error_count_from_pflips(pf):
 	# compute theoretical bit count error based on difference of two distributions
+	# this does not work.
 	k = 1000  # number of items stored in SDM
 	word_length = 512
-	sdm_num_rows = 1939
-	sdm_activation_count = round(sdm_num_rows / 100)  # used in hdfsa.py
+	sdm_num_rows = 1724  # should get from file or assert
+	sdm_activation_count = get_sdm_activation_count(m, k) # round(sdm_num_rows / 100)  # used in hdfsa.py
 	noise_percent = pf
 	fraction_flipped = noise_percent / 100.0
 	fraction_upright = 1.0 - fraction_flipped
@@ -245,6 +250,12 @@ def compute_distribution_for_specific_nact(nact, sdm_num_rows, num_items_stored)
 	variance = mean * (1 + pact * num_items_stored * (1.0 + pact*pact * sdm_num_rows))
 	return (mean, variance)
 
+def get_sdm_activation_count(m, k):
+	# compute number of rows in sdm to be active
+	# m is number of rows in sdm.  k is number of items being stored (1000)
+	# nact = round(sdm_num_rows / 100)  # originally used in hdfsa.py
+	nact = round( m/((2*m*k)**(1/3)) )
+	return nact
 
 def compute_theoretical_error(sl, mtype):
 	# compute theoretical error based on storage length.  if mtype bind (bundle) sl is bundle length (bl)
@@ -259,7 +270,7 @@ def compute_theoretical_error(sl, mtype):
 	else:
 		# following from page 15 of Pentti's book chapter
 		sdm_num_rows = sl
-		sdm_activation_count = round(sdm_num_rows / 100)  # used in hdfsa.py
+		sdm_activation_count = get_sdm_activation_count(sdm_num_rows, k) # round(sdm_num_rows / 100)  # used in hdfsa.py
 		pact = sdm_activation_count / sdm_num_rows
 		mean = sdm_activation_count
 		num_entities_stored = k
@@ -339,6 +350,104 @@ def compute_theoretical_error(sl, mtype):
 	prob_error = 1.0 - prob_correct
 	# import pdb; pdb.set_trace()
 	return prob_error
+
+def compute_theoretical_sdm_error(sl):
+	# this routine is for convience for trying different methods
+	method = "fraction"
+	if method == "frady":
+		return compute_theoretical_sdm_frady_error(sl)
+	elif method == "fraction":
+		return compute_theoretical_sdm_fraction_error(sl)
+	elif method == "original":
+		mtype = "sdm"
+		return compute_theoretical_error(sl, mtype)
+	else:
+		sys.exit("Invalid method specified for compute_theoretical_sdm_error")
+
+
+def compute_theoretical_sdm_frady_error(sl):
+	# compute theoretical sdm error based on Frady sequence paper equations
+	k = 1000  # number of items stored in bundle
+	codebook_length = 100
+	# following from page 15 of Pentti's book chapter
+	sdm_num_rows = sl
+	sdm_activation_count = get_sdm_activation_count(sdm_num_rows, k) # round(sdm_num_rows / 100)  # used in hdfsa.py
+	pact = sdm_activation_count / sdm_num_rows
+	mean = sdm_activation_count
+	num_entities_stored = k
+	# following from Pentti's chapter
+	standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows)))
+	average_overlap = ((num_entities_stored - 1) * sdm_activation_count) * (sdm_activation_count / sdm_num_rows)
+	# standard_deviation = math.sqrt(average_overlap * 0.5 * (1 - 0.5)) # compute variance assuming binomonal distribution
+	probability_single_bit_failure = norm(0, 1).cdf(-mean/standard_deviation)
+	# probability_single_bit_failure = norm(mean, standard_deviation).cdf(0.0)
+	delta = probability_single_bit_failure
+	print("sdm num_rows=%s,act_count=%s,pact=%s,average_overlap=%s,mean=%s,std=%s,probability_single_bit_failure=%s" % (
+		sdm_num_rows, sdm_activation_count, pact, average_overlap, mean, standard_deviation, probability_single_bit_failure))
+	bl = 512  # 512 bit length words used for sdm
+	prob_correct = p_corr(bl, codebook_length, delta)
+	return 1-prob_correct
+
+
+def compute_theoretical_sdm_fraction_error(sl):
+	# compute theoretical recall error using equation in Frady paper implemented using Fractions
+	# sl is the sdm_num_rows
+	sdm_num_rows = sl
+	k = 1000  # number of items stored in bundle
+	codebook_length = 100
+	sdm_activation_count = get_sdm_activation_count(sdm_num_rows, k) # round(sdm_num_rows / 100)  # used in hdfsa.py
+	pact = sdm_activation_count / sdm_num_rows
+	mean = sdm_activation_count
+	num_entities_stored = k
+	# following from Pentti's chapter
+	standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows)))
+	average_overlap = ((num_entities_stored - 1) * sdm_activation_count) * (sdm_activation_count / sdm_num_rows)
+	# standard_deviation = math.sqrt(average_overlap * 0.5 * (1 - 0.5)) # compute variance assuming binomonal distribution
+	probability_single_bit_failure = norm(0, 1).cdf(-mean/standard_deviation)
+	# probability_single_bit_failure = norm(mean, standard_deviation).cdf(0.0)
+	delta = probability_single_bit_failure
+	print("sdm num_rows=%s,act_count=%s,pact=%s,average_overlap=%s,mean=%s,std=%s,probability_single_bit_failure=%s" % (
+		sdm_num_rows, sdm_activation_count, pact, average_overlap, mean, standard_deviation, probability_single_bit_failure))
+	bl = 512  # 512 bit length words used for sdm
+	wl = bl  # word length
+	num_distractors = codebook_length - 1
+	pflip = Fraction(int(delta*100), 100)  # probability of bit flip
+	pdist = Fraction(1, 2) # probability of distractor bit matching
+	match_hamming = []
+	distractor_hamming = []
+	for k in range(wl):
+		ncomb = Fraction(math.comb(wl, k))
+		match_hamming.append(ncomb * pflip ** k * (1-pflip) ** (wl-k))
+		distractor_hamming.append(ncomb * pdist ** k * (1-pdist) ** (wl-k))
+	# print("sum match_hamming=%s, distractor_hamming=%s" % (sum(match_hamming), sum(distractor_hamming)))
+	# if self.env.pvals["show_histograms"]:
+	# 	fig = Figure(title="match and distractor hamming distributions for %s%% bit flips" % xval,
+	# 		xvals=range(wl), grid=False,
+	# 		xlabel="Hamming distance", ylabel="Probability", xaxis_labels=None,
+	# 		legend_location="upper right",
+	# 		yvals=match_hamming, ebar=None, legend="match_hamming", fmt="-g")
+	# 	fig.add_line(distractor_hamming, legend="distractor_hamming", fmt="-m")
+	# 	self.figures.append(fig)
+	dhg = Fraction(1) # fraction distractor hamming greater than match hamming
+	pcor = Fraction(0)  # probability correct
+	for k in range(wl):
+		dhg -= distractor_hamming[k]
+		pcor += match_hamming[k] * dhg ** num_distractors
+	error = (float((1 - pcor) * 100))  # convert to percent
+	return error
+
+
+	# Calculate analytical accuracy of the encoding according to the equation for p_corr from 2017 IEEE Tran paper
+def  p_corr (N, D, dp_hit):
+    dp_rej=0.5
+    var_hit = 0.25*N
+    var_rej=var_hit
+    range_var=10 # number of std to take into account
+    fun = lambda u: (1/(np.sqrt(2*np.pi*var_hit)))*np.exp(-((u-N*(dp_rej-dp_hit) )**2)/(2*(var_hit)))*((norm.cdf((u/np.sqrt(var_rej))))**(D-1) ) # analytical equation to calculate the accuracy  
+
+    acc = integrate.quad(fun, (-range_var)*np.sqrt(var_hit), N*dp_rej+range_var*np.sqrt(var_hit)) # integrate over a range of possible values
+    print("p_corr, N=%s, D=%s, dp_hit=%s, return=%s" % (N, D, dp_hit, acc[0]))
+    return acc[0]
 
 """ <<old version>>>
 	# create arrays of distribution for both
@@ -435,6 +544,11 @@ def compute_theoretical_bundle_error_simple_1(bl):
 	perror_all = 1 - pcorr_all
 	return perror_all
 
+def compute_theoretical_bundle_bit_error_count(sl):
+	# use pentti equation to get single bit error then multiply by bundle length
+	k = 1000  # number of items stored in bundle
+	delta = 0.5 - 0.4 / math.sqrt(k - 0.44)  # from Pentti's paper
+	return delta * sl
 
 def get_storage_lengths(xvals, mtype, sdata):
 	bundle_lengths = []
@@ -456,6 +570,7 @@ def make_plots(plotting_data, xvar):
 	bit_error_counts = plotting_data["bit_error_counts"]
 	bit_error_counts_ebar = plotting_data["bit_error_counts_ebar"]
 	theory_sdm_bit_error_counts = plotting_data["theory_sdm_bit_error_counts"]
+	theory_bundle_bit_error_counts = plotting_data["theory_bundle_bit_error_counts"]
 	mean_dhd = plotting_data["mean_dhd"]
 	stdev_dhd = plotting_data["stdev_dhd"]
 
@@ -466,16 +581,22 @@ def make_plots(plotting_data, xvar):
 		label = "bit_error_counts for %s" % mtype
 		# bit error count is hamming distance to correct item in item memory
 		plt.errorbar(xvals[mtype], bit_error_counts[mtype], yerr=bit_error_counts_ebar[mtype], label="found", fmt="-o")
+		# print("%s xvals: %s" % (mtype, xvals[mtype]))
+		# print("%s be_counts: %s" % (mtype, bit_error_counts[mtype]))	
 		# plt.errorbar(xvals[mtype], mean_dhd[mtype], yerr=stdev_dhd[mtype], label="found", fmt="-o")
 		if mtype == "sdm" and xvar == "pflip":
 			overlap_vals = [55.8, 62.97, 78.8, 92.6, 105.4, 130.5, 149.5, 172.0, 199.1, 227.3, 243.7]
 			plt.errorbar(xvals[mtype], overlap_vals, label="overlap_output", fmt="-o")
-		if theory_sdm_bit_error_counts is not None:
-			plt.errorbar(xvals[mtype], theory_sdm_bit_error_counts, label="theory", fmt="-o")
+		if mtype == "sdm" and theory_sdm_bit_error_counts is not None:
+			plt.errorbar(xvals[mtype], theory_sdm_bit_error_counts, label="sdm theory", fmt="-o")
+		if mtype == "bind" and theory_bundle_bit_error_counts is not None:
+			print ("in make plots: theory_bundle_bit_error_counts=%s" % theory_bundle_bit_error_counts)
+			plt.errorbar(xvals[mtype], theory_bundle_bit_error_counts, label="bundle bit count theory", fmt="-o")
 		plt.title(label)
 		plt.legend(loc='lower right')
 		plt.grid(which='both', axis='both')
-		plt.yticks(np.arange(50.0, 275.0, 25.0))
+		if mtype == "sdm":
+			plt.yticks(np.arange(50.0, 275.0, 25.0))
 		plt.show
 
 
@@ -484,7 +605,8 @@ def make_plots(plotting_data, xvar):
 	plt.yscale('log')
 	for mtype in xvals:
 		label = "superposition vector" if mtype == "bind" else "SDM"
-		plt.errorbar(xvals[mtype], yvals[mtype], yerr=ebar[mtype], label=label, fmt="-o")
+		yerr = None # ebar[mtype] to include error bars
+		plt.errorbar(xvals[mtype], yvals[mtype], yerr=yerr, label=label, fmt="-o")
 	if theoretical_bundle_err:
 		plt.errorbar(xvals["bind"], theoretical_bundle_err, label="bundle theory", fmt="-o")
 		plt.errorbar(xvals["bind"], theoretical_sdm_err, label="sdm theory", fmt="-o")
