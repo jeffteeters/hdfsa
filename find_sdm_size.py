@@ -54,13 +54,13 @@ def next_m(cur_m, cur_n, step, k, per, codebook_length):
 	return (m, n, size)
 
 
-def find_optimal_sdm(k, per, codebook_length):
+def find_optimal_sdm_2d_search(k, per, codebook_length):
 	# Find size (# rows and columns) of sdm needed to store k items with final error (perf)
 	# per is probability of at least one error when recalling all items
 	# This makes an estimate of rows and columns and finds the minimum size sdm with
 	# the specified error rate
 
-	m_1 = int(k/4)  # a guess for current m (number of rows)
+	m_1 = k  # a guess for current m (number of rows)
 	n_1, size_1 = columns_and_size(m_1, k, per, codebook_length)
 	m_2, n_2, size_2 = next_m(m_1, n_1, +1, k, per, codebook_length)
 	if size_1 < size_2:
@@ -71,8 +71,8 @@ def find_optimal_sdm(k, per, codebook_length):
 		cur_m, cur_n, cur_size = m_1, n_1, size_1
 		tst_m, tst_n, tst_size = m_2, n_2, size_2
 		step = 1
-	print("cur_m=%s, cur_n=%s, cur_size=%s" % (cur_m, cur_n, cur_size))
-	print("tst_m=%s, tst_n=%s, tst_size=%s, step=%s" % (tst_m, tst_n, tst_size, step))
+	# print("cur_m=%s, cur_n=%s, cur_size=%s" % (cur_m, cur_n, cur_size))
+	# print("tst_m=%s, tst_n=%s, tst_size=%s, step=%s" % (tst_m, tst_n, tst_size, step))
 	while cur_size > tst_size:
 		cur_size = tst_size
 		cur_m = tst_m
@@ -81,24 +81,57 @@ def find_optimal_sdm(k, per, codebook_length):
 			# don't go smaller than m == 1
 			break
 		tst_m, tst_n, tst_size = next_m(cur_m, cur_n, step, k, per, codebook_length)
-		print("trying: m=%s, n=%s, size=%s" % (tst_m, tst_n, tst_size))
+		# print("trying: m=%s, n=%s, size=%s" % (tst_m, tst_n, tst_size))
 	return( (cur_m, cur_n, cur_size))
 
 
+def find_optimal_sdm_search_up(k, per, codebook_length):
+	# Find size (# rows and columns) of sdm needed to store k items with final error (perf)
+	# per is probability of at least one error when recalling all items
+	# This makes an estimate of rows and columns and finds the minimum size sdm with
+	# the specified error rate
+
+	cur_m = 1  # a guess for current m (number of rows)
+	cur_n, cur_size = columns_and_size(cur_m, k, per, codebook_length)
+	tst_m, tst_n, tst_size = next_m(cur_m, cur_n, +1, k, per, codebook_length)
+	step = 1
+	while cur_size > tst_size:
+		cur_size = tst_size
+		cur_m = tst_m
+		cur_n = tst_n
+		tst_m, tst_n, tst_size = next_m(cur_m, cur_n, step, k, per, codebook_length)
+		# print("trying: m=%s, n=%s, size=%s" % (tst_m, tst_n, tst_size))
+	return( (cur_m, cur_n, cur_size))
+
+def bunlen(k, per):
+	# calculated bundle length needed to store k items with accuracy per
+	# This calculates the mean distance to the matching vector using
+	# approximation on page 3 in Pentti's paper (referenced above)
+	# then calls dplen to calculate the vector length.
+	return dplen(0.5 - 0.4 / math.sqrt(k - 0.44), per)
+
+def find_sdm_size(k, per, codebook_length):
+	# find superposition vector length (bundle length) and total size for superposition system
+	bl = bunlen(k, per)
+	bsize = bl * codebook_length
+	return (bl, bsize)
 
 def main():
-	kvals = [1000] # [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
-	desired_percent_errors = [0.01] # [10, 1, .1, .01, .001]
-	codebook_lengths = [1000] # [3, 36, 110, 200, 500, 1000]
+	kvals = [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
+	desired_percent_errors = [10, 1, .1, .01, .001]  # 0.01] # 
+	codebook_lengths = [10, 36, 110, 200, 500, 1000, 2000, 3000]
 	for desired_percent_error in desired_percent_errors:
 		for codebook_length in codebook_lengths:
 			for k in kvals:
 				perf = desired_percent_error / 100
 				per = 1 - math.exp(math.log(1-perf)/(k* codebook_length))
-				m, n, size = find_optimal_sdm(k, per, codebook_length)
-				print("for desired_percent_error=%s%%, codebook_length=%s, k=%s found: m=%s, n=%s, size=%s" % (
-					desired_percent_error, codebook_length, k, m, n, size))
-				sys.exit("stopping after one for testing.")
+				m, n, size = find_optimal_sdm_2d_search(k, per, codebook_length)
+				bl, bsize = find_sdm_size(k, per, codebook_length)
+				# print("desired_percent_error=%s%%, codebook_length=%s, k=%s found: m=%s, n=%s, size=%s" % (
+				print("p_error=%s%%, code_book_len D=%s, num_items K=%s found: m=%s, n=%s, size=%s; bl=%s, bsize=%s, sdmsize/bsize=%s" % (
+					desired_percent_error, codebook_length, k, round(m), round(n), round(size),
+					round(bl), round(bsize), size/bsize))
+				# sys.exit("stopping after one for testing.")
 
 main()
 
