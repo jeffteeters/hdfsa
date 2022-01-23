@@ -13,11 +13,12 @@ import gmpy2
 from gmpy2 import xmpz
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
-import sdm
+import sdm as sd
 from scipy.stats import norm
 import scipy.integrate as integrate
 import scipy
 import capacity_calc_routines as cc
+import find_sdm_size as fs
 
 class Env:
 	# stores environment settings and data arrays
@@ -586,52 +587,88 @@ class Calculator:
 		deltaHam = 0.5 - (scipy.special.binom(K-1, 0.5*(K-1)))/2**K  # Pentti's formula for the expected Hamming distance
 		return deltaHam
 
-	def perform_bundle_recall(self, bundle_length, k, codebook_size):
+
+	def perform_bundle_or_sdm_recall(self, bundle_length, k, codebook_size, sdm_size=None):
+		# recall either using bundle or sdm.  If sdm_size is not null, it is: (m, n, size)
+		# where m=number rows in sdm, n=number of columns in sdm, size is number bytes (can be ignored)
 		# return error_count, total_trials
 		# k is the number of vectors to add to the bundle
 		debug = self.env.pvals["debug"]
+		print("entered perform_bundle_or_sdm_recall(bundle_length=%s, k=%s, codebook_size=%s, sdm_size=%s)" %
+				(bundle_length, k, codebook_size, sdm_size))
+		using_sdm = sdm_size is not None
+		if using_sdm:
+			assert bundle_length == sdm_size[1], "if using sdm, bundle_length must equal number of columns in sdm"
 		bl = bundle_length
 		num_trials = self.env.pvals["num_trials"]
 		if num_trials < 1000:
 			num_trials = 1000
-		faux_base = xmpz(random.getrandbits(codebook_size + bundle_length))
 		fmt = "0%sb" % bl
 		match_hammings = []
 		min_distractor_hammings = []
-		ibase = 0  # index to starting item in base arrays
 		info = {"ntrials":0, "nfail":0}	
 		while info["ntrials"] < num_trials:
 			# create bundle and addresses and data to store
-			bun = sdm.Bundle(bl)
-			addr_base = self.create_binary_matrix(k, bl)
-			data_base = self.create_binary_matrix(k, bl)
+			if using_sdm:
+				# use sdm to store data
+				num_rows, num_cols = sdm_size[0:2]
+				assert bl == num_cols
+				nact = round(fs.fraction_rows_activated(num_rows, k)*num_rows)
+				# print("k=%s, code_book=%s, sdm num_rows=%s, ncols=%s, nact=%s" % (k,
+				# 	codebook_size, num_rows, num_cols, nact))
+				sdm = sd.Sdm(bl, bl, num_rows, nact=nact)
+			else:
+				# use bundle to store data
+				bun = sd.Bundle(bl)
+			base_length = codebook_size + bundle_length - 1
+			addr_base = xmpz(random.getrandbits(base_length))
+			data_base = xmpz(random.getrandbits(base_length))
+			exSeq= np.random.randint(low = 0, high = codebook_size, size =k) # radnom sequence to represent
+			if debug==1:
+				base_length = codebook_size + bundle_length - 1
+				base_fmt = "0%sb" % base_length
+				print("bl=%s, codebook_size=%s, base_length=%s, k=%s" % (bl, codebook_size, base_length, k))
+				print("addr_base=%s" % format(addr_base, base_fmt))
+				print("data_base=%s" % format(data_base, base_fmt))
+				print("exSeq=%s" % exSeq)
+			# data_base = self.create_binary_matrix(k, bl)
 			# store items
 			for i in range(k):
-				addr = addr_base[i]
-				data = data_base[i]
-				if i == 1 and debug:
+				addr = addr_base[i:i+bl]
+				data = data_base[exSeq[i]:exSeq[i]+bl]
+				if debug:  # i == k-1 and 
 					print("storing:")
+					print("exSeq=%s" % exSeq)
+					print("i=%s, exSeq[i]=%s, k=%s" % (i, exSeq[i], k))
 					print("addr=%s" % format(addr, fmt))
 					print("data=%s" % format(data, fmt))
-				bun.bind_store(addr, data)
+				if using_sdm:
+					sdm.store(addr, data)
+				else:
+					bun.bind_store(addr, data)
 			# recall items
-			trace = bun.binarize()
-			if debug:
-				print("bl=%s, trace=%s" % (bl, format(trace, fmt)))
+			if not using_sdm:
+				trace = bun.binarize()
 			for i in range(k):
-				addr = addr_base[i]
-				data = data_base[i]
-				recalled_data = bun.bind_recall(addr)
+				addr = addr_base[i:i+bl]
+				data = data_base[exSeq[i]:exSeq[i]+bl]
+				if using_sdm:
+					recalled_data = sdm.read(addr)
+				else:
+					recalled_data = bun.bind_recall(addr)
 				match_hamming = self.int_hamming(data, recalled_data)
 				match_hammings.append(match_hamming)
 				min_distractor_hamming = bl
 				for did in range(codebook_size):
-					distractor = faux_base[ibase+did:ibase+did+bl]
+					if did == exSeq[i]:
+						continue	# this is the stored item, not a distractor
+					distractor = data_base[did:did+bl]
 					distractor_hamming = self.int_hamming(distractor, recalled_data)
 					if distractor_hamming < min_distractor_hamming:
 						min_distractor_hamming = distractor_hamming
+						min_distractor_hammind_idx = did
 				min_distractor_hammings.append(min_distractor_hamming)
-				if i == 1 and debug:
+				if debug:
 					print("recalling:")
 					print("addr=%s" % format(addr, fmt))
 					print("data=%s" % format(data, fmt))
@@ -641,34 +678,25 @@ class Calculator:
 					import pdb; pdb.set_trace()				
 				info["ntrials"] += 1
 				if min_distractor_hamming <= match_hamming:
-					info["nfail"] += 0.5 if min_distractor_hamming == match_hamming else 1
+					if min_distractor_hamming < match_hamming or min_distractor_hammind_idx < exSeq[i]:
+						# count error if distractor hamming less, or distractor with matching hamming appears first
+						info["nfail"] += 1
+						# 0.5 if min_distractor_hamming == match_hamming else 1
 					# print("found fail: bundle_length=%s, k=%s, codebook_size=%s, info=%s" % (bundle_length,
 					# 	k, codebook_size, info ))
 				if info["ntrials"] >= num_trials:
 					break
 			# ibase += k
+		match_hamming_mean = statistics.mean(match_hammings) / bl
+		info["normalized_hamming"] = match_hamming_mean
 		return info
-		# match_hamming_mean = statistics.mean(match_hammings) / bl
-		# match_hamming_stdev = statistics.stdev(match_hammings) / bl
-		# distractor_hamming_mean = statistics.mean(distractor_hammings) / bl
-		# distractor_hamming_stdev = statistics.stdev(distractor_hammings) / bl
-		# predicted_match_mean = 0.5 - 0.4 / math.sqrt(kvals[ik] - 0.44)
-		# predicted_match_stdev = math.sqrt(predicted_match_mean * (1-predicted_match_mean)/bl)
-		# predicted_distractor_mean = 0.5
-		# predicted_distractor_stdev = math.sqrt(0.5 * (1-0.5)/bl)
-		# predicted_fail_count = self.prob_negative_after_subtract(predicted_distractor_mean,
-		# 	predicted_distractor_stdev, predicted_match_mean, predicted_match_stdev)
-		# predicted_fail_count_stdev = math.sqrt(predicted_fail_count * (1-predicted_fail_count)/ info["ntrials"])
-		# expected_fail_count = self.prob_negative_after_subtract(distractor_hamming_mean,
-		# 	distractor_hamming_stdev, match_hamming_mean, match_hamming_stdev)
-		# info.update({"theoretical_fail_count": predicted_fail_count,
 
 
 	def show_frady_vs_gallant_error(self):
-		kvals = [5, 11, 21, 51, 100, 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
+		kvals = [5, 11, 21, 51, 101,] # 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
 		xvals = range(len(kvals))
-		codebook_sizes = [36,100 ] # , 200, 500, 1000] # [1000]
-		desired_percent_errors = [10, 1] # , .1, .01, .001]
+		codebook_sizes = [36,] #100 ] # , 200, 500, 1000] # [1000]
+		desired_percent_errors = [10, 1, 0.1] # , .1, .01, .001]
 		include_empirical = True
 		for desired_percent_error in desired_percent_errors:
 			for codebook_size in codebook_sizes:
@@ -676,41 +704,69 @@ class Calculator:
 				sim_error = []
 				emp_error = []
 				bundle_lengths = []
+				sdm_dimensions = []
+				sdm_error = []
+				sdm_delta_found = []
+				sdm_delta_predicted = []
 				for k in kvals:
 					perf = desired_percent_error / 100
-					# per_exact = 1 - math.exp(math.log(1-perf)/(k*(codebook_size-1))) # per_exact
-					# per_exact = 1 - math.exp(math.log(1-perf)/((k*codebook_size))) # per_exact
+					# per_all = 1 - math.exp(math.log(1-perf)/(k*(codebook_size-1))) # per_exact
 					# delta = self.expectedHamming(k)  # fails when k is large
 					delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
-					per_test = 1 - math.exp(math.log(1-perf)/(codebook_size))
-					bundle_length = self.dplen(delta, per_test)
-					# bundle_length = self.bunlen(k, per_exact)
-					# bundle_length = self.dplen(delta, per_exact)
-					# print("k=%s, delta=%s, per=%s, bundle_length=%s" % (k, delta, per_test, bundle_length))
-					# import pdb; pdb.set_trace()
-					# bundle_length = self.bunlenf(k, perf, codebook_size)
+					per1 = 1 - math.exp(math.log(1-perf)/(codebook_size - 1))  # error when recalling one
+					bundle_length = self.dplen(delta, per1)
 					bundle_lengths.append(bundle_length)
+					sdm_size = fs.find_optimal_sdm_2d_search(k, per1, codebook_size)
+					sdm_size = (sdm_size[0]*2, sdm_size[1]*2, sdm_size[2]*4)  # experiment increasing sdm size
+					sdm_nrows = sdm_size[0]
+					sdm_dimensions.append(sdm_size)  # ((m, n, size))
 					# 
 					frady_pcorrect1 = self.p_corr(bundle_length, codebook_size, delta)
 					frady_pcorrect_all = frady_pcorrect1 # ** k
 					frady_error.append((1-frady_pcorrect_all)*100.0)  # convert to percent error
 					# frady_error.append((1-frady_pcorrect1)*100.0)
 					if include_empirical:
-						info = self.perform_bundle_recall(bundle_length, k, codebook_size) # returns: {"ntrials":0, "nfail":0}
+						# recall from SDM
+						sdm_info = self.perform_bundle_or_sdm_recall(sdm_size[1], k, codebook_size, sdm_size=sdm_size)
+						sdm_error.append(sdm_info["nfail"] * 100.0 / (sdm_info["ntrials"]))
+						sdm_delta_found.append(sdm_info["normalized_hamming"])
+						sdm_delta_predicted.append(fs.single_bit_error_rate(sdm_nrows, k))
+						info = self.perform_bundle_or_sdm_recall(bundle_length, k, codebook_size) # returns: {"ntrials":0, "nfail":0}
 						sim_error.append(info["nfail"] * 100.0 / (info["ntrials"]))
 						emp_error.append((1-cc.AccuracyEmpirical(bundle_length,codebook_size,k)[0]) * 100.0)
-						print("Desired_percent_error=%s, codebook_size=%s, k=%s: info=%s, frady_error=%s, sim_error=%s, AccEmp=%s" % (
-					 		desired_percent_error, codebook_size, k, info, frady_error[-1], sim_error[-1], emp_error[-1]))
-				title = "Frady error when desired error=%s%% codebook size=%s" % (desired_percent_error, codebook_size)
+						print("Desired_percent_error=%s, codebook_size=%s, k=%s: info=%s, sdm_info=%s, "
+							"frady_error=%s, sim_error=%s, sdm_error=%s, AccEmp=%s" % (
+					 		desired_percent_error, codebook_size, k, info, sdm_info, frady_error[-1], sim_error[-1],
+					 		sdm_error[-1], emp_error[-1]))
+				title = "Found error when desired error=%s%% codebook size=%s" % (desired_percent_error, codebook_size)
 				xaxis_labels = ["%s/%s" % (kvals[i], bundle_lengths[i]) for i in range(len(kvals))]
 				fig = Figure(title=title, xvals=xvals, grid=True,
 					xlabel="Num items / bundle length", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
 					legend_location="upper right",
 					yvals=frady_error, ebar=None, legend="frady error", logyscale=False)
 				if include_empirical:
-					fig.add_line(sim_error, legend="Simulation")
+					print("sdm_dimensions=%s" % sdm_dimensions)
+					fig.add_line(sim_error, legend="bundle simulation")
 					fig.add_line(emp_error, legend="AccuracyEmpirical")
+					fig.add_line(sdm_error, legend="sdm simulation")
 				self.figures.append(fig)
+				if include_empirical:
+					title = "sdm delta found vs predicted for desired error %s%%" % desired_percent_error
+					xaxis_labels = ["%s/(%s, %s)" % (kvals[i], sdm_dimensions[i][0], sdm_dimensions[i][1]) 
+						for i in range(len(kvals))]
+					xlabel = "Num items / sdm (nrows, cols)"
+					fig = Figure(title=title, xvals=xvals, grid=True,
+						xlabel=xlabel, ylabel="single bit error", xaxis_labels=xaxis_labels,
+						legend_location="upper right",
+						yvals=sdm_delta_found, ebar=None, legend="found", logyscale=False)
+					fig.add_line(sdm_delta_predicted, legend="predicted")
+					self.figures.append(fig)
+					print("===============")
+					print(title)
+					print("%s == %s" % (xlabel, xaxis_labels))
+					print("found: %s" % sdm_delta_found)
+					print("predicted: %s" % sdm_delta_predicted)
+
 
 def main():
 	env = Env()

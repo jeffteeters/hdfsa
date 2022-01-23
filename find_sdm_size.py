@@ -11,18 +11,23 @@ def system_size(m, n, codebook_length):
 	item_memory_size = codebook_length * n / 8
 	return sdm_size + item_memory_size
 
+def fraction_rows_activated(m, k):
+	# compute optimal fraction rows to activate in sdm
+	# m is number rows, k is number items stored in sdm
+	return 1.0 / ((2*m*k)**(1/3))
+
 def single_bit_error_rate(m, k):
 	# m - number of rows, k - number of items stored
-	p = 1.0 / ((2*m*k)**(1/3))  # optimized activation count for sdm
+	p = fraction_rows_activated(m, k)  # optimized activation count for sdm
 	mean = p * m
 	std = math.sqrt(p*m*(1. + p*k + (1. + p*p*m)))
-	delta = norm.cdf(0, loc=-mean, scale=std)
+	delta = norm.cdf(0, loc=mean, scale=std)
 	return delta
 
 def dplen(delta, per):
 	# calculate vector length requred to store bundle at per accuracy
 	# delta - mean of match distribution (single bit error rate, 0< delta < 0.5)
-	# per - desired probability of error on recall (e.g. 0.000001)
+	# per - desired probability of error on recall (e.g. 0.01)
 	n = (-2*(-0.25 - delta + delta**2)*special.erfinv(-1 + 2*per)**2)/(0.5 - delta)**2
 	return n # round(n)
 
@@ -82,7 +87,7 @@ def find_optimal_sdm_2d_search(k, per, codebook_length):
 			break
 		tst_m, tst_n, tst_size = next_m(cur_m, cur_n, step, k, per, codebook_length)
 		# print("trying: m=%s, n=%s, size=%s" % (tst_m, tst_n, tst_size))
-	return( (cur_m, cur_n, cur_size))
+	return( (round(cur_m), round(cur_n), round(cur_size)))
 
 
 def find_optimal_sdm_search_up(k, per, codebook_length):
@@ -118,7 +123,7 @@ def find_sdm_size(k, per, codebook_length):
 
 def main():
 	kvals = [5, 10, 20, 50, 100, 250, 500, 750, 1000, 2000, 3000]
-	desired_percent_errors = [10, 1, .1, .01, .001]  # 0.01] # 
+	desired_percent_errors = [0.01] # [10, 1, .1, .01, .001]  # 0.01] # 
 	codebook_lengths = [10, 36, 110, 200, 500, 1000, 2000, 3000]
 	for desired_percent_error in desired_percent_errors:
 		for codebook_length in codebook_lengths:
@@ -133,6 +138,7 @@ def main():
 					round(bl), round(bsize), size/bsize))
 				# sys.exit("stopping after one for testing.")
 
-main()
 
-
+if __name__ == "__main__":
+	# test sdm and bundle
+	main()

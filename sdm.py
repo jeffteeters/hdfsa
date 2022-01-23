@@ -19,7 +19,7 @@ import gmpy2
 
 class Sdm:
 	# implements a sparse distributed memory
-	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, noise_percent=0,
+	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=59, noise_percent=0,
 		sdm_address_method=0, debug=False):
 		# nact - number of active addresses used (top matches) for reading or writing
 		self.address_length = address_length
@@ -146,6 +146,7 @@ class Sdm:
 		else:
 			print("sdm test failed.")
 
+
 class Bundle:
 	# bundle in hd vector
 
@@ -216,6 +217,6 @@ class Bundle:
 
 
 if __name__ == "__main__":
-    # test sdm and bundle
-    Sdm.test()
-    Bundle.test()
+	# test sdm and bundle
+	Sdm.test()
+	Bundle.test()
