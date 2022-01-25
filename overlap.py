@@ -62,6 +62,83 @@ class Env:
 			msg += "%s %s: %s\n" % (p["flag"], p["name"], self.pvals[p["name"]])
 		return msg
 
+
+def sdm_delta_empirical(num_rows, num_items_stored, activation_count, num_trials=1000):
+	# emperically compute sdm single bit error due to overlap in rows activated
+	trial_count = 0
+	error_count = 0
+	while trial_count < num_trials:
+		# create new sdm counters
+		sdm_counters = np.zeros(num_rows, dtype=np.int32)
+		item_values = np.random.randint(0, high=2, size=num_items_stored, dtype=np.int8)
+		item_rows = np.empty((num_items_stored, activation_count), dtype=np.int32)
+		for i in range(num_items_stored):
+			item_rows[i,:] = np.random.choice(num_rows, activation_count, replace=False)
+		# store items in sdm counters
+		for i in range(num_items_stored):
+			sdm_counters[item_rows[i,:]] += 1 if item_values[i] == 1 else -1
+		# recall values
+		recalled_values = np.empty(num_items_stored, dtype=np.int8)
+		for i in range(num_items_stored):
+			csum = np.sum(sdm_counters[item_rows[i,:]])
+			recalled_values[i] = 1 if csum >= 0 else 0
+		num_failed = np.count_nonzero( recalled_values != item_values)
+		error_count += num_failed
+		trial_count += num_items_stored
+	return error_count / trial_count
+
+
+def fraction_rows_activated(m, k):
+	# compute optimal fraction rows to activate in sdm
+	# m is number rows, k is number items stored in sdm
+	return 1.0 / ((2*m*k)**(1/3))
+
+def single_bit_error_rate(m, k):
+	# m - number of rows, k - number of items stored
+	p = fraction_rows_activated(m, k)  # optimized activation count for sdm
+	mean = p * m
+	std = math.sqrt(p*m*(1. + p*k + (1. + p*p*m)))
+	delta = norm.cdf(0, loc=mean, scale=std)
+	nact = round(mean)
+	return (delta, nact)
+
+def sdm_delta_analytical(num_rows, num_items_stored, activation_count=None):
+	delta, nact = single_bit_error_rate(num_rows, num_items_stored)
+	if activation_count is not None:
+		assert nact == activation_count
+	return (delta, nact)
+
+
+# class SDM_overlap():
+# 	# emperically compute sdm single bit error due to overlap in rows activated
+
+
+# 	def __init__(self, num_rows, num_items_stored, activation_count, num_trials):
+# 		self.num_rows = num_rows
+# 		self.num_items_stored = num_items_stored
+# 		self.activation_count = activation_count
+# 		self.num_trials = num_trials
+# 		self.trial_count = 0
+# 		self.error_count = 0
+
+# 	def get_delta_empirical(num_rows, num_items_stored, activation_count, num_trials)
+# 		self.perform_trials()
+# 		return
+# 		self.pvals = pvals
+# 		self.sdm_counters = np.zeros(self.pvals["num_rows"], dtype=np.int32)
+# 		# item values are single bit, 0 or 1
+# 		self.item_values = np.random.randint(0, high=2, size=pvals["num_states"], dtype=np.int8)
+# 		self.item_rows = np.empty((pvals["num_states"], pvals["activation_count"]), dtype=np.int32)
+# 		for i in range(pvals["num_states"]):
+# 			self.item_rows[i,:] = np.random.choice(pvals["num_rows"], size=pvals["activation_count"], replace=False)
+# 		if self.pvals["debug"]:
+# 			print("item_values\n%s" % self.item_values)
+# 			print("item_rows\n%s" % self.item_rows)
+# 		self.save_items()
+# 		self.add_noise()
+# 		self.recall_items()
+
+
 class SDM_tester():
 	# test storing and recalling items from SDM
 
@@ -96,6 +173,7 @@ class SDM_tester():
 			return
 		indicies = np.random.choice(self.pvals["num_rows"], size=self.number_to_flip, replace=False)
 		self.sdm_counters[indicies] *= -1
+		self.flipped_counters = indicies
 
 	def recall_items(self):
 		recalled_values = np.empty(self.pvals["num_states"], dtype=np.int8)
@@ -256,5 +334,17 @@ def main():
 	# hc.show_distributions()
 	t = SDM_tester(env.pvals)
 
+def testde():
+	tvals = [(15, 35, 2), (100, 250, 3)]
+	print("rows\titems\tnact\tnagues\td_found\td_pred")
+	for tv in tvals:
+		num_rows, num_items_stored, activation_count = tv
+		delta_analytical, nact = sdm_delta_analytical(num_rows, num_items_stored, None)
+		delta = sdm_delta_empirical(num_rows, num_items_stored, nact)
 
-main()
+		print("%s\t%s\t%s\t%s\t%s\t%s" % (num_rows, num_items_stored, nact, activation_count, delta, delta_analytical))
+
+if __name__ == "__main__":
+	# test sdm and bundle
+	testde()
+	# main()

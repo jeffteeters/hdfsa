@@ -591,7 +591,7 @@ class Calculator:
 
 
 	def perform_bundle_or_sdm_recall(self, bundle_length, k, codebook_size, sdm_size=None):
-		# recall either using bundle or sdm.  If sdm_size is not null, it is: (m, n, size)
+		# recall either using bundle or sdm.  If sdm_size is not null, it is: (m, n, nact, size)
 		# where m=number rows in sdm, n=number of columns in sdm, size is number bytes (can be ignored)
 		# return error_count, total_trials
 		# k is the number of vectors to add to the bundle
@@ -614,9 +614,9 @@ class Calculator:
 			# create bundle and addresses and data to store
 			if using_sdm:
 				# use sdm to store data
-				num_rows, num_cols = sdm_size[0:2]
+				num_rows, num_cols, nact = sdm_size[0:3]
 				assert bl == num_cols
-				nact = round(fs.fraction_rows_activated(num_rows, k)*num_rows)
+				# nact = round(fs.fraction_rows_activated(num_rows, k)*num_rows)
 				if info["ntrials"] == 0:
 					# display activation count
 					print("k=%s, code_book=%s, sdm num_rows=%s, ncols=%s, nact=%s" % (k,
@@ -704,8 +704,8 @@ class Calculator:
 	def show_frady_vs_gallant_error(self):
 		kvals = [5, 11, 21, 51, 101, 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
 		xvals = range(len(kvals))
-		codebook_sizes = [36,] #100 ] # , 200, 500, 1000] # [1000]
-		desired_percent_errors = [10, 1, 0.1] # , .1, .01, .001]
+		codebook_sizes = [36, 100 ] # , 200, 500, 1000] # [1000]
+		desired_percent_errors = [10,  1, 0.1] # , .1, .01, .001]
 		include_empirical = True
 		for desired_percent_error in desired_percent_errors:
 			for codebook_size in codebook_sizes:
@@ -754,7 +754,7 @@ class Calculator:
 						sdm_info = self.perform_bundle_or_sdm_recall(sdm_size[1], k, codebook_size, sdm_size=sdm_size)
 						fi["sdm_error"].append(sdm_info["nfail"] * 100.0 / (sdm_info["ntrials"]))
 						fi["sdm_delta_found"].append(sdm_info["normalized_hamming"])
-						fi["sdm_delta_predicted"].append(fs.single_bit_error_rate(sdm_nrows, k))
+						fi["sdm_delta_predicted"].append(fs.single_bit_error_rate(sdm_nrows, k)[0])
 						fi["sdm_match_hamming_mean"].append(sdm_info["match_hamming_mean"])
 						fi["sdm_distractor_hamming_mean"].append(sdm_info["distractor_hamming_mean"])
 						fi["sdm_match_hamming_stdev"].append(sdm_info["match_hamming_stdev"])
