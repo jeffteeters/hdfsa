@@ -19,7 +19,7 @@ import gmpy2
 
 class Sdm:
 	# implements a sparse distributed memory
-	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=59, noise_percent=0,
+	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, noise_percent=0,
 		sdm_address_method=0, debug=False):
 		# nact - number of active addresses used (top matches) for reading or writing
 		self.address_length = address_length
@@ -45,29 +45,38 @@ class Sdm:
 			self.hits[i] += 1
 		if self.debug:
 			print("store\n addr=%s\n data=%s" % (format(address, self.fmt), format(data, self.fmt)))
-		self.save_stored(address, data, action="store")
+		# self.save_stored(address, data, action="store")
 
+	def bind_store(self, addr, data):
+		# store bundle addr and data.  This done to ensure that vector being stored is unique
+		# reason is if multiple vectors are stored, even at different addresses, they can
+		# interfere with each other in the counters and reduce recall performance
+		self.store(addr, addr^data)
 
-	def save_stored(self, address, data, action):
-		assert action in ("store", "read")
-		if address not in self.stored:
-			if action == "read":
-				print("attempt to read value that is not stored")
-				return
-			self.stored[address] = [data, 1, 0]
-			return
-		if action == "store":
-			print("storing multiple times at same address")
-			return
-		# reading at address
-		self.stored[address][2] += 1
+	def bind_recall(self, addr):
+		# recall value at address addr and unbind it (xor) with addr (reverse of bind_store)
+		return self.read(addr) ^ addr
 
-	def show_stored(self):
-		not_read_count = 0
-		for b in self.stored.keys():
-			if self.stored[b][2] == 0:
-				not_read_count += 1
-		print("Numer of items stored = %s, not_read_count=%s" % (len(self.stored), not_read_count))
+	# def save_stored(self, address, data, action):
+	# 	assert action in ("store", "read")
+	# 	if address not in self.stored:
+	# 		if action == "read":
+	# 			print("attempt to read value that is not stored")
+	# 			return
+	# 		self.stored[address] = [data, 1, 0]
+	# 		return
+	# 	if action == "store":
+	# 		print("storing multiple times at same address")
+	# 		return
+	# 	# reading at address
+	# 	self.stored[address][2] += 1
+
+	# def show_stored(self):
+	# 	not_read_count = 0
+	# 	for b in self.stored.keys():
+	# 		if self.stored[b][2] == 0:
+	# 			not_read_count += 1
+	# 	print("Numer of items stored = %s, not_read_count=%s" % (len(self.stored), not_read_count))
 
 
 	def add_noise(self):

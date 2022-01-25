@@ -617,8 +617,10 @@ class Calculator:
 				num_rows, num_cols = sdm_size[0:2]
 				assert bl == num_cols
 				nact = round(fs.fraction_rows_activated(num_rows, k)*num_rows)
-				# print("k=%s, code_book=%s, sdm num_rows=%s, ncols=%s, nact=%s" % (k,
-				# 	codebook_size, num_rows, num_cols, nact))
+				if info["ntrials"] == 0:
+					# display activation count
+					print("k=%s, code_book=%s, sdm num_rows=%s, ncols=%s, nact=%s" % (k,
+						codebook_size, num_rows, num_cols, nact))
 				sdm = sd.Sdm(bl, bl, num_rows, nact=nact)
 			else:
 				# use bundle to store data
@@ -646,7 +648,7 @@ class Calculator:
 					print("addr=%s" % format(addr, fmt))
 					print("data=%s" % format(data, fmt))
 				if using_sdm:
-					sdm.store(addr, data)
+					sdm.bind_store(addr, data)
 				else:
 					bun.bind_store(addr, data)
 			# recall items
@@ -656,7 +658,7 @@ class Calculator:
 				addr = addr_base[i:i+bl]
 				data = data_base[exSeq[i]:exSeq[i]+bl]
 				if using_sdm:
-					recalled_data = sdm.read(addr)
+					recalled_data = sdm.bind_recall(addr)
 				else:
 					recalled_data = bun.bind_recall(addr)
 				match_hamming = self.int_hamming(data, recalled_data)
@@ -700,7 +702,7 @@ class Calculator:
 
 
 	def show_frady_vs_gallant_error(self):
-		kvals = [5, 11, 21, 51, 101,] # 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
+		kvals = [5, 11, 21, 51, 101, 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
 		xvals = range(len(kvals))
 		codebook_sizes = [36,] #100 ] # , 200, 500, 1000] # [1000]
 		desired_percent_errors = [10, 1, 0.1] # , .1, .01, .001]
@@ -757,8 +759,13 @@ class Calculator:
 						fi["sdm_distractor_hamming_mean"].append(sdm_info["distractor_hamming_mean"])
 						fi["sdm_match_hamming_stdev"].append(sdm_info["match_hamming_stdev"])
 						fi["sdm_distractor_hamming_stdev"].append(sdm_info["distractor_hamming_stdev"])
-						info = self.perform_bundle_or_sdm_recall(bundle_length, k, codebook_size) # returns: {"ntrials":0, "nfail":0}
-						fi["sim_error"].append(info["nfail"] * 100.0 / (info["ntrials"]))
+						include_bundle = False
+						if include_bundle:
+							info = self.perform_bundle_or_sdm_recall(bundle_length, k, codebook_size) # returns: {"ntrials":0, "nfail":0}
+							fi["sim_error"].append(info["nfail"] * 100.0 / (info["ntrials"]))
+						else:
+							fi["sim_error"].append(None)  # placeholder
+							info = None
 						fi["emp_error"].append((1-cc.AccuracyEmpirical(bundle_length,codebook_size,k)[0]) * 100.0)
 						print("Desired_percent_error=%s, codebook_size=%s, k=%s: info=%s, sdm_info=%s, "
 							"frady_error=%s, sim_error=%s, sdm_error=%s, AccEmp=%s" % (
@@ -772,7 +779,8 @@ class Calculator:
 					yvals=fi["frady_error"], ebar=None, legend="frady error", logyscale=False)
 				if include_empirical:
 					print("sdm_dimensions=%s" % fi["sdm_dimensions"])
-					fig.add_line(fi["sim_error"], legend="bundle simulation")
+					if include_bundle:
+						fig.add_line(fi["sim_error"], legend="bundle simulation")
 					fig.add_line(fi["emp_error"], legend="AccuracyEmpirical")
 					fig.add_line(fi["sdm_error"], legend="sdm simulation")
 				self.figures.append(fig)
