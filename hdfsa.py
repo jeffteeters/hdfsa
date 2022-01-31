@@ -440,6 +440,11 @@ class Sdm:
 		d = int2iar(data, self.word_length)
 		for i in top_matches:
 			self.data_array[i] += d
+			# check here for magnitude value greater than 128
+			overflow = np.any(np.abs(self.data_array[i] > 127))
+			if overflow:
+				sys.exit("Found overflow in SDM counter")
+				np.clip(self.data_array[i], -127, 127, out=self.data_array[i])
 			self.hits[i] += 1
 		if self.debug:
 			print("store\n addr=%s\n data=%s" % (format(address, self.fmt), format(data, self.fmt)))
