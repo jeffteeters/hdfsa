@@ -96,10 +96,11 @@ def fraction_rows_activated(m, k):
 def single_bit_error_rate(m, k):
 	# m - number of rows, k - number of items stored
 	p = fraction_rows_activated(m, k)  # optimized activation count for sdm
-	mean = p * m
+	nact = round(p * m)
+	mean = nact
+	p = nact/m    # modify p to actual value
 	std = math.sqrt(p*m*(1. + p*k + (1. + p*p*m)))
 	delta = norm.cdf(0, loc=mean, scale=std)
-	nact = round(mean)
 	return (delta, nact)
 
 def sdm_delta_analytical(num_rows, num_items_stored, activation_count=None):
