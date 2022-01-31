@@ -17,13 +17,23 @@ def fraction_rows_activated(m, k):
 	# m is number rows, k is number items stored in sdm
 	return 1.0 / ((2*m*k)**(1/3))
 
-def single_bit_error_rate(m, k):
+def single_bit_error_rate_wrong(m, k):
 	# m - number of rows, k - number of items stored
 	p = fraction_rows_activated(m, k)  # optimized activation count for sdm
 	mean = p * m
 	std = math.sqrt(p*m*(1. + p*k + (1. + p*p*m)))
 	delta = norm.cdf(0, loc=mean, scale=std)
 	nact = round(mean)
+	return (delta, nact)
+
+def single_bit_error_rate(m, k):
+	# m - number of rows, k - number of items stored
+	p = fraction_rows_activated(m, k)  # optimized activation count for sdm
+	nact = round(p * m)
+	mean = nact
+	p = nact/m    # modify p to actual value
+	std = math.sqrt(p*m*(1. + p*k + (1. + p*p*m)))
+	delta = norm.cdf(0, loc=mean, scale=std)
 	return (delta, nact)
 
 def dplen(delta, per):
@@ -38,9 +48,9 @@ def num_columns(m, k, per):
 	# m - number of rows
 	# k - number of items stored
 	delta, nact = single_bit_error_rate(m, k)
-	empirical_delta = sdm_delta_empirical(round(m), round(k), nact)
-	# num_cols = dplen(delta, per)
-	num_cols = dplen(empirical_delta, per)
+	# empirical_delta = sdm_delta_empirical(round(m), round(k), nact)
+	# num_cols = dplen(empirical_delta, per)
+	num_cols = dplen(delta, per)
 	return (num_cols, nact)
 
 def columns_and_size(m, k, per, codebook_length):
