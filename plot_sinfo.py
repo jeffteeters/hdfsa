@@ -97,6 +97,7 @@ def compute_plotting_data(sdata, xvar):
 	mean_dhds = {}
 	stdev_dhds = {}
 	theory_bundle_bit_error_counts = None
+	theoretical_bundle_err = None
 	for mtype in sdata:
 		xvals[mtype] = sorted(list(sdata[mtype].keys()))  # will be sorted storage (or pflips)
 		yvals[mtype] = []
@@ -140,11 +141,15 @@ def compute_plotting_data(sdata, xvar):
 			# pflips = get_storage_lengths(xvals, mtype, sdata)
 			pflips = xvals[mtype]
 			# import pdb; pdb.set_trace()
-			theoretical_bundle_err = None
 			theoretical_sdm_err = None
-			theory_sdm_bit_error_counts = [compute_theoretical_sdm_bit_error_count_from_pflips(pf) for pf in pflips]
+			theory_sdm_bit_error_counts = None #[compute_theoretical_sdm_bit_error_count_from_pflips(pf) for pf in pflips]
+		elif add_theoretical_pflips and mtype == "bind":
+			# get length of bundle
+			xval0 = xvals[mtype][0]  # first xval
+			bl = sdata[mtype][xval0]["recs"][0]["mlen"]  # get length of superposition vector
+			pflips = xvals[mtype]
+			theoretical_bundle_err = [ compute_theoretical_error(bl, mtype, pf) for pf in pflips]
 		else:
-			theoretical_bundle_err = None
 			theoretical_sdm_err = None
 			theory_sdm_bit_error_counts = None
 
@@ -257,14 +262,17 @@ def get_sdm_activation_count(m, k):
 	nact = round( m/((2*m*k)**(1/3)) )
 	return nact
 
-def compute_theoretical_error(sl, mtype):
+def compute_theoretical_error(sl, mtype, pflip=0):
 	# compute theoretical error based on storage length.  if mtype bind (bundle) sl is bundle length (bl)
 	# if mtype is sdm, sl is number of rows in SDM
+	# pflip is the probability (percent) of a bit flip (used for bundle only)
 	k = 1000  # number of items stored in bundle
 	assert mtype in ("sdm", "bind")
 	num_distractors = 99
 	if mtype == "bind":
 		delta = 0.5 - 0.4 / math.sqrt(k - 0.44)  # from Pentti's paper
+		if pflip > 0:
+			delta += (1-2*delta)*pflip/100.0
 		bl = sl
 		print("bundle, bl=%s, delta=%s" % (bl, delta))
 	else:
@@ -593,31 +601,30 @@ def make_plots(plotting_data, xvar):
 			print ("in make plots: theory_bundle_bit_error_counts=%s" % theory_bundle_bit_error_counts)
 			plt.errorbar(xvals[mtype], theory_bundle_bit_error_counts, label="bundle bit count theory", fmt="-o")
 		plt.title(label)
-		plt.legend(loc='lower right')
+		plt.legend(loc='upper left')
 		plt.grid(which='both', axis='both')
 		if mtype == "sdm":
 			plt.yticks(np.arange(50.0, 275.0, 25.0))
 		plt.show
 
-
 	# fig, ax = plt.subplots()
 	fig = plt.figure()
-	plt.yscale('log')
 	for mtype in xvals:
-		label = "superposition vector" if mtype == "bind" else "SDM"
+		label = "Superposition vector" if mtype == "bind" else "SDM"
 		yerr = None # ebar[mtype] to include error bars
 		plt.errorbar(xvals[mtype], yvals[mtype], yerr=yerr, label=label, fmt="-o")
-	if theoretical_bundle_err:
-		plt.errorbar(xvals["bind"], theoretical_bundle_err, label="bundle theory", fmt="-o")
-		plt.errorbar(xvals["bind"], theoretical_sdm_err, label="sdm theory", fmt="-o")
+		if theoretical_bundle_err and mtype == "bind":
+			plt.errorbar(xvals["bind"], theoretical_bundle_err, label="Superposition theory", fmt="-o", linestyle='dashed')
+		if theoretical_sdm_err and mtype == "sdm":
+			plt.errorbar(xvals["bind"], theoretical_sdm_err, label="SDM theory", fmt="-o", linestyle='dashed')
 
 
-	title = "Fraction error vs storage size (bytes)" if xvar == "storage" else "Fraction error vs percent bits flipped" 
+	title = "Fraction error vs storage size (bytes)" if xvar == "storage" else "Fraction error vs percent bits (or counters) flipped" 
 	plt.title(title)
-	xlabel = "Storage (bytes)" if xvar == "storage" else '% bits flipped'
+	xlabel = "Storage (bytes)" if xvar == "storage" else '% bits (or counters) flipped'
 	plt.xlabel(xlabel)
-	if False and xvar == "storage":
-		xaxis_labels = ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "1e6" ]
+	if xvar == "storage":
+		xaxis_labels = ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "10^6" ]
 		plt.xticks(xvals[mtype],xaxis_labels)
 	ylabel = "Fraction error"
 	plt.ylabel(ylabel)
@@ -627,9 +634,16 @@ def make_plots(plotting_data, xvar):
 	# Initialize minor ticks
 	# plt.axes().yaxis.minorticks_on()
 
-	loc = 'upper right' if xvar == "storage" else 'lower right'
+	loc = 'lower left' # if xvar == "storage" else 'lower right'
 	plt.legend(loc=loc)
 	plt.grid()
+
+	# change following to select linear or log plot
+	log_plot = True
+	if log_plot:
+		plt.yscale('log')
+		title += " (log scale)"
+		plt.title(title)
 	plt.show()
 
 def plot_dist(dist, title):
