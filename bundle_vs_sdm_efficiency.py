@@ -21,6 +21,11 @@ def sdm_efficiency(i, r):
     # assume only one bit used, others are not
     return 1 / (9 + i/r)
 
+def sdm_efficiency_bm(i, r, b_m=5, b_c=8):
+    # compute efficiency assuming bm bits in each counter are memory bits, and bc-bm bits are fixed bits
+    m = r  # number rows in sdm memory
+    return  b_m / ( b_c  + i/m + 1) 
+
 def make_mem_plot(scale="linear"):
     assert scale in ("linear", "log")
 
@@ -32,7 +37,7 @@ def make_mem_plot(scale="linear"):
 
     ivals = np.arange(2, 201, 2)
     # rvals = np.arange(2, 2048)
-    rvals = [1, 5, 10, 20, 40, 80, 160, 320, 1280]
+    rvals = [5, 10, 20, 40, 80, 161, 320, 1280]
 
     bun_eff = [bundle_efficiency(i)*100 for i in ivals]
 
@@ -40,7 +45,7 @@ def make_mem_plot(scale="linear"):
     ax1.errorbar(ivals, bun_eff, yerr=None, label='B') # fmt="-k"
 
     for r in rvals:
-        sdm_eff = [sdm_efficiency(i, r)*100 for i in ivals]
+        sdm_eff = [sdm_efficiency_bm(i, r)*100 for i in ivals]
         ax1.errorbar(ivals, sdm_eff, yerr=None, label='m=%s' % r, linewidth=1, fmt="-k",) # linestyle='dashed',
         # plt.errorbar(ivals, sdm_eff, yerr=None, label='r=%s' % r, linewidth=1, fmt="-k",) # linestyle='dashed',  
 
@@ -84,7 +89,7 @@ def make_cal_plot(scale="linear"):
     log_scale = scale == "log"
 
     # sizes used to make capacity plots.  (#kB, bundle_length, sdm_num_rows)
-    cap_sizes = [(100, 7207, 171), (200, 14414, 335), (300, 21622, 509), (400, 28829, 682), (500, 36036, 856),
+    cap_sizes = [(100, 7207, 161), (200, 14414, 335), (300, 21622, 509), (400, 28829, 682), (500, 36036, 856),
         (600, 43243, 1029), (700, 50450, 1203), (800, 57658, 1377), (900, 64865, 1550), (1000, 72072, 1724)]
 
     k = 1000  # number of items saved in memory (bundle or sdm)
