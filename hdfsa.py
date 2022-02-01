@@ -20,6 +20,7 @@ import scipy.stats
 import os.path
 import math
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 byteorder = "big" # sys.byteorder
 
@@ -54,6 +55,8 @@ class Env:
 		  "type":float}, "flag":"n", "required_init":"m", "default":0.0},
 		{ "name":"debug", "kw":{"help":"Debug mode","type":int, "choices":[0, 1]},
 		  "flag":"d", "required_init":"", "default":0},
+		{ "name":"save_sdm_counter_stats", "kw":{"help":"Save sdm counter statistics and show histogram","type":int,
+		  "choices":[0, 1]}, "flag":"u", "required_init":"", "default":0},
 		{ "name":"generate_error_vs_storage_table", "kw":{"help":"Generate table to make plots (error vs storage)","type":int, "choices":[0, 1]},
 		  "flag":"g", "required_init":"", "default":0},
 		{ "name":"generate_error_vs_bitflips_table", "kw":{"help":"Generate table to make plots (error vs bithlips)","type":int, "choices":[0, 1]},
@@ -537,6 +540,61 @@ class Sdm:
 		print("r2 = %s, diff=%s" % (format(r2, fmt), gmpy2.popcount(s2^r2)))
 		print("random distance: %s, %s" % (gmpy2.popcount(sr^s1), gmpy2.popcount(sr^s2)))
 
+class Sdm_counter_usage():
+	# record and plot usage of counters (magnitute).  Used to estimate efficiency
+
+	def __init__(self):
+		self.counter_usage = []  # stores: (size, nrows, stdev)
+
+	def save_size(self, size):
+		# save total size of storage for include in record routine
+		self.size = size
+
+	def record(self, sdm):
+		# record counter usage for sdm
+		# size is number of bytes for sdm
+		self.plot_hist(sdm)
+		mean = np.mean(sdm.data_array)
+		std = np.std(sdm.data_array)
+		nrows = sdm.data_array.shape[0]
+		usage = (self.size, nrows, mean, std)
+		self.counter_usage.append((usage))
+
+	def save_to_file(self, env, file_name="sdm_counter_usage"):
+		fname = get_file_name(file_name)
+		fp = open(fname,'w')
+		fp.write(env.get_settings())
+		fp.write("# following has sdm: (size, nrows, mean, stdev), for sdm counters\n")
+		fp.write(pprint.pformat(self.counter_usage, indent=4))
+		fp.close()
+
+	def plot_hist(self, sdm):
+		# x = np.histogram(sdm.data_array, bins="auto")
+		# the histogram of the data
+		counts = sdm.data_array.flatten()
+		nbins = self.get_nbins(counts)
+		n, bins, patches = plt.hist(counts, nbins, density=True, facecolor='g', alpha=0.75)
+		plt.xlabel('Counter value')
+		plt.ylabel('Probability')
+		size_title = "10^6 bytes" if self.size == 1000000 else "%s kB" % (int(self.size / 1000))
+		plt.title('Histogram of SDM counter values for size %s' % size_title)
+		# plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+		# plt.xlim(40, 160)
+		# plt.ylim(0, 0.03)
+		plt.grid(True)
+		plt.show()
+		sys.exit("done")
+
+	def get_nbins(self, xv):
+		# calculate number of bins to use in histogram for values in xv
+		xv_range = max(xv) - min(xv)
+		if xv_range == 0:
+			nbins = 3
+		else:
+			nbins = int(xv_range) + 1
+		return nbins
+
+
 class Bundle:
 	# bundle in hd vector
 
@@ -638,7 +696,8 @@ class FSA:
 class FSA_store:
 	# abstract class for storing FSA.  Must subclass to implement different storage methods
 
-	def __init__(self, fsa, word_length, debug, pvals):
+	def __init__(self, fsa, word_length, debug, pvals, custor=None):
+		# custor is Sdm_counter_usage object if saving counter_usage (only used for sdm)
 		if word_length == 0:
 			# don't process if wordlength is zero
 			return
@@ -646,6 +705,7 @@ class FSA_store:
 		self.word_length = word_length
 		self.debug = debug
 		self.pvals = pvals
+		self.custor = custor
 		self.fsa.initialize_item_memory(word_length)
 		print("Recall from %s" % self.__class__.__name__)
 		self.initialize()
@@ -811,6 +871,8 @@ class FSA_sdm_store(FSA_store):
 	def finalize_store(self):
 		if self.pvals["noise_percent"] > 0:
 			self.sdm.add_noise()
+		if self.custor is not None:
+			self.custor.record(self.sdm)  # save counter statistics
 		# self.sdm.show_hits()
 
 	def recall_transition(self, state_v, action_v):
@@ -916,6 +978,7 @@ class Table_Generator_error_vs_storage():
 			"mean_bit_error_count\tstdev_bit_error_count\tmean_dhd\tstdev_dhd\ttotal_storage_required\n")
 		print("storage\tbind_len\tsdm_len\tparameters")
 		sid = 0
+		scu = Sdm_counter_usage() if self.env.pvals["save_sdm_counter_stats"] == 1 else None
 		for storage in range(self.storage_min, self.storage_max+1, self.storage_step):
 			sid += 1
 			tid = 0
@@ -932,10 +995,18 @@ class Table_Generator_error_vs_storage():
 				fbs = FSA_bind_store(self.fsa, bind_l, self.pvals["debug"], self.pvals)
 				rid = "%s.%s" % (sid, tid)
 				fp.write(self.format_info(rid, storage, "bind", bind_l, fbs.sinfo))
-				fss = FSA_sdm_store(self.fsa, self.pvals["sdm_word_length"], self.pvals["debug"], self.pvals)
+				if tid == 1 and scu is not None:
+					# save size and sdm counter_usage
+					scu.save_size(storage)
+					custor = scu
+				else:
+					custor = None
+				fss = FSA_sdm_store(self.fsa, self.pvals["sdm_word_length"], self.pvals["debug"], self.pvals, custor)
 				fp.write(self.format_info(rid, storage, "sdm", sdm_num_rows, fss.sinfo))
 				# fp.flush()
 		fp.close()
+		if scu is not None:
+			scu.save_to_file(self.env)  # save sdm counter usage to file
 
 	def bind_len(self, storage):
 		num_items_needing_memory = self.num_items if self.pvals["exclude_item_memory"] == 0 else 0
