@@ -614,12 +614,13 @@ def make_plots(plotting_data, xvar):
 		yerr = None # ebar[mtype] to include error bars
 		plt.errorbar(xvals[mtype], yvals[mtype], yerr=yerr, label=label, fmt="-o")
 		if theoretical_bundle_err and mtype == "bind":
-			plt.errorbar(xvals["bind"], theoretical_bundle_err, label="Superposition theory", fmt="-o", linestyle='dashed')
+			plt.errorbar(xvals["bind"], theoretical_bundle_err, label="Superposition theory", fmt="-",
+				linestyle=':', linewidth=6, alpha=0.7)
 		if theoretical_sdm_err and mtype == "sdm":
 			plt.errorbar(xvals["bind"], theoretical_sdm_err, label="SDM theory", fmt="-o", linestyle='dashed')
 
 
-	title = "Fraction error vs storage size (bytes)" if xvar == "storage" else "Fraction error vs percent bits (or counters) flipped" 
+	title = "Fraction error vs. storage size (bytes)" if xvar == "storage" else "Fraction error vs. percent bits (or counters) flipped" 
 	plt.title(title)
 	xlabel = "Storage (bytes)" if xvar == "storage" else '% bits (or counters) flipped'
 	plt.xlabel(xlabel)
@@ -634,7 +635,7 @@ def make_plots(plotting_data, xvar):
 	# Initialize minor ticks
 	# plt.axes().yaxis.minorticks_on()
 
-	loc = 'lower left' # if xvar == "storage" else 'lower right'
+	loc = 'lower right' # if xvar == "storage" else 'lower right'
 	plt.legend(loc=loc)
 	plt.grid()
 
