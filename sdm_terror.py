@@ -1,5 +1,11 @@
 # show sdm theoretical error
 
+# displays empirical error found by hdfsa.py and also plots theoretical error using equation
+# in Frady Sequence paper.  The theoretical error is not matching because this script didn't
+# use the python Fractions module to compute the error exactly.
+
+# this script is probably not needed any more.  Saving it, just in case it's useful later.
+
 import statistics
 
 from scipy.stats import norm
