@@ -114,7 +114,7 @@ class Env:
 
 	def get_settings(self):
 		msg = "Started at: %s\n" % datetime.now()
-		msg += "Comment: after fixing sdm size to include address memory"
+		# msg += "Comment: after fixing sdm size to include address memory"
 		msg += "Arguments:\n"
 		msg += " ".join(sys.argv)
 		msg += "\nSettings:\n"
@@ -583,7 +583,6 @@ class Sdm_counter_usage():
 		# plt.ylim(0, 0.03)
 		plt.grid(True)
 		plt.show()
-		sys.exit("done")
 
 	def get_nbins(self, xv):
 		# calculate number of bins to use in histogram for values in xv
