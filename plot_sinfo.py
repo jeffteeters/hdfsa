@@ -569,7 +569,7 @@ def get_storage_lengths(xvals, mtype, sdata):
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
-def make_plots(plotting_data, xvar):
+def make_plots(plotting_data, xvar, scale):
 	xvals = plotting_data["xvals"]
 	yvals = plotting_data["yvals"]
 	ebar = plotting_data["ebar"]
@@ -621,7 +621,7 @@ def make_plots(plotting_data, xvar):
 
 
 	title = "Fraction error vs. storage size (bytes)" if xvar == "storage" else "Fraction error vs. percent bits (or counters) flipped" 
-	plt.title(title)
+	# plt.title(title)
 	xlabel = "Storage (bytes)" if xvar == "storage" else '% bits (or counters) flipped'
 	plt.xlabel(xlabel)
 	if xvar == "storage":
@@ -635,16 +635,16 @@ def make_plots(plotting_data, xvar):
 	# Initialize minor ticks
 	# plt.axes().yaxis.minorticks_on()
 
-	loc = 'lower right' # if xvar == "storage" else 'lower right'
-	plt.legend(loc=loc)
-	plt.grid()
-
-	# change following to select linear or log plot
-	log_plot = True
+	log_plot = scale == "log"
 	if log_plot:
 		plt.yscale('log')
 		title += " (log scale)"
-		plt.title(title)
+		loc = 'lower left' if xvar == "storage" else 'lower right'
+	else:
+		loc = 'upper right' if xvar == "storage" else 'upper left'
+	plt.title(title)
+	plt.legend(loc=loc)
+	plt.grid()
 	plt.show()
 
 def plot_dist(dist, title):
@@ -652,23 +652,29 @@ def plot_dist(dist, title):
 	plt.title(title)
 	plt.show()
 
+def display_usage_and_exit():
+	sys.exit("Usage %s <file_name.txt> (linear | log)" % sys.argv[0])
 
 def main():
-	if len(sys.argv) != 2:
-		sys.exit("Usage %s <file_name.txt>" % sys.argv[0])
+	if len(sys.argv) != 3:
+		display_usage_and_exit()
 	file_name = sys.argv[1]
 	assert os.path.isfile(file_name), "file %s not found" % file_name
-	if file_name[0] == "s":
+	basename = os.path.basename(file_name)
+	if basename[0] == "s":
 		# assume 'sdata*.txt' - storage vs error
 		xvar = "storage"
-	elif file_name[0] == "f":
+	elif basename[0] == "f":
 		# assume 'fdata*.txt' - bit flips vs error
 		xvar = "pflip"  # percent flip
 	else:
-		sys.exit("File name first character should be 'f' or 's': found: %s" % file_name[0])
+		sys.exit("File name first character should be 'f' or 's': found: %s" % basename[0])
+	scale = sys.argv[2]
+	if scale not in ("linear", "log"):
+		display_usage_and_exit()
 	sdata = load_data(file_name, xvar)
 	plotting_data = compute_plotting_data(sdata, xvar)
-	make_plots(plotting_data, xvar)
+	make_plots(plotting_data, xvar, scale)
 
 
 main()
