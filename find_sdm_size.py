@@ -26,7 +26,20 @@ def single_bit_error_rate_wrong(m, k):
 	nact = round(mean)
 	return (delta, nact)
 
-def single_bit_error_rate(m, k):
+def single_bit_error_rate_new(m, k):
+	# m - number of rows, k - number of items stored
+	p = fraction_rows_activated(m, k)  # optimized activation count for sdm
+	nact = round(p * m)
+	mean = nact
+	lam = nact**2/m   # from p. 14 of Pentti book chapter paer
+	var = (k -1) * (lam + lam**2) + nact
+	delta = norm.cdf(0, loc=mean, scale=math.sqrt(var))
+	# p = nact/m    # modify p to actual value
+	# std = math.sqrt(p*m*(1. + p*k + (1. + p*p*m)))
+	# delta = norm.cdf(0, loc=mean, scale=std)
+	return (delta, nact)
+
+def single_bit_error_rate_poisson(m, k):
 	# m - number of rows, k - number of items stored
 	p = fraction_rows_activated(m, k)  # optimized activation count for sdm
 	nact = round(p * m)
@@ -34,6 +47,22 @@ def single_bit_error_rate(m, k):
 	p = nact/m    # modify p to actual value
 	std = math.sqrt(p*m*(1. + p*k + (1. + p*p*m)))
 	delta = norm.cdf(0, loc=mean, scale=std)
+	return (delta, nact)
+
+def single_bit_error_rate(m, k):
+	return sber_hypergeometric(m, k)
+
+
+def sber_hypergeometric(m, k):
+	p = fraction_rows_activated(m, k)  # optimized activation count for sdm
+	nact = round(p * m)
+	mean = nact
+	a = nact
+	b = m - nact
+	n = nact
+	var1 = n *(a/m)*(b/m)*((m-n)/(m-1))
+	var = (k -1) * var1 + nact
+	delta = norm.cdf(0, loc=mean, scale=math.sqrt(var))
 	return (delta, nact)
 
 def dplen(delta, per):
@@ -58,7 +87,7 @@ def columns_and_size(m, k, per, codebook_length):
 	size = system_size(m, num_cols, codebook_length)
 	return (num_cols, nact, size)
 
-def next_m(cur_m, cur_n, step, k, per, codebook_length):
+def next_m_orig(cur_m, cur_n, step, k, per, codebook_length):
 	# advance current m in direction step until n (number of columns) changes
 	# return new_m, new_n, new_size
 	m = cur_m
@@ -71,6 +100,23 @@ def next_m(cur_m, cur_n, step, k, per, codebook_length):
 		if count>100:
 			sys.exit("failed to change n in next_m")
 	return (m, n, nact, size)
+
+def next_m(cur_m, cur_n, step, k, per, codebook_length):
+	# advance current m in direction step
+	# return new_m, new_n, new_size
+	m = cur_m + step
+	n, nact, size = columns_and_size(m, k, per, codebook_length)
+	return (m, n, nact, size)
+	# m = cur_m
+	# n = cur_n
+	# count = 0
+	# while n == cur_n:
+	# 	m += step
+	# 	n, nact, size = columns_and_size(m, k, per, codebook_length)
+	# 	count += 1
+	# 	if count>100:
+	# 		sys.exit("failed to change n in next_m")
+	# return (m, n, nact, size)
 
 
 def find_optimal_sdm_2d_search(k, per, codebook_length):
@@ -102,7 +148,14 @@ def find_optimal_sdm_2d_search(k, per, codebook_length):
 			break
 		tst_m, tst_n, tst_nact, tst_size = next_m(cur_m, cur_n, step, k, per, codebook_length)
 		# print("trying: m=%s, n=%s, size=%s" % (tst_m, tst_n, tst_size))
-	return( (round(cur_m), round(cur_n), cur_nact, round(cur_size)))
+	# round number of rows, then get length and nact one more time
+	m = round(cur_m)
+	n, nact = num_columns(m, k, per)
+	n = round(n+0.3)  # make long enough so 80% below per
+	size = system_size(m, n, codebook_length)
+	return ( (m, n, nact, size) )
+	# n, nact, size = columns_and_size(m_1, k, per, codebook_length)
+	# return( (round(cur_m), round(cur_n), cur_nact, round(cur_size)))
 
 
 def find_optimal_sdm_search_up(k, per, codebook_length):
