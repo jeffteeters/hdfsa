@@ -21,6 +21,7 @@ import capacity_calc_routines as cc
 import find_sdm_size as fs
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
+import overlap as ov
 
 class Env:
 	# stores environment settings and data arrays
@@ -40,8 +41,9 @@ class Env:
 		{ "name":"loop_stop", "kw":{"help":"Stop value for loop","type":int},
 		  "flag":"z", "required_init":"", "default":50},
 		{ "name":"values_to_plot", "kw":{"help":"Values to plot.  "
-			"l-loop variable, e-prob error, d-dplen, g-gallant, p-pentti mean, f-frady vs gallant","type":str,
-			"choices":["l", "e", "d", "g", "p", "f"]}, "flag":"p", "required_init":"", "default":"l"},
+			"l-loop variable, e-prob error, d-dplen, g-gallant, p-pentti mean, f-frady vs gallant"
+			", sdm-ber, round_trip","type":str,
+			"choices":["l", "e", "d", "g", "p", "f", "s", "r"]}, "flag":"p", "required_init":"", "default":"l"},
 		{ "name":"show_histograms", "kw":{"help":"Show histograms","type":int,
 			"choices":[0, 1]}, "flag":"H", "default":0},
 		{ "name":"seed", "kw":{"help":"Random number seed","type":int},
@@ -90,7 +92,7 @@ class Figure:
 	def __init__(self, ptype="errorbar", nbins=None,
 			title=None, xvals=None, grid=False, xlabel=None, ylabel=None,
 			xaxis_labels=None, legend_location=None,
-			yvals=None, ebar=None, legend=None, fmt="-o", logyscale=False):
+			yvals=None, ebar=None, legend=None, fmt="-", logyscale=False): #  fmt="0-"
 		assert ptype in ("errorbar", "hist")
 		self.ptype = ptype
 		self.nbins = nbins
@@ -161,8 +163,12 @@ class Calculator:
 			self.test_dplen_function()
 		elif values_to_plot == "p":
 			self.show_petti_mean_function()
+		elif values_to_plot == "s":
+			self.show_sdm_ber()
 		elif values_to_plot == "f":
 			self.show_frady_vs_gallant_error()
+		elif values_to_plot == "r":
+			self.show_round_trip_theory()
 		else:
 			sys.exit("values_to_plot '%s' not implemented" % values_to_plot)
 
@@ -348,6 +354,32 @@ class Calculator:
 		# print("p_corr, N=%s, D=%s, dp_hit=%s, return=%s" % (N, D, dp_hit, acc[0]))
 		return acc[0]
 
+	def p_corr_fraction(self, N, D, dp_hit):
+		# compute analytical accuracy using equation in Frady paper implemented using Fractions
+		wl = N  # word length
+		codebook_length = D
+		probability_single_bit_failure = dp_hit
+		delta = probability_single_bit_failure
+		num_distractors = codebook_length - 1
+		pflip = Fraction(int(delta*100000), 100000)  # probability of bit flip
+		pdist = Fraction(1, 2) # probability of distractor bit matching
+		match_hamming = []
+		distractor_hamming = []
+		for k in range(wl):
+			ncomb = Fraction(math.comb(wl, k))
+			match_hamming.append(ncomb * pflip ** k * (1-pflip) ** (wl-k))
+			distractor_hamming.append(ncomb * pdist ** k * (1-pdist) ** (wl-k))
+		dhg = Fraction(1) # fraction distractor hamming greater than match hamming
+		pcor = Fraction(0)  # probability correct
+		for k in range(wl):
+			dhg -= distractor_hamming[k]
+			pcor += match_hamming[k] * dhg ** num_distractors
+		return float(pcor)
+
+	# error = (float((1 - pcor) * 100))  # convert to percent
+	# return error
+
+
 	def compute_frady_recall_error(self):
 		word_length = self.env.pvals["word_length"]
 		codebook_length = self.env.pvals["num_items"]
@@ -470,7 +502,7 @@ class Calculator:
 				# ibend = num_trials
 				while info["ntrials"] < num_trials:
 					# create bundle and addresses and data to store
-					bun = sdm.Bundle(bl)
+					bun = sd.Bundle(bl)
 					addr_base = self.create_binary_matrix(kvals[ik], bl)
 					data_base = self.create_binary_matrix(kvals[ik], bl)
 					# store items
@@ -498,6 +530,7 @@ class Calculator:
 						recalled_data = bun.bind_recall(addr)
 						hamming_match = self.int_hamming(data, recalled_data)
 						match_hammings.append(hamming_match)
+						assert ibase+i+bl <= num_trials + longest_length
 						distractor = faux_base[ibase+i:ibase+i+bl]
 						hamming_distractor = self.int_hamming(distractor, recalled_data)
 						distractor_hammings.append(hamming_distractor)
@@ -583,18 +616,199 @@ class Calculator:
 			yvals=diff, ebar=None, legend="pentti_approx - exact", logyscale=False)
 		self.figures.append(fig)
 
+	def show_sdm_ber(self):
+		# display bit error rate (delta) for sdm number of rows and k, compare
+		# empirical to theory
+		kvals = [5, 11, 21, 51, ]# 101, 250] # 500, 750, 1000, 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
+		xvals = range(len(kvals))
+		codebook_sizes = [36, 100, 200 ] # , 200, 500, 1000] # [1000]
+		desired_percent_errors = [10,  1, 0.1] # , .1, .01, .001]
+		for desired_percent_error in desired_percent_errors:
+			for codebook_size in codebook_sizes:
+				# found info
+				fi = {"empirical":[],
+					"theory_new":[],
+					"theory_orig":[],
+					"sdm_dimensions":[],
+					"theory_hyp":[],
+				}
+				for k in kvals:
+					perf = desired_percent_error / 100
+					# per_all = 1 - math.exp(math.log(1-perf)/(k*(codebook_size-1))) # per_exact
+					# delta = self.expectedHamming(k)  # fails when k is large
+					delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
+					per1 = 1 - math.exp(math.log(1-perf)/(codebook_size - 1))  # error when recalling one
+					sdm_size = fs.find_optimal_sdm_2d_search(k, per1, codebook_size)
+					num_rows = sdm_size[0]
+					nact = sdm_size[2]
+					fi["empirical"].append(ov.sdm_delta_empirical(num_rows, k, nact))
+					ber_new, nact_new = fs.single_bit_error_rate_new(num_rows, k)
+					assert nact_new == nact
+					fi["theory_new"].append(ber_new)
+					ber_orig, nact_orig = fs.single_bit_error_rate_poisson(num_rows, k)
+					assert nact_orig == nact
+					fi["theory_orig"].append(ber_orig)
+					ber_hyp, nact_hyp = fs.sber_hypergeometric(num_rows, k)
+					assert nact_hyp == nact
+					fi["theory_hyp"].append(ber_hyp)
+					fi["sdm_dimensions"].append(sdm_size[0:3])  # ((m, n, nact, size))
+					# print("Desired_percent_error=%s, codebook_size=%s, k=%s: info=%s, sdm_info=%s, "
+					# 		"frady_error=%s, sim_error=%s, sdm_error=%s, AccEmp=%s" % (
+					#  		desired_percent_error, codebook_size, k, info, sdm_info, fi["frady_error"][-1],
+					#  		fi["sim_error"][-1], fi["sdm_error"][-1], fi["emp_error"][-1]))
+				title = "SDM bit error rate, found vs predicted when desired error=%s%% codebook size=%s" % (desired_percent_error, codebook_size)
+				xaxis_labels = ["%s/%s,%s,%s" % (kvals[i], fi["sdm_dimensions"][i][0],
+					fi["sdm_dimensions"][i][1], fi["sdm_dimensions"][i][2]) for i in range(len(kvals))]
+				# print("xaxis_labels=%s" % xaxis_labels)
+				# print("full_fi:")
+				# pp.pprint(fi)
+				fig = Figure(title=title, xvals=xvals, grid=True,
+					xlabel="Num items / sdm rows, cols, nact", ylabel="single bit error rate", xaxis_labels=xaxis_labels,
+					legend_location="upper right",
+					yvals=fi["empirical"], ebar=None, legend="overlap empirical", logyscale=False)
+				fig.add_line(fi["theory_new"], legend="theory full t")
+				fig.add_line(fi["theory_orig"], legend="theory poisson")
+				fig.add_line(fi["theory_hyp"], legend="theory hypergeometric")
+				self.figures.append(fig)
+				# print("===============")
+				# print(title)
+				# print("%s == %s" % (xlabel, xaxis_labels))
+				# print("found: %s" % fi["sdm_delta_found"])
+				# print("predicted: %s" % fi["sdm_delta_predicted"])
+				# print("full_fi:")
+				# pp.pprint(fi)
+
+	def perror_from_delta(self, delta, width, codebook_size):
+		# width is number of components in vector
+		mc = 0.5 - delta
+		sc = math.sqrt((delta*(1-delta)/width) + (0.5*(1-0.5)/width))
+		perror = norm.cdf(0, loc=mc, scale=sc)
+		pcorr = (1-perror)**(codebook_size - 1)
+		perror = 1 - pcorr
+		return perror
+
+	def show_round_trip_theory(self):
+		# display theoretical recall error for created sdm and bundle
+		# kvals = [5, 11, 21, 51, 101, 250, 500, ] # 750, 1000, 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
+		kvals = range(5, 101) # range(75, 91) # 
+		xvals = kvals # range(len(kvals))
+		codebook_sizes = [27,] # 200 ] # , 200, 500, 1000] # [1000]
+		desired_percent_errors = [1.0] # , .1, .01, .001]
+		for desired_percent_error in desired_percent_errors:
+			for codebook_size in codebook_sizes:
+				# found info
+				fi = {
+					"sdm_dimensions":[],
+					"expected_sdm_delta":[],
+					"sdm_error_predicted":[],
+					"sdm_error_quick_predicted":[],
+					"bundle_length":[],
+					"bundle_error_predicted":[],
+					"bundle_error_quick_predicted":[],
+					"sdm_error_predicted_using_hypd+fraction":[],
+				}
+				for k in kvals:
+					perf = desired_percent_error / 100
+					# per_all = 1 - math.exp(math.log(1-perf)/(k*(codebook_size-1))) # per_exact
+					# delta = self.expectedHamming(k)  # fails when k is large
+					per1 = 1 - math.exp(math.log(1-perf)/(codebook_size - 1))  # error when recalling one
+					delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
+					bundle_length = self.dplen(delta, per1)
+					fi["bundle_length"].append(bundle_length)
+					frady_pcorrect1 = self.p_corr(bundle_length, codebook_size, delta)
+					fi["bundle_error_predicted"].append((1- frady_pcorrect1) * 100.0)
+					fi["bundle_error_quick_predicted"].append(self.perror_from_delta(delta, bundle_length, codebook_size) * 100.0)
+					sdm_size = fs.find_optimal_sdm_2d_search(k, per1, codebook_size)
+					num_rows = sdm_size[0]
+					sdm_ncols = sdm_size[1]
+					nact = sdm_size[2]
+					ber_hyp, nact_hyp = fs.sber_hypergeometric(num_rows, k)
+					assert nact_hyp == nact
+					# fi["sdm_error_predicted"].append((1-self.p_corr(sdm_ncols, codebook_size, ber_hyp)) * 100.0)
+					fi["expected_sdm_delta"].append(ber_hyp)
+					fi["sdm_error_quick_predicted"].append(self.perror_from_delta(ber_hyp, sdm_ncols, codebook_size) * 100.0)
+					fi["sdm_error_predicted_using_hypd+fraction"].append((1-self.p_corr_fraction(sdm_ncols, codebook_size, ber_hyp))*100.0)
+					fi["sdm_dimensions"].append(sdm_size[0:3])  # ((m, n, nact, size))
+					# print("Desired_percent_error=%s, codebook_size=%s, k=%s: info=%s, sdm_info=%s, "
+					# 		"frady_error=%s, sim_error=%s, sdm_error=%s, AccEmp=%s" % (
+					#  		desired_percent_error, codebook_size, k, info, sdm_info, fi["frady_error"][-1],
+					#  		fi["sim_error"][-1], fi["sdm_error"][-1], fi["emp_error"][-1]))
+				title = "Perdicted SDM recall error rate; desired error=%s%% codebook size=%s" % (desired_percent_error, codebook_size)
+				xaxis_labels = ["%s/%s,%s,%s" % (kvals[i], fi["sdm_dimensions"][i][0],
+					fi["sdm_dimensions"][i][1], fi["sdm_dimensions"][i][2]) for i in range(len(kvals))]
+				# print("xaxis_labels=%s" % xaxis_labels)
+				# print("full_fi:")
+				# pp.pprint(fi)
+				fig = Figure(title=title, xvals=xvals, grid=True,
+					xlabel="Num items / sdm rows, cols, nact", ylabel="Predicted recall error rate",
+					xaxis_labels=xaxis_labels,
+					legend_location="upper right", fmt="-",
+					yvals=fi["sdm_error_quick_predicted"], ebar=None, legend="sdm quick prediction", logyscale=False)
+				fig.add_line(fi["sdm_error_predicted_using_hypd+fraction"], legend="sdm_error_predicted_using_hypd+fraction", fmt="-")
+				# fig.add_line(fi["sdm_error_predicted"], legend="predicted sdm recall error rate", fmt="-")
+				fig.add_line(fi["bundle_error_predicted"], legend="bundle Frady prediction")
+				fig.add_line(fi["bundle_error_quick_predicted"], legend="bundle quick prediction")
+				# fig.add_line(fi["theory_orig"], legend="theory poisson")
+				# fig.add_line(fi["theory_hyp"], legend="theory hypergeometric")
+				self.figures.append(fig)
+				# print("===============")
+				# print(title)
+				# print("%s == %s" % (xlabel, xaxis_labels))
+				# print("found: %s" % fi["sdm_delta_found"])
+				# print("predicted: %s" % fi["sdm_delta_predicted"])
+				# print("full_fi:")
+				# pp.pprint(fi)
+
+
 	def expectedHamming(self, K):
 		if (K % 2) == 0: # If even number then break ties so add 1
 			K+=1    
 		deltaHam = 0.5 - (scipy.special.binom(K-1, 0.5*(K-1)))/2**K  # Pentti's formula for the expected Hamming distance
 		return deltaHam
 
+	def perform_word_recall(self, word_length, codebook_size, ber, debug=True):
+		# find error rate for recalling a word with bit error rate ber
+		# this used to verify that analytical pcorr using fractions is working
+		num_trials = self.env.pvals["num_trials"]
+		if num_trials < 1000:
+			num_trials = 1000
+		codebook = [xmpz(random.getrandbits(word_length)) for i in range(codebook_size) ]
+		# info = {"ntrials":0, "nfail":0}
+		trial_count = 0
+		fail_count = 0
+		while trial_count < num_trials:
+			for cb_idx in range(codebook_size):
+				codeword = codebook[cb_idx].copy()
+				# add noise
+				btof = list(np.where(np.random.random_sample((word_length,))<ber)[0])  # bits to flip to add noise
+				for bidx in btof:
+					codeword[bidx] = 1 - codeword[bidx]
+				minimum_hamming_found = self.int_hamming(codeword, codebook[0])
+				idx_min = 0
+				for did in range(1, codebook_size):
+					hamming = self.int_hamming(codeword, codebook[did])
+					if hamming < minimum_hamming_found:
+						minimum_hamming_found = hamming
+						idx_min = did
+				if idx_min != cb_idx:
+					fail_count += 1
+				trial_count += 1
+				if trial_count >= num_trials:
+					break
+		return fail_count / trial_count
 
-	def perform_bundle_or_sdm_recall(self, bundle_length, k, codebook_size, sdm_size=None):
+
+	def perform_bundle_or_sdm_recall(self, bundle_length, k, codebook_size, sdm_size=None,
+			sliced_data=False, hl_selection_method="hamming", show_histogram=False):
 		# recall either using bundle or sdm.  If sdm_size is not null, it is: (m, n, nact, size)
 		# where m=number rows in sdm, n=number of columns in sdm, size is number bytes (can be ignored)
 		# return error_count, total_trials
 		# k is the number of vectors to add to the bundle
+		# sliced_data == True, stores all data in single integer, individual data accessed by slice (saves memory)
+		#    == False, each data separate random integer
+		# sdm_address_method == 1 to use random hard locations for each address, 0 for hamming distance match (normally done)
+		# This used to determin if hamming distance method is causing problems in recall, maybe because some random
+		# addresses are too similar to each other
 		debug = self.env.pvals["debug"]
 		print("entered perform_bundle_or_sdm_recall(bundle_length=%s, k=%s, codebook_size=%s, sdm_size=%s)" %
 				(bundle_length, k, codebook_size, sdm_size))
@@ -621,26 +835,47 @@ class Calculator:
 					# display activation count
 					print("k=%s, code_book=%s, sdm num_rows=%s, ncols=%s, nact=%s" % (k,
 						codebook_size, num_rows, num_cols, nact))
-				sdm = sd.Sdm(bl, bl, num_rows, nact=nact)
+				sdm = sd.Sdm(bl, bl, num_rows, nact=nact, hl_selection_method=hl_selection_method)
 			else:
 				# use bundle to store data
 				bun = sd.Bundle(bl)
-			base_length = codebook_size + bundle_length - 1
-			addr_base = xmpz(random.getrandbits(base_length))
-			data_base = xmpz(random.getrandbits(base_length))
+			addr_base_length = k + bundle_length - 1
+			addr_base = xmpz(random.getrandbits(addr_base_length))
+			data_base_length = codebook_size + bundle_length - 1
+			data_base = xmpz(random.getrandbits(data_base_length)) if sliced_data else [xmpz(random.getrandbits(bl))
+				for i in range(codebook_size)]
+			# data_base = xmpz(random.getrandbits(base_length))
 			exSeq= np.random.randint(low = 0, high = codebook_size, size =k) # radnom sequence to represent
 			if debug==1:
-				base_length = codebook_size + bundle_length - 1
-				base_fmt = "0%sb" % base_length
+				# base_length = codebook_size + bundle_length - 1
+				addr_base_fmt = "0%sb" % addr_base_length
 				print("bl=%s, codebook_size=%s, base_length=%s, k=%s" % (bl, codebook_size, base_length, k))
-				print("addr_base=%s" % format(addr_base, base_fmt))
-				print("data_base=%s" % format(data_base, base_fmt))
+				print("addr_base=%s" % format(addr_base, addr_base_fmt))
+				if sliced_data:
+					data_base_fmt = "0%sb" % data_base_length
+					print("data_base=%s" % format(data_base, data_base_fmt))
+				else:
+					print("codebook=")
+					for i in range(codebook_size):
+						print("%i - %s" %(i, format(data_base[i], fmt)))
 				print("exSeq=%s" % exSeq)
 			# data_base = self.create_binary_matrix(k, bl)
 			# store items
+			# check for multiple addresses the same
+			addr_cache = {}
 			for i in range(k):
+				assert i+bl <= addr_base_length, "i=%s, bl=%s, i+bl=%s not less than addr_base_length=%s" % (
+					i, bl, i+bl, addr_base_length)
 				addr = addr_base[i:i+bl]
-				data = data_base[exSeq[i]:exSeq[i]+bl]
+				if sliced_data:
+					assert exSeq[i] >= 0 and exSeq[i] <= data_base_length and exSeq[i]+bl <= data_base_length, (
+						"data slice out of range: i=%s, exSeq[i]=%s, bl=%s, exSeq[i]+bl=%s, data_base_length=%s, k=%s" % (i,
+							exSeq[i], bl, exSeq[i]+bl, data_base_length, k))
+				if addr not in addr_cache:
+					addr_cache[addr] = [i]
+				else:
+					addr_cache[addr].append(i)
+				data = data_base[exSeq[i]:exSeq[i]+bl] if sliced_data else data_base[exSeq[i]]
 				if debug:  # i == k-1 and 
 					print("storing:")
 					print("exSeq=%s" % exSeq)
@@ -652,11 +887,32 @@ class Calculator:
 				else:
 					bun.bind_store(addr, data)
 			# recall items
+			# check for addresses used more than once
+			for addr, kids in addr_cache.items():
+				multiple_kids = 0
+				if len(kids) > 1:
+					print("%s k-> %s" % (format(addr, fmt), kids))
+					multiple_kids += 1
+			if multiple_kids > 0:
+				sys.exit("found %s addresses with multiple k's" % multiple_kids)
 			if not using_sdm:
 				trace = bun.binarize()
+			else:
+				if False and show_histogram and info["ntrials"] < 2:
+					num_addresses = len(sdm.Hls.row_cache) if hl_selection_method=="random_locations" else "unknown" 
+					print("ntrials=%s, num_addresses=%s" % (info["ntrials"], num_addresses))
+					# for col in range(10):
+					for row in range(num_rows):
+						# show histogram of sdm counters
+						# sdm_counters = sdm.data_array[:,col]
+						sdm_counters = sdm.data_array[row,:]
+						# assert len(sdm_counters) == num_rows
+						ov.plot_hist(sdm_counters, nact, k, row)
+					# if info["ntrials"] > 2000:
+					# 	sys.exit("done for now")
 			for i in range(k):
 				addr = addr_base[i:i+bl]
-				data = data_base[exSeq[i]:exSeq[i]+bl]
+				data = data_base[exSeq[i]:exSeq[i]+bl] if sliced_data else data_base[exSeq[i]]
 				if using_sdm:
 					recalled_data = sdm.bind_recall(addr)
 				else:
@@ -667,7 +923,7 @@ class Calculator:
 				for did in range(codebook_size):
 					if did == exSeq[i]:
 						continue	# this is the stored item, not a distractor
-					distractor = data_base[did:did+bl]
+					distractor = data_base[did:did+bl] if sliced_data else data_base[did]
 					distractor_hamming = self.int_hamming(distractor, recalled_data)
 					distractor_hammings.append(distractor_hamming)
 					if distractor_hamming < min_distractor_hamming:
@@ -692,8 +948,17 @@ class Calculator:
 					# 	k, codebook_size, info ))
 				if info["ntrials"] >= num_trials:
 					break
-			# ibase += k
 		info["match_hamming_mean"] = statistics.mean(match_hammings)
+		if show_histogram:
+			method = "sdm" if using_sdm else "bundle"
+			title = "match hammings for %s, k=%s" % (method, k)
+			nbins = self.get_nbins(match_hammings)
+			fig = Figure(ptype="hist", nbins=nbins,
+						title=title, xvals=match_hammings, grid=True,
+						xlabel="hamming distance", ylabel="count", xaxis_labels=None,
+						legend_location="upper left",
+						yvals=None, ebar=None, legend="match hamming")
+			self.figures.append(fig)
 		info["match_hamming_stdev"] = statistics.stdev(match_hammings)
 		info["distractor_hamming_mean"] = statistics.mean(distractor_hammings)
 		info["distractor_hamming_stdev"] = statistics.stdev(distractor_hammings)
@@ -702,26 +967,37 @@ class Calculator:
 
 
 	def show_frady_vs_gallant_error(self):
-		kvals = [5, 11, 21, 51, 101, 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
+		kvals = range(5, 37) # range(255, 287) # 101) # [5, 11, 21, 51, 101] # [5, 11, 21, 51, 101, 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
 		xvals = range(len(kvals))
-		codebook_sizes = [36, 100 ] # , 200, 500, 1000] # [1000]
-		desired_percent_errors = [10,  1, 0.1] # , .1, .01, .001]
+		codebook_sizes = [27 ] # , 200, 500, 1000] # [1000]
+		desired_percent_errors = [1] # [10,  1, 0.1] # , .1, .01, .001]
 		include_empirical = True
+		show_histogram = self.env.pvals["show_histograms"]
+		num_trials = self.env.pvals["num_trials"]
 		for desired_percent_error in desired_percent_errors:
 			for codebook_size in codebook_sizes:
 				# found info
-				fi = {"frady_error":[], 	# analytical frady equation
+				fi = {"frady_error":[], 	# analytical frady equation, used with bundle
 					"sim_error":[],	# bundle simulation
 					"emp_error":[], # Denis empirical
+					"bundle_error_quick_predicted":[],
 					"bundle_length":[],
 					"sdm_dimensions":[],
+					"sdm_word_recall_error":[],
 					"sdm_error":[],
+					"sdm_error_predicted":[],
+					"sdm_error_predicted_using_delta_found":[],
+					"sdm_error_predicted_using_hypd+fraction":[],
+					"sdm_error_quick_predicted":[],				
 					"sdm_match_hamming_mean":[],
 					"sdm_distractor_hamming_mean":[],
 					"sdm_match_hamming_stdev":[],
 					"sdm_distractor_hamming_stdev":[],
 					"sdm_delta_found":[],
-					"sdm_delta_predicted":[]
+					"sdm_delta_predicted":[],
+					"sdm_delta_empirical":[],  # delta from overleaf
+					"sdm_error_predicted_using_delta_found_fraction":[],
+					"bundle_error_predicted_using_fraction":[],
 				}
 				# frady_error = []
 				# sim_error = []
@@ -731,58 +1007,97 @@ class Calculator:
 				# sdm_error = []
 				# sdm_delta_found = []
 				# sdm_delta_predicted = []
+				include_bundle = False
+				include_sdm_word_recall = True
 				for k in kvals:
 					perf = desired_percent_error / 100
+					per1 = 1 - math.exp(math.log(1-perf)/(codebook_size - 1))  # error when recalling one
 					# per_all = 1 - math.exp(math.log(1-perf)/(k*(codebook_size-1))) # per_exact
 					# delta = self.expectedHamming(k)  # fails when k is large
-					delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
-					per1 = 1 - math.exp(math.log(1-perf)/(codebook_size - 1))  # error when recalling one
-					bundle_length = self.dplen(delta, per1)
-					fi["bundle_length"].append(bundle_length)
+					if include_bundle:
+						delta = 0.5 - 0.4 / math.sqrt(k - 0.44)
+						bundle_length = self.dplen(delta, per1)
+						fi["bundle_length"].append(bundle_length)
+						fi["bundle_error_quick_predicted"].append(self.perror_from_delta(delta, bundle_length, codebook_size) * 100.0)
+						frady_pcorrect1 = self.p_corr(bundle_length, codebook_size, delta)
+						frady_pcorrect_all = frady_pcorrect1 # ** k
+						fi["frady_error"].append((1-frady_pcorrect_all)*100.0)  # convert to percent error
 					# bundle_lengths.append(bundle_length)
 					sdm_size = fs.find_optimal_sdm_2d_search(k, per1, codebook_size)
-					# sdm_size = (sdm_size[0]*2, sdm_size[1]*2, sdm_size[2]*4)  # experiment increasing sdm size
+					# sdm_size = (sdm_size[0]+1, sdm_size[1]+1, sdm_size[2], sdm_size[3])  # experiment increasing sdm size
 					sdm_nrows = sdm_size[0]
+					sdm_ncols = sdm_size[1]
+					sdm_nact = sdm_size[2]
 					fi["sdm_dimensions"].append(sdm_size)  # ((m, n, size))
 					# 
-					frady_pcorrect1 = self.p_corr(bundle_length, codebook_size, delta)
-					frady_pcorrect_all = frady_pcorrect1 # ** k
-					fi["frady_error"].append((1-frady_pcorrect_all)*100.0)  # convert to percent error
+					# fi["bundle_error_predicted_using_fraction"].append(1-self.p_corr_fraction(bundle_length, codebook_size, delta) * 100.0)
 					# frady_error.append((1-frady_pcorrect1)*100.0)
 					if include_empirical:
 						# recall from SDM
-						sdm_info = self.perform_bundle_or_sdm_recall(sdm_size[1], k, codebook_size, sdm_size=sdm_size)
+						sdm_info = self.perform_bundle_or_sdm_recall(sdm_size[1], k, codebook_size, sdm_size=sdm_size,
+							sliced_data=True, hl_selection_method="random_locations", show_histogram=show_histogram)
+						mmean = sdm_info["match_hamming_mean"]
+						mvar = sdm_info["match_hamming_stdev"]**2
+						print("k=k, sdm_match_hamming_mean=%s, sdm_match_hamming_var=%s, percent diff=%s" % (
+							mmean, mvar, abs(mmean- mvar)*100 / (mmean)))
 						fi["sdm_error"].append(sdm_info["nfail"] * 100.0 / (sdm_info["ntrials"]))
 						fi["sdm_delta_found"].append(sdm_info["normalized_hamming"])
-						fi["sdm_delta_predicted"].append(fs.single_bit_error_rate(sdm_nrows, k)[0])
+						delta_predicted = fs.single_bit_error_rate(sdm_nrows, k)[0]
+						fi["sdm_delta_predicted"].append(delta_predicted)
+						# fi["sdm_error_predicted"].append((1-self.p_corr(sdm_ncols, codebook_size, delta_predicted)) * 100.0)
+						fi["sdm_error_quick_predicted"].append(self.perror_from_delta(delta_predicted, sdm_ncols, codebook_size) * 100.0)
+						# fi["sdm_error_predicted_using_delta_found"].append((1-self.p_corr(sdm_ncols, codebook_size, fi["sdm_delta_found"][-1])) * 100.0)
+						fi["sdm_error_predicted_using_delta_found_fraction"].append((1-self.p_corr_fraction(sdm_ncols, codebook_size, fi["sdm_delta_found"][-1])) * 100.0)
+						fi["sdm_error_predicted_using_hypd+fraction"].append((1-self.p_corr_fraction(sdm_ncols, codebook_size, delta_predicted))*100.0)
+						fi["sdm_delta_empirical"].append(ov.sdm_delta_empirical(sdm_nrows, k, sdm_nact, num_trials=num_trials))
 						fi["sdm_match_hamming_mean"].append(sdm_info["match_hamming_mean"])
 						fi["sdm_distractor_hamming_mean"].append(sdm_info["distractor_hamming_mean"])
 						fi["sdm_match_hamming_stdev"].append(sdm_info["match_hamming_stdev"])
 						fi["sdm_distractor_hamming_stdev"].append(sdm_info["distractor_hamming_stdev"])
-						include_bundle = False
+						if include_sdm_word_recall:
+							fi["sdm_word_recall_error"].append(self.perform_word_recall(sdm_ncols, codebook_size, delta_predicted) * 100.0)
+							print("k=%s, sdm_size=%s, error_found=%s, error_perdicted=%s, word_recall_error=%s" % (k, sdm_size, fi["sdm_error"][-1],
+								fi["sdm_error_predicted_using_hypd+fraction"][-1], fi["sdm_word_recall_error"][-1]))
 						if include_bundle:
-							info = self.perform_bundle_or_sdm_recall(bundle_length, k, codebook_size) # returns: {"ntrials":0, "nfail":0}
+							info = self.perform_bundle_or_sdm_recall(bundle_length, k, codebook_size, sliced_data=True) # returns: {"ntrials":0, "nfail":0}
 							fi["sim_error"].append(info["nfail"] * 100.0 / (info["ntrials"]))
+							fi["emp_error"].append((1-cc.AccuracyEmpirical(bundle_length,codebook_size,k)[0]) * 100.0)
 						else:
-							fi["sim_error"].append(None)  # placeholder
+							# fi["sim_error"].append(None)  # placeholder
 							info = None
-						fi["emp_error"].append((1-cc.AccuracyEmpirical(bundle_length,codebook_size,k)[0]) * 100.0)
-						print("Desired_percent_error=%s, codebook_size=%s, k=%s: info=%s, sdm_info=%s, "
-							"frady_error=%s, sim_error=%s, sdm_error=%s, AccEmp=%s" % (
-					 		desired_percent_error, codebook_size, k, info, sdm_info, fi["frady_error"][-1],
-					 		fi["sim_error"][-1], fi["sdm_error"][-1], fi["emp_error"][-1]))
+						# print("Desired_percent_error=%s, codebook_size=%s, k=%s: info=%s, sdm_info=%s, "
+						# 	"frady_error=%s, sim_error=%s, sdm_error=%s, AccEmp=%s" % (
+						# 	desired_percent_error, codebook_size, k, info, sdm_info, fi["frady_error"][-1],
+					 # 		fi["sim_error"][-1], fi["sdm_error"][-1], fi["emp_error"][-1]))
 				title = "Found error when desired error=%s%% codebook size=%s" % (desired_percent_error, codebook_size)
-				xaxis_labels = ["%s/%s" % (kvals[i], fi["bundle_length"][i]) for i in range(len(kvals))]
+				# xaxis_labels = ["%s/%s" % (kvals[i], fi["bundle_length"][i]) for i in range(len(kvals))]
+				xaxis_labels = ["%s/%s,%s,%s" % (kvals[i], fi["sdm_dimensions"][i][0],
+					fi["sdm_dimensions"][i][1], fi["sdm_dimensions"][i][2]) for i in range(len(kvals))]
+				# fig = Figure(title=title, xvals=xvals, grid=True,
+				# 	xlabel="Num items / bundle length", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
+				# 	legend_location="upper right",
+				# 	yvals=fi["frady_error"], ebar=None, legend="bundle predicted (Frady)", logyscale=False)
 				fig = Figure(title=title, xvals=xvals, grid=True,
-					xlabel="Num items / bundle length", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
+					xlabel="Num items / nrows, ncols, nact", ylabel="recall error (percent)", xaxis_labels=xaxis_labels,
 					legend_location="upper right",
-					yvals=fi["frady_error"], ebar=None, legend="frady error", logyscale=False)
+					yvals=fi["sdm_error"], ebar=None, legend="sdm empirical", logyscale=False)
 				if include_empirical:
-					print("sdm_dimensions=%s" % fi["sdm_dimensions"])
+					# print("sdm_dimensions=%s" % fi["sdm_dimensions"])
 					if include_bundle:
 						fig.add_line(fi["sim_error"], legend="bundle simulation")
-					fig.add_line(fi["emp_error"], legend="AccuracyEmpirical")
-					fig.add_line(fi["sdm_error"], legend="sdm simulation")
+						# fig.add_line(fi["bundle_error_predicted_using_fraction"],  legend="bundle_err_predicted_using_fraction", fmt=".-")
+						fig.add_line(fi["bundle_error_quick_predicted"], legend="Bundle quick predicted")
+						fig.add_line(fi["emp_error"], legend="AccuracyEmpirical")
+					# fig.add_line(fi["sdm_error"], legend="sdm empirical")
+					# fig.add_line(fi["sdm_error_predicted"], legend="sdm predicted (Frady)")
+					# fig.add_line(fi["sdm_error_predicted_using_delta_found"], legend="sdm predicted (Frady) w/delta found")
+					fig.add_line(fi["sdm_error_predicted_using_delta_found_fraction"],legend="sdm errp (Frady) w/delta found fraction")
+					# print("sdm_error_predicted_using_delta_found_fraction=%s" % fi["sdm_error_predicted_using_delta_found_fraction"])
+					# print("sdm_error_predicted_using_hypd+fraction=%s" % fi["sdm_error_predicted_using_hypd+fraction"])	
+					fig.add_line(fi["sdm_error_predicted_using_hypd+fraction"],legend="sdm errp hypd+fraction")
+					if include_sdm_word_recall:
+						fig.add_line(fi["sdm_word_recall_error"], legend="word_recall_error with delta predicted")
+					fig.add_line(fi["sdm_error_quick_predicted"], legend="sdm quick predicted")
 				self.figures.append(fig)
 				if include_empirical:
 					title = "sdm delta found vs predicted for desired error %s%%" % desired_percent_error
@@ -794,14 +1109,15 @@ class Calculator:
 						legend_location="upper right",
 						yvals=fi["sdm_delta_found"], ebar=None, legend="found", logyscale=False)
 					fig.add_line(fi["sdm_delta_predicted"], legend="predicted")
+					fig.add_line(fi["sdm_delta_empirical"], legend="overlap empirical")
 					self.figures.append(fig)
-					print("===============")
-					print(title)
-					print("%s == %s" % (xlabel, xaxis_labels))
-					print("found: %s" % fi["sdm_delta_found"])
-					print("predicted: %s" % fi["sdm_delta_predicted"])
-					print("full_fi:")
-					pp.pprint(fi)
+					# print("===============")
+					# print(title)
+					# print("%s == %s" % (xlabel, xaxis_labels))
+					# print("found: %s" % fi["sdm_delta_found"])
+					# print("predicted: %s" % fi["sdm_delta_predicted"])
+					# print("full_fi:")
+					# pp.pprint(fi)
 
 
 def main():
