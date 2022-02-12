@@ -20,7 +20,7 @@ import gmpy2
 class Sdm:
 	# implements a sparse distributed memory
 	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, noise_percent=0,
-		sdm_address_method=0, debug=False):
+		hl_selection_method="hamming", distribute_ties=True, debug=False):
 		# nact - number of active addresses used (top matches) for reading or writing
 		self.address_length = address_length
 		self.word_length = word_length
@@ -30,15 +30,18 @@ class Sdm:
 		self.data_array = np.zeros((num_rows, word_length), dtype=np.int16)
 		self.addresses = su.initialize_binary_matrix(num_rows, word_length)
 		self.debug = debug
-		self.sdm_address_method = sdm_address_method
+		# self.selection_method = selection_method  # selection method for hard locations
 		self.fmt = "0%sb" % word_length
 		self.hits = np.zeros((num_rows,), dtype=np.int16)
 		self.stored = {} # stores number of times value stored and read [<data>, <store_count>, <read_count>]
+		self.Hls = Hl_selector(self.addresses, num_rows, nact,
+			selection_method=hl_selection_method, distribute_ties=distribute_ties)
 
 	def store(self, address, data):
 		# store binary word data at top nact addresses matching address
-		top_matches = su.find_matches(self.addresses, address, self.nact, index_only = True, distribute_ties=True,
-			sdm_address_method=self.sdm_address_method)
+		# top_matches = su.find_matches(self.addresses, address, self.nact, index_only = True, distribute_ties=True,
+		# 	sdm_address_method=self.sdm_address_method)
+		top_matches = self.Hls.select_hls(address)
 		d = su.int2iar(data, self.word_length)
 		for i in top_matches:
 			self.data_array[i] += d
@@ -105,8 +108,9 @@ class Sdm:
 		pp.pprint(vc)
 
 	def read(self, address):
-		top_matches = su.find_matches(self.addresses, address, self.nact, index_only = True,
-			distribute_ties=True, sdm_address_method=self.sdm_address_method)
+		# top_matches = su.find_matches(self.addresses, address, self.nact, index_only = True,
+		# 	distribute_ties=True, sdm_address_method=self.sdm_address_method)
+		top_matches = self.Hls.select_hls(address)
 		i = top_matches[0]
 		isum = np.int32(self.data_array[i].copy())  # np.int32 is to convert to int32 to have range for sum
 		for i in top_matches[1:]:
@@ -154,6 +158,33 @@ class Sdm:
 			print("sdm test passed.")
 		else:
 			print("sdm test failed.")
+
+class Hl_selector:
+	# select hard locations in sdm
+
+	def __init__(self, addresses, nrows, nact, selection_method="hamming", distribute_ties=True):
+		assert selection_method in ("hamming", "random_locations")
+		self.addresses = addresses
+		self.nrows = nrows
+		if addresses is not None:
+			assert len(addresses) == nrows
+		self.nact = nact
+		self.distribute_ties = distribute_ties
+		self.selection_method = selection_method
+		if selection_method == "random_locations":
+			self.row_cache = {}
+
+	def select_hls(self, address):
+		if self.selection_method == "hamming":
+			hls = su.find_matches(self.addresses, address, self.nact, index_only = True,
+				distribute_ties=self.distribute_ties)
+		elif self.selection_method == "random_locations":
+			if address not in self.row_cache:
+				self.row_cache[address] = np.random.choice(self.nrows, size=self.nact, replace=False)
+			hls = self.row_cache[address]
+		else:
+			sys.exit("Unknown selection_method: %s" % self.selection_method)
+		return hls
 
 
 class Bundle:
