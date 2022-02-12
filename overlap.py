@@ -4,6 +4,7 @@ import sys
 import numpy as np
 import math
 from scipy.stats import norm
+import matplotlib.pyplot as plt
 
 
 class Env:
@@ -63,7 +64,7 @@ class Env:
 		return msg
 
 
-def sdm_delta_empirical(num_rows, num_items_stored, activation_count, num_trials=1000):
+def sdm_delta_empirical(num_rows, num_items_stored, activation_count, num_trials=10000, show_histogram=False):
 	# emperically compute sdm single bit error due to overlap in rows activated
 	trial_count = 0
 	error_count = 0
@@ -81,12 +82,40 @@ def sdm_delta_empirical(num_rows, num_items_stored, activation_count, num_trials
 		recalled_values = np.empty(num_items_stored, dtype=np.int8)
 		for i in range(num_items_stored):
 			csum = np.sum(sdm_counters[item_rows[i,:]])
-			recalled_values[i] = 1 if csum >= 0 else 0
+			recalled_values[i] = 1 if csum > 0 else 0
 		num_failed = np.count_nonzero( recalled_values != item_values)
+		if show_histogram:
+			plot_hist(sdm_counters, activation_count, num_items_stored)
 		error_count += num_failed
 		trial_count += num_items_stored
 	return error_count / trial_count
 
+def plot_hist(sdm_counters, nact, num_items_stored, row=None):
+	# x = np.histogram(sdm.data_array, bins="auto")
+	# the histogram of the data
+	counts = sdm_counters
+	nbins = get_nbins(counts)
+	n, bins, patches = plt.hist(counts, nbins, density=False, facecolor='g', alpha=0.75)
+	plt.xlabel('Counter value')
+	plt.ylabel('Count')
+	row_msg = ", row=%s" % row if row is not None else ""
+	plt.title('Histogram of SDM counter values for nrows=%s, nact=%s, k=%s%s' % (
+		len(sdm_counters), nact, num_items_stored, row_msg))
+	# plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+	# plt.xlim(40, 160)
+	# plt.ylim(0, 0.03)
+	plt.grid(True)
+	plt.show()
+
+
+def get_nbins(xv):
+	# calculate number of bins to use in histogram for values in xv
+	xv_range = max(xv) - min(xv)
+	if xv_range == 0:
+		nbins = 3
+	else:
+		nbins = int(xv_range) + 1
+	return nbins
 
 def fraction_rows_activated(m, k):
 	# compute optimal fraction rows to activate in sdm
@@ -336,7 +365,7 @@ def main():
 	t = SDM_tester(env.pvals)
 
 def testde():
-	tvals = [(15, 35, 2), (100, 250, 3)]
+	tvals = [(6, 2, 2)] # [(214, 250, 5), ] # [(15, 35, 2), (100, 250, 3)]
 	print("rows\titems\tnact\tnagues\td_found\td_pred")
 	for tv in tvals:
 		num_rows, num_items_stored, activation_count = tv
