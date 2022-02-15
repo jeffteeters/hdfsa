@@ -1,6 +1,7 @@
 # script to count overlaps in SDM
 import math
 from scipy.stats import hypergeom
+from scipy.stats import binom
 import numpy as np
 
 class Ovc:
@@ -17,6 +18,7 @@ class Ovc:
 		for i in range(2, k):
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
 		self.verify_sums()
+		self.perr = self.compute_perr()
 
 	def verify_sums(self):
 		# make sure probabilities for each number of items sum to one
@@ -65,13 +67,25 @@ class Ovc:
 				cio_stop = no
 			else:
 				cio_stop = nact
-			print("n_items=%s, no=%s, cio_start=%s, stop=%s, max_num_overlaps=%s, max_num_previous_overlaps=%s" % (n_items,
-				no, cio_start, cio_stop, max_num_overlaps, max_num_previous_overlaps))
+			# print("n_items=%s, no=%s, cio_start=%s, stop=%s, max_num_overlaps=%s, max_num_previous_overlaps=%s" % (n_items,
+			# 	no, cio_start, cio_stop, max_num_overlaps, max_num_previous_overlaps))
 			for cio in range(cio_start, cio_stop+1):  # contributions from current item to overlaps
-				print("\tAdding ov[%s][%s] * ov[1][%s]" % (n_items-1, no-cio, cio))
+				# print("\tAdding ov[%s][%s] * ov[1][%s]" % (n_items-1, no-cio, cio))
 				prob += self.ov[n_items - 1][no - cio] * self.ov[1][cio]
 			pmf[no] = prob
 		return pmf
+
+	def compute_perr(self):
+		# compute probability of error given number of overlaps
+		nact = self.nact
+		n_items = self.k - 1  # number of items beyond first (that is overlapping)
+		max_num_overlaps = nact * n_items
+		no = np.arange(max_num_overlaps + 1)  # number overlaps
+		perr = binom.sf(nact, no, 0.5)
+		return perr
+
+
+
 
 def main():
 	nrows = 6
