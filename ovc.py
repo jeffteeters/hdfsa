@@ -3,6 +3,7 @@ import math
 from scipy.stats import hypergeom
 from scipy.stats import binom
 import numpy as np
+import matplotlib.pyplot as plt
 
 class Ovc:
 
@@ -19,6 +20,8 @@ class Ovc:
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
 		self.verify_sums()
 		self.perr = self.compute_perr()
+		self.show_found_values()
+		self.make_hamming_hist()
 
 	def verify_sums(self):
 		# make sure probabilities for each number of items sum to one
@@ -81,16 +84,72 @@ class Ovc:
 		n_items = self.k - 1  # number of items beyond first (that is overlapping)
 		max_num_overlaps = nact * n_items
 		no = np.arange(max_num_overlaps + 1)  # number overlaps
-		perr = binom.sf(nact, no, 0.5)
+		# for i in range(len(no)):
+		# 	ner = (no - nact)
+		# 	# if bit stored is positive, then error occurs if counter sum is zero or negative
+		# 	pe_plus = 
+		mer = (no - nact)/2.0
+		self.plot_mer(mer)
+		perr = binom.cdf(mer, no, 0.5)
 		return perr
 
+	def plot_mer(self, mer):
+		nact = self.nact
+		n_items = self.k - 1  # number of items beyond first (that are overlapping)
+		max_num_overlaps = nact * n_items
+		no = np.arange(max_num_overlaps + 1)  # number overlaps
+		# show frequency of overlaps
+		plt.plot(no, mer, "o-")
+		plt.xlabel('Number of overlaps')
+		plt.ylabel('int((#overlaps - nact)/2)')
+		plt.title('Input to binom.cdf function when  k=%s' % self.k)
+		plt.grid(True)
+		plt.show()
 
+
+
+	def show_found_values(self):
+		nact = self.nact
+		n_items = self.k - 1  # number of items beyond first (that are overlapping)
+		max_num_overlaps = nact * n_items
+		no = np.arange(max_num_overlaps + 1)  # number overlaps
+		# show frequency of overlaps
+		plt.plot(no, self.ov[n_items], "o-")
+		plt.xlabel('Number of overlaps (x)')
+		plt.ylabel('Relative frequency')
+		plt.title('Relative probablilty of x overlaps when  k=%s' % self.k)
+		plt.grid(True)
+		plt.show()
+		# show probability of error vs. number of overlaps
+		plt.plot(no, self.perr, "o-")
+		plt.xlabel('Number of overlaps (x)')
+		plt.ylabel('Probability of error')
+		plt.title('Probability of error vs. overlaps when  k=%s' % self.k)
+		plt.grid(True)
+		plt.show()
+
+
+
+	def make_hamming_hist(self):
+		# compute histogram of hamming distance frequencies and make a histogram
+		hx = self.perr * self.ov[self.k-1]
+		print("hx - input to histogram is:\n%s" % hx)
+
+		n, bins, patches = plt.hist(hx, len(hx), density=True, facecolor='g', alpha=0.75)
+		plt.xlabel('Normalized hamming distance')
+		plt.ylabel('Probability')
+		plt.title('Histogram of Hamming distance for k=%s' % self.k)
+		# plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+		# plt.xlim(40, 160)
+		# plt.ylim(0, 0.03)
+		plt.grid(True)
+		plt.show()
 
 
 def main():
 	nrows = 6
 	nact = 2
-	k = 4
+	k = 5
 	ov = Ovc(nrows, nact, k)
 
 main()
