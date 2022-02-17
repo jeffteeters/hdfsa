@@ -22,6 +22,7 @@ import find_sdm_size as fs
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 import overlap as ov
+import ovc as oc
 
 class Env:
 	# stores environment settings and data arrays
@@ -619,10 +620,10 @@ class Calculator:
 	def show_sdm_ber(self):
 		# display bit error rate (delta) for sdm number of rows and k, compare
 		# empirical to theory
-		kvals = [5, 11, 21, 51, ]# 101, 250] # 500, 750, 1000, 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
+		kvals = range(5,37) # [5, 11, 21, 51, ]# 101, 250] # 500, 750, 1000, 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
 		xvals = range(len(kvals))
-		codebook_sizes = [36, 100, 200 ] # , 200, 500, 1000] # [1000]
-		desired_percent_errors = [10,  1, 0.1] # , .1, .01, .001]
+		codebook_sizes = [36,] #  100, 200 ] # , 200, 500, 1000] # [1000]
+		desired_percent_errors = [1] # 0.1] # , .1, .01, .001]
 		for desired_percent_error in desired_percent_errors:
 			for codebook_size in codebook_sizes:
 				# found info
@@ -967,7 +968,7 @@ class Calculator:
 
 
 	def show_frady_vs_gallant_error(self):
-		kvals = range(5, 37) # range(255, 287) # 101) # [5, 11, 21, 51, 101] # [5, 11, 21, 51, 101, 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
+		kvals = range(5, 16) # 37) # range(255, 287) # 101) # [5, 11, 21, 51, 101] # [5, 11, 21, 51, 101, 250] #, 500, 750, 1000] # , 2000, 3000]  # [20, 100] 5, 11, 21, 51, 101, 251] # 
 		xvals = range(len(kvals))
 		codebook_sizes = [27 ] # , 200, 500, 1000] # [1000]
 		desired_percent_errors = [1] # [10,  1, 0.1] # , .1, .01, .001]
@@ -986,6 +987,7 @@ class Calculator:
 					"sdm_word_recall_error":[],
 					"sdm_error":[],
 					"sdm_error_predicted":[],
+					"sdm_ovc_error_predicted":[],
 					"sdm_error_predicted_using_delta_found":[],
 					"sdm_error_predicted_using_hypd+fraction":[],
 					"sdm_error_quick_predicted":[],				
@@ -1038,9 +1040,10 @@ class Calculator:
 							sliced_data=True, hl_selection_method="random_locations", show_histogram=show_histogram)
 						mmean = sdm_info["match_hamming_mean"]
 						mvar = sdm_info["match_hamming_stdev"]**2
-						print("k=k, sdm_match_hamming_mean=%s, sdm_match_hamming_var=%s, percent diff=%s" % (
-							mmean, mvar, abs(mmean- mvar)*100 / (mmean)))
+						# print("k=k, sdm_match_hamming_mean=%s, sdm_match_hamming_var=%s, percent diff=%s" % (
+						# 	mmean, mvar, abs(mmean- mvar)*100 / (mmean)))
 						fi["sdm_error"].append(sdm_info["nfail"] * 100.0 / (sdm_info["ntrials"]))
+						fi["sdm_ovc_error_predicted"].append(oc.Ovc.compute_overall_error(sdm_nrows, sdm_ncols, sdm_nact, k)*100.0)
 						fi["sdm_delta_found"].append(sdm_info["normalized_hamming"])
 						delta_predicted = fs.single_bit_error_rate(sdm_nrows, k)[0]
 						fi["sdm_delta_predicted"].append(delta_predicted)
@@ -1095,6 +1098,7 @@ class Calculator:
 					# print("sdm_error_predicted_using_delta_found_fraction=%s" % fi["sdm_error_predicted_using_delta_found_fraction"])
 					# print("sdm_error_predicted_using_hypd+fraction=%s" % fi["sdm_error_predicted_using_hypd+fraction"])	
 					fig.add_line(fi["sdm_error_predicted_using_hypd+fraction"],legend="sdm errp hypd+fraction")
+					fig.add_line(fi["sdm_ovc_error_predicted"],legend="sdm_ovc_error_predicted")
 					if include_sdm_word_recall:
 						fig.add_line(fi["sdm_word_recall_error"], legend="word_recall_error with delta predicted")
 					fig.add_line(fi["sdm_error_quick_predicted"], legend="sdm quick predicted")

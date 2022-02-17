@@ -19,10 +19,16 @@ class Ovc:
 		self.ov = {1 : self.one_item_overlaps()}  # 1 item overlaps, means 2 items are stored
 		for i in range(2, k):
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
-		self.verify_sums()
+		# self.verify_sums()
 		self.perr = self.compute_perr()
-		self.show_found_values()
-		self.make_hamming_hist()
+		# self.show_found_values()
+		# self.make_hamming_hist()
+
+	def compute_overall_error(nrows, ncols, nact, k):
+		ov = Ovc(nrows, nact, k)
+		overall_perr = ov.compute_overall_perr(ncols)
+		return overall_perr
+
 
 	def verify_sums(self):
 		# make sure probabilities for each number of items sum to one
@@ -90,7 +96,7 @@ class Ovc:
 		# 	# if bit stored is positive, then error occurs if counter sum is zero or negative
 		# 	pe_plus = 
 		mer = (no - nact)/2.0
-		self.plot_mer(mer)
+		# self.plot_mer(mer)
 		perr = binom.cdf(mer, no, 0.5)
 		return perr
 
@@ -165,11 +171,15 @@ def main():
 	nrows = 6
 	nact = 2
 	k = 5
-	ov = Ovc(nrows, nact, k)
+	# ov = Ovc(nrows, nact, k)
 	ncols = 52
-	overall_perr = ov.compute_overall_perr(ncols)
+	# overall_perr = ov.compute_overall_perr(ncols)
+	overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
+	print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
+	ncols = 33
+	overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
 	print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
 
 
-main()
-
+if __name__ == "__main__":
+	main()
