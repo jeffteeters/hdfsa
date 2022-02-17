@@ -2,6 +2,7 @@
 import math
 from scipy.stats import hypergeom
 from scipy.stats import binom
+from scipy.stats import norm
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -93,6 +94,21 @@ class Ovc:
 		perr = binom.cdf(mer, no, 0.5)
 		return perr
 
+	def compute_overall_perr(self, n):
+		# n is width (number of columns) in SDM
+		# compute overall error, assuming each overlap is a separate binomonal distribution and compute
+		# the probability of error for that.  Then combine them all by weighting them according to the
+		# probability of the overlaps
+		mm = self.perr   # match mean (single bit error rate for each overlap number)
+		mv = mm*(1.-mm)/n  # match variance
+		dm = 0.5
+		dv = dm*(1.-dm)/n  # distractor variance
+		cm = dm - mm       # combined mean
+		cv = np.sqrt(mv + dv)       # combined standard deviation
+		ov_per = norm.cdf(0, cm, cv)  # error in each overlap
+		overall_perr = np.dot(ov_per, self.ov[self.k - 1])
+		return overall_perr
+
 	def plot_mer(self, mer):
 		nact = self.nact
 		n_items = self.k - 1  # number of items beyond first (that are overlapping)
@@ -129,13 +145,12 @@ class Ovc:
 		plt.show()
 
 
-
 	def make_hamming_hist(self):
 		# compute histogram of hamming distance frequencies and make a histogram
 		hx = self.perr * self.ov[self.k-1]
 		print("hx - input to histogram is:\n%s" % hx)
 
-		n, bins, patches = plt.hist(hx, len(hx), density=True, facecolor='g', alpha=0.75)
+		n, bins, patches = plt.hist(hx, 50, density=True, facecolor='g', alpha=0.75)
 		plt.xlabel('Normalized hamming distance')
 		plt.ylabel('Probability')
 		plt.title('Histogram of Hamming distance for k=%s' % self.k)
@@ -151,6 +166,10 @@ def main():
 	nact = 2
 	k = 5
 	ov = Ovc(nrows, nact, k)
+	ncols = 52
+	overall_perr = ov.compute_overall_perr(ncols)
+	print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
+
 
 main()
 
