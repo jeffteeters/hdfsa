@@ -21,7 +21,7 @@ class Ovc:
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
 		# self.verify_sums()
 		self.perr = self.compute_perr()
-		# self.show_found_values()
+		self.show_found_values()
 		# self.make_hamming_hist()
 
 	def compute_overall_error(nrows, ncols, nact, k):
@@ -91,6 +91,27 @@ class Ovc:
 		n_items = self.k - 1  # number of items beyond first (that is overlapping)
 		max_num_overlaps = nact * n_items
 		no = np.arange(max_num_overlaps + 1)  # number overlaps
+		thres = (no - nact)/2
+		pe_plus = binom.cdf(thres, no, 0.5)
+		self.plot(pe_plus, "pe_plus", "# overlaps", "binom.cdf(thres, no, 0.5)")
+		pe_minus = binom.cdf(thres - .25, no, 0.5)
+		self.plot(pe_minus, "pe_minus", "# overlaps", "binom.cdf(thres - 1, no, 0.5)")
+		perr = (pe_plus + pe_minus) / 2.0
+		# for i in range(len(no)):
+		#	thres = (no - nact)/2
+			# if bit stored is positive, then error occurs if counter sum is zero or negative
+			# that is, if count of #1's in overlaps is <= thresh
+
+			# if bit stored is negative, then error occurs if counter sum is > nact
+			# that is, if count of #-1's is < thresh.  < thresh means <= thresh -1
+		return perr
+
+	def compute_perr_orig(self):
+		# compute probability of error given number of overlaps
+		nact = self.nact
+		n_items = self.k - 1  # number of items beyond first (that is overlapping)
+		max_num_overlaps = nact * n_items
+		no = np.arange(max_num_overlaps + 1)  # number overlaps
 		# for i in range(len(no)):
 		# 	ner = (no - nact)
 		# 	# if bit stored is positive, then error occurs if counter sum is zero or negative
@@ -110,8 +131,13 @@ class Ovc:
 		dm = 0.5
 		dv = dm*(1.-dm)/n  # distractor variance
 		cm = dm - mm       # combined mean
-		cv = np.sqrt(mv + dv)       # combined standard deviation
-		ov_per = norm.cdf(0, cm, cv)  # error in each overlap
+		cs = np.sqrt(mv + dv)       # combined standard deviation
+		ov_per = norm.cdf(0, cm, cs)  # error in each overlap
+		# self.plot_ov_per(ov_per)
+		self.plot(ov_per, "Error in each overlap computed by cdf of difference between distributions", "# overlaps",
+			"fraction error")
+		weighted_error = ov_per * self.ov[self.k - 1]
+		self.plot(weighted_error, "weighted error", "# overlaps", "fraction error")
 		overall_perr = np.dot(ov_per, self.ov[self.k - 1])
 		return overall_perr
 
@@ -128,7 +154,28 @@ class Ovc:
 		plt.grid(True)
 		plt.show()
 
+	def plot(self, data, title, xlabel, ylabel):
+		xvals = range(len(data))
+		plt.plot(xvals, data, "o-")
+		plt.xlabel(xlabel)
+		plt.ylabel(ylabel)
+		plt.title(title)
+		plt.grid(True)
+		plt.show()
 
+
+	# def plot_ov_per(self, ov_per):
+	# 	nact = self.nact
+	# 	n_items = self.k - 1  # number of items beyond first (that are overlapping)
+	# 	max_num_overlaps = nact * n_items
+	# 	no = np.arange(max_num_overlaps + 1)  # number overlaps
+	# 	# show frequency of overlaps
+	# 	plt.plot(no, ov_per, "o-")
+	# 	plt.xlabel('Number of overlaps')
+	# 	plt.ylabel('norm.cdf(0, cm, cs)')
+	# 	plt.title('Result of norm.cdf(0, cm, cs) function when  k=%s' % self.k)
+	# 	plt.grid(True)
+	# 	plt.show()
 
 	def show_found_values(self):
 		nact = self.nact
@@ -136,10 +183,12 @@ class Ovc:
 		max_num_overlaps = nact * n_items
 		no = np.arange(max_num_overlaps + 1)  # number overlaps
 		# show frequency of overlaps
-		plt.plot(no, self.ov[n_items], "o-")
+		plt.plot(no, self.ov[n_items]*(n_items*nact), "o-")
 		plt.xlabel('Number of overlaps (x)')
-		plt.ylabel('Relative frequency')
-		plt.title('Relative probablilty of x overlaps when  k=%s' % self.k)
+		# plt.ylabel('Relative frequency')
+		plt.ylabel('Count of overlaps')
+		# plt.title('Relative probablilty of x overlaps when  k=%s' % self.k)
+		plt.title('Expected count of overlaps when  k=%s' % self.k)
 		plt.grid(True)
 		plt.show()
 		# show probability of error vs. number of overlaps
@@ -172,13 +221,13 @@ def main():
 	nact = 2
 	k = 5
 	# ov = Ovc(nrows, nact, k)
-	ncols = 52
+	ncols = 33
 	# overall_perr = ov.compute_overall_perr(ncols)
 	overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
 	print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
-	ncols = 33
-	overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
-	print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
+	# ncols = 52
+	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
+	# print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
 
 
 if __name__ == "__main__":
