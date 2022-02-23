@@ -8,25 +8,30 @@ import matplotlib.pyplot as plt
 
 class Ovc:
 
-	def __init__(self, nrows, nact, k):
+	def __init__(self, nrows, ncols, nact, k, d=2):
 		# compute overlaps of target (nact rows) in SDM when k items are stored (k-1 which cause overlaps)
 		# nrows is number of rows (hard locations) in the SDM
+		# ncols is the number of columns
 		# nact is activaction count
 		# k is number of items stored in sdm
+		# d is the number of items in item memory.  Used to compute probability of error in recall
 		self.nrows = nrows
+		self.ncols = ncols
 		self.nact = nact
 		self.k = k
+		self.d = d
 		self.ov = {1 : self.one_item_overlaps()}  # 1 item overlaps, means 2 items are stored
 		for i in range(2, k):
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
 		# self.verify_sums()
 		self.perr = self.compute_perr()
+		self.hdist = self.compute_hamming_dist()
 		self.show_found_values()
 		# self.make_hamming_hist()
 
-	def compute_overall_error(nrows, ncols, nact, k):
-		ov = Ovc(nrows, nact, k)
-		overall_perr = ov.compute_overall_perr(ncols)
+	def compute_overall_error(nrows, ncols, nact, k, d=2):
+		ov = Ovc(nrows, ncols, nact, k, d)
+		overall_perr = ov.compute_overall_perr()
 		return overall_perr
 
 
@@ -83,6 +88,7 @@ class Ovc:
 				# print("\tAdding ov[%s][%s] * ov[1][%s]" % (n_items-1, no-cio, cio))
 				prob += self.ov[n_items - 1][no - cio] * self.ov[1][cio]
 			pmf[no] = prob
+		assert math.isclose(np.sum(pmf), 1.0), "sum of pmf should be 1 is: %s" % np.sum(pmf)
 		return pmf
 
 	def compute_perr(self):
@@ -106,6 +112,19 @@ class Ovc:
 			# that is, if count of #-1's is < thresh.  < thresh means <= thresh -1
 		return perr
 
+	def compute_hamming_dist(self):
+		# compute distribution of probability of each hamming distance
+		n = self.ncols
+		pov = self.ov[self.k - 1]  # probability of overlaps
+		perr = self.perr    # probability of error for each number of overlap
+		assert len(pov) == len(perr)
+		pmf = np.empty(n + 1)  # probability mass function
+		for h in range(len(pmf)):  # hamming distance
+			phk = binom.pmf(h, n, self.perr)
+			pmf[h] = np.dot(phk, pov)
+		assert math.isclose(np.sum(pmf), 1.0), "hdist sum is not equal to 1, is: %s" % np.sum(pmf)
+		return pmf
+
 	def compute_perr_orig(self):
 		# compute probability of error given number of overlaps
 		nact = self.nact
@@ -121,11 +140,24 @@ class Ovc:
 		perr = binom.cdf(mer, no, 0.5)
 		return perr
 
-	def compute_overall_perr(self, n):
-		# n is width (number of columns) in SDM
+	def compute_overall_perr(self):
+		# compute overall error, by integrating over all hamming distances
+		n = self.ncols
+		hdist = self.hdist
+		h = np.arange(len(hdist))
+		self.plot(binom.pmf(h, n, 0.5), "distractor pmf", "hamming distance", "probability")
+		ph_corr = binom.sf(h, n, 0.5) ** (self.d-1)
+		self.plot(ph_corr, "probability correct", "hamming distance", "fraction correct")
+		self.plot(ph_corr * hdist, "p_corr weighted by hdist", "hamming distance", "weighted p_corr")
+		p_corr = np.dot(ph_corr, hdist)
+		return 1 - p_corr
+
+
+	def compute_overall_perr_orig(self):
 		# compute overall error, assuming each overlap is a separate binomonal distribution and compute
 		# the probability of error for that.  Then combine them all by weighting them according to the
 		# probability of the overlaps
+		n = self.ncols
 		mm = self.perr   # match mean (single bit error rate for each overlap number)
 		mv = mm*(1.-mm)/n  # match variance
 		dm = 0.5
@@ -198,6 +230,8 @@ class Ovc:
 		plt.title('Probability of error vs. overlaps when  k=%s' % self.k)
 		plt.grid(True)
 		plt.show()
+		# show hamming distribution
+		self.plot(self.hdist, "hamming distribution", "hamming distance", "probability")
 
 
 	def make_hamming_hist(self):
@@ -220,11 +254,12 @@ def main():
 	nrows = 6
 	nact = 2
 	k = 5
-	# ov = Ovc(nrows, nact, k)
+	d = 2 #7
+	# ov = Ovc(nrows, ncols, nact, k, d)
 	ncols = 33
 	# overall_perr = ov.compute_overall_perr(ncols)
-	overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
-	print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
+	overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k, d)
+	print("for k=%s, d=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, d, nrows, ncols, nact, overall_perr))
 	# ncols = 52
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
 	# print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
