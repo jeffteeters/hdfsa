@@ -23,30 +23,15 @@ class Ovc:
 		self.ov = {1 : self.one_item_overlaps()}  # 1 item overlaps, means 2 items are stored
 		for i in range(2, k):
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
-		# self.verify_sums()
 		self.perr = self.compute_perr()
 		self.hdist = self.compute_hamming_dist()
-		self.show_found_values()
-		# self.make_hamming_hist()
+		# self.show_found_values()
 
 	def compute_overall_error(nrows, ncols, nact, k, d=2):
 		ov = Ovc(nrows, ncols, nact, k, d)
 		overall_perr = ov.compute_overall_perr()
 		return overall_perr
 
-
-	def verify_sums(self):
-		# make sure probabilities for each number of items sum to one
-		error_count = 0
-		for i in range(1, self.k):
-			probs = self.ov[i]
-			total = probs[0]
-			for j in range(1, len(probs)):
-				total += probs[j]
-			if total != 1:
-				print("Error in probabilities for %s items, total = %s" % (i, total))
-				error_count += 1
-		print("%s errors in sums" % error_count)
 
 	def one_item_overlaps(self):
 		# compute probability of: (0, 1, 2, ... nact) overlaps if there is just one additional
@@ -125,20 +110,20 @@ class Ovc:
 		assert math.isclose(np.sum(pmf), 1.0), "hdist sum is not equal to 1, is: %s" % np.sum(pmf)
 		return pmf
 
-	def compute_perr_orig(self):
-		# compute probability of error given number of overlaps
-		nact = self.nact
-		n_items = self.k - 1  # number of items beyond first (that is overlapping)
-		max_num_overlaps = nact * n_items
-		no = np.arange(max_num_overlaps + 1)  # number overlaps
-		# for i in range(len(no)):
-		# 	ner = (no - nact)
-		# 	# if bit stored is positive, then error occurs if counter sum is zero or negative
-		# 	pe_plus = 
-		mer = (no - nact)/2.0
-		# self.plot_mer(mer)
-		perr = binom.cdf(mer, no, 0.5)
-		return perr
+	# def compute_perr_orig(self):
+	# 	# compute probability of error given number of overlaps
+	# 	nact = self.nact
+	# 	n_items = self.k - 1  # number of items beyond first (that is overlapping)
+	# 	max_num_overlaps = nact * n_items
+	# 	no = np.arange(max_num_overlaps + 1)  # number overlaps
+	# 	# for i in range(len(no)):
+	# 	# 	ner = (no - nact)
+	# 	# 	# if bit stored is positive, then error occurs if counter sum is zero or negative
+	# 	# 	pe_plus = 
+	# 	mer = (no - nact)/2.0
+	# 	# self.plot_mer(mer)
+	# 	perr = binom.cdf(mer, no, 0.5)
+	# 	return perr
 
 	def compute_overall_perr(self):
 		# compute overall error, by integrating over all hamming distances
@@ -153,40 +138,41 @@ class Ovc:
 		return 1 - p_corr
 
 
-	def compute_overall_perr_orig(self):
-		# compute overall error, assuming each overlap is a separate binomonal distribution and compute
-		# the probability of error for that.  Then combine them all by weighting them according to the
-		# probability of the overlaps
-		n = self.ncols
-		mm = self.perr   # match mean (single bit error rate for each overlap number)
-		mv = mm*(1.-mm)/n  # match variance
-		dm = 0.5
-		dv = dm*(1.-dm)/n  # distractor variance
-		cm = dm - mm       # combined mean
-		cs = np.sqrt(mv + dv)       # combined standard deviation
-		ov_per = norm.cdf(0, cm, cs)  # error in each overlap
-		# self.plot_ov_per(ov_per)
-		self.plot(ov_per, "Error in each overlap computed by cdf of difference between distributions", "# overlaps",
-			"fraction error")
-		weighted_error = ov_per * self.ov[self.k - 1]
-		self.plot(weighted_error, "weighted error", "# overlaps", "fraction error")
-		overall_perr = np.dot(ov_per, self.ov[self.k - 1])
-		return overall_perr
+	# def compute_overall_perr_orig(self):
+	# 	# compute overall error, assuming each overlap is a separate binomonal distribution and compute
+	# 	# the probability of error for that.  Then combine them all by weighting them according to the
+	# 	# probability of the overlaps
+	# 	n = self.ncols
+	# 	mm = self.perr   # match mean (single bit error rate for each overlap number)
+	# 	mv = mm*(1.-mm)/n  # match variance
+	# 	dm = 0.5
+	# 	dv = dm*(1.-dm)/n  # distractor variance
+	# 	cm = dm - mm       # combined mean
+	# 	cs = np.sqrt(mv + dv)       # combined standard deviation
+	# 	ov_per = norm.cdf(0, cm, cs)  # error in each overlap
+	# 	# self.plot_ov_per(ov_per)
+	# 	self.plot(ov_per, "Error in each overlap computed by cdf of difference between distributions", "# overlaps",
+	# 		"fraction error")
+	# 	weighted_error = ov_per * self.ov[self.k - 1]
+	# 	self.plot(weighted_error, "weighted error", "# overlaps", "fraction error")
+	# 	overall_perr = np.dot(ov_per, self.ov[self.k - 1])
+	# 	return overall_perr
 
-	def plot_mer(self, mer):
-		nact = self.nact
-		n_items = self.k - 1  # number of items beyond first (that are overlapping)
-		max_num_overlaps = nact * n_items
-		no = np.arange(max_num_overlaps + 1)  # number overlaps
-		# show frequency of overlaps
-		plt.plot(no, mer, "o-")
-		plt.xlabel('Number of overlaps')
-		plt.ylabel('int((#overlaps - nact)/2)')
-		plt.title('Input to binom.cdf function when  k=%s' % self.k)
-		plt.grid(True)
-		plt.show()
+	# def plot_mer(self, mer):
+	# 	nact = self.nact
+	# 	n_items = self.k - 1  # number of items beyond first (that are overlapping)
+	# 	max_num_overlaps = nact * n_items
+	# 	no = np.arange(max_num_overlaps + 1)  # number overlaps
+	# 	# show frequency of overlaps
+	# 	plt.plot(no, mer, "o-")
+	# 	plt.xlabel('Number of overlaps')
+	# 	plt.ylabel('int((#overlaps - nact)/2)')
+	# 	plt.title('Input to binom.cdf function when  k=%s' % self.k)
+	# 	plt.grid(True)
+	# 	plt.show()
 
 	def plot(self, data, title, xlabel, ylabel):
+		return
 		xvals = range(len(data))
 		plt.plot(xvals, data, "o-")
 		plt.xlabel(xlabel)
@@ -234,32 +220,77 @@ class Ovc:
 		self.plot(self.hdist, "hamming distribution", "hamming distance", "probability")
 
 
-	def make_hamming_hist(self):
-		# compute histogram of hamming distance frequencies and make a histogram
-		hx = self.perr * self.ov[self.k-1]
-		print("hx - input to histogram is:\n%s" % hx)
+	def empiricalError(self, ntrials=10000):
+		# compute empirical error by storing then recalling items from SDM
+		trial_count = 0
+		fail_count = 0
+		while trial_count < ntrials:
+			# setup sdm structures
+			hl_cache = {}  # cache mapping address to random hard locations
+			contents = np.zeros((self.nrows, self.ncols,), dtype=np.int8)  # contents matrix
+			im = np.random.randint(0,high=2,size=(self.d, self.ncols), dtype=np.int8)  # item memory
+			addr_base_length = self.k + self.ncols - 1
+			address_base = np.random.randint(0,high=2,size=addr_base_length, dtype=np.int8)
+			exSeq= np.random.randint(low = 0, high = self.d, size=self.k) # radnom sequence to represent
+			# store sequence
+			for i in range(self.k):
+				address = address_base[i:i+self.ncols]
+				data = im[exSeq[i]]
+				vector_to_store = np.logical_xor(address, data)
+				hv = hash(address.tobytes()) # hash of address
+				if hv not in hl_cache:
+					hl_cache[hv] =  np.random.choice(self.nrows, size=self.nact, replace=False)
+				hl = hl_cache[hv]  # random hard locations selected for this address
+				contents[hl] += vector_to_store*2-1  # convert vector to +1 / -1 then store
+			# recall sequence
+			# import pdb; pdb.set_trace()
+			for i in range(self.k):
+				address = address_base[i:i+self.ncols]
+				data = im[exSeq[i]]
+				hv = hash(address.tobytes()) # hash of address
+				hl = hl_cache[hv]  # random hard locations selected for this address
+				csum = np.sum(contents[hl], axis=0)  # counter sum
+				recalled_vector = csum > 0   # will be binary vector, also works as int8
+				recalled_data = np.logical_xor(address, recalled_vector)
+				selected_item = np.argmin(np.count_nonzero(im[:,] != recalled_data, axis=1))
+				if selected_item != exSeq[i]:
+					fail_count += 1
+				trial_count += 1
+				if trial_count >= ntrials:
+					break
+		perr = fail_count / trial_count
+		return perr
 
-		n, bins, patches = plt.hist(hx, 50, density=True, facecolor='g', alpha=0.75)
-		plt.xlabel('Normalized hamming distance')
-		plt.ylabel('Probability')
-		plt.title('Histogram of Hamming distance for k=%s' % self.k)
-		# plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
-		# plt.xlim(40, 160)
-		# plt.ylim(0, 0.03)
-		plt.grid(True)
-		plt.show()
+
+
+	# def make_hamming_hist(self):
+	# 	# compute histogram of hamming distance frequencies and make a histogram
+	# 	hx = self.perr * self.ov[self.k-1]
+	# 	print("hx - input to histogram is:\n%s" % hx)
+
+	# 	n, bins, patches = plt.hist(hx, 50, density=True, facecolor='g', alpha=0.75)
+	# 	plt.xlabel('Normalized hamming distance')
+	# 	plt.ylabel('Probability')
+	# 	plt.title('Histogram of Hamming distance for k=%s' % self.k)
+	# 	# plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+	# 	# plt.xlim(40, 160)
+	# 	# plt.ylim(0, 0.03)
+	# 	plt.grid(True)
+	# 	plt.show()
 
 
 def main():
 	nrows = 6
 	nact = 2
 	k = 5
-	d = 2 #7
-	# ov = Ovc(nrows, ncols, nact, k, d)
+	d = 27
 	ncols = 33
-	# overall_perr = ov.compute_overall_perr(ncols)
-	overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k, d)
-	print("for k=%s, d=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, d, nrows, ncols, nact, overall_perr))
+	ov = Ovc(nrows, ncols, nact, k, d)
+	overall_perr = ov.compute_overall_perr()
+	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k, d)
+	emp_err = ov.empiricalError()
+	print("for k=%s, d=%s, sdm size=(%s, %s, %s), overall_perr=%s, emp_err=%s" % (k, d, nrows, ncols, nact, overall_perr,
+		emp_err))
 	# ncols = 52
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
 	# print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
