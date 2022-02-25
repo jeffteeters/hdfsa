@@ -25,7 +25,9 @@ class Ovc:
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
 		self.perr = self.compute_perr()
 		self.hdist = self.compute_hamming_dist()
-		# self.show_found_values()
+		self.empiricalError()
+		self.plot(self.hdist, "Perdicted vs empirical match hamming distribution", "hamming distance",
+			"relative frequency", label="predicted", data2=self.ehdist, label2="found")
 
 	def compute_overall_error(nrows, ncols, nact, k, d=2):
 		ov = Ovc(nrows, ncols, nact, k, d)
@@ -171,13 +173,16 @@ class Ovc:
 	# 	plt.grid(True)
 	# 	plt.show()
 
-	def plot(self, data, title, xlabel, ylabel):
-		return
+	def plot(self, data, title, xlabel, ylabel, label=None, data2=None, label2=None):
 		xvals = range(len(data))
-		plt.plot(xvals, data, "o-")
+		plt.plot(xvals, data, "o-", label=label)
 		plt.xlabel(xlabel)
 		plt.ylabel(ylabel)
 		plt.title(title)
+		if data2 is not None:
+			assert len(data) == len(data2), "len data=%s, data2=%s" % (len(data), len(data2))
+			plt.plot(xvals, data2, "o-", label=label2)
+			plt.legend(loc="upper right")
 		plt.grid(True)
 		plt.show()
 
@@ -220,10 +225,11 @@ class Ovc:
 		self.plot(self.hdist, "hamming distribution", "hamming distance", "probability")
 
 
-	def empiricalError(self, ntrials=10000):
+	def empiricalError(self, ntrials=100000):
 		# compute empirical error by storing then recalling items from SDM
 		trial_count = 0
 		fail_count = 0
+		mhcounts = np.zeros(self.ncols+1, dtype=np.int32)  # match hamming counts
 		while trial_count < ntrials:
 			# setup sdm structures
 			hl_cache = {}  # cache mapping address to random hard locations
@@ -252,14 +258,18 @@ class Ovc:
 				csum = np.sum(contents[hl], axis=0)  # counter sum
 				recalled_vector = csum > 0   # will be binary vector, also works as int8
 				recalled_data = np.logical_xor(address, recalled_vector)
-				selected_item = np.argmin(np.count_nonzero(im[:,] != recalled_data, axis=1))
+				hamming_distances = np.count_nonzero(im[:,] != recalled_data, axis=1)
+				selected_item = np.argmin(hamming_distances)
 				if selected_item != exSeq[i]:
 					fail_count += 1
+				mhcounts[hamming_distances[exSeq[i]]] += 1
 				trial_count += 1
 				if trial_count >= ntrials:
 					break
 		perr = fail_count / trial_count
-		return perr
+		self.plot(mhcounts, "hamming distances found", "hamming distance", "count")
+		self.ehdist = mhcounts / trial_count  # form distribution of match hammings
+		self.emp_overall_perr = perr
 
 
 
@@ -288,7 +298,7 @@ def main():
 	ov = Ovc(nrows, ncols, nact, k, d)
 	overall_perr = ov.compute_overall_perr()
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k, d)
-	emp_err = ov.empiricalError()
+	emp_err = ov.emp_overall_perr
 	print("for k=%s, d=%s, sdm size=(%s, %s, %s), overall_perr=%s, emp_err=%s" % (k, d, nrows, ncols, nact, overall_perr,
 		emp_err))
 	# ncols = 52
