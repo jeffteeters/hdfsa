@@ -20,12 +20,18 @@ class Ovc:
 		self.nact = nact
 		self.k = k
 		self.d = d
+		self.max_num_overlaps = (k-1) * nact
 		self.ov = {1 : self.one_item_overlaps()}  # 1 item overlaps, means 2 items are stored
 		for i in range(2, k):
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
 		self.perr = self.compute_perr()
+		self.emp_overlap_err = self.empiricalOverlapError()
+		self.plot(self.perr, "Error vs overlaps", "number of overlaps",
+			"probability of error", label="predicted", data2=self.emp_overlap_err, label2="found")
 		self.hdist = self.compute_hamming_dist()
 		self.empiricalError()
+		self.plot(self.ov[k - 1], "Perdicted vs empirical overlap distribution", "number of overlaps",
+			"relative frequency", label="predicted", data2=self.emp_overlaps, label2="found")
 		self.plot(self.hdist, "Perdicted vs empirical match hamming distribution", "hamming distance",
 			"relative frequency", label="predicted", data2=self.ehdist, label2="found")
 
@@ -86,9 +92,9 @@ class Ovc:
 		no = np.arange(max_num_overlaps + 1)  # number overlaps
 		thres = (no - nact)/2
 		pe_plus = binom.cdf(thres, no, 0.5)
-		self.plot(pe_plus, "pe_plus", "# overlaps", "binom.cdf(thres, no, 0.5)")
+		# self.plot(pe_plus, "pe_plus", "# overlaps", "binom.cdf(thres, no, 0.5)")
 		pe_minus = binom.cdf(thres - .25, no, 0.5)
-		self.plot(pe_minus, "pe_minus", "# overlaps", "binom.cdf(thres - 1, no, 0.5)")
+		# self.plot(pe_minus, "pe_minus", "# overlaps", "binom.cdf(thres - 1, no, 0.5)")
 		perr = (pe_plus + pe_minus) / 2.0
 		# for i in range(len(no)):
 		#	thres = (no - nact)/2
@@ -230,10 +236,11 @@ class Ovc:
 		trial_count = 0
 		fail_count = 0
 		mhcounts = np.zeros(self.ncols+1, dtype=np.int32)  # match hamming counts
+		ovcounts = np.zeros(self.max_num_overlaps + 1, dtype=np.int32)
 		while trial_count < ntrials:
 			# setup sdm structures
 			hl_cache = {}  # cache mapping address to random hard locations
-			contents = np.zeros((self.nrows, self.ncols,), dtype=np.int8)  # contents matrix
+			contents = np.zeros((self.nrows, self.ncols+1,), dtype=np.int8)  # contents matrix
 			im = np.random.randint(0,high=2,size=(self.d, self.ncols), dtype=np.int8)  # item memory
 			addr_base_length = self.k + self.ncols - 1
 			address_base = np.random.randint(0,high=2,size=addr_base_length, dtype=np.int8)
@@ -242,7 +249,7 @@ class Ovc:
 			for i in range(self.k):
 				address = address_base[i:i+self.ncols]
 				data = im[exSeq[i]]
-				vector_to_store = np.logical_xor(address, data)
+				vector_to_store = np.append(np.logical_xor(address, data), [1])
 				hv = hash(address.tobytes()) # hash of address
 				if hv not in hl_cache:
 					hl_cache[hv] =  np.random.choice(self.nrows, size=self.nact, replace=False)
@@ -256,7 +263,9 @@ class Ovc:
 				hv = hash(address.tobytes()) # hash of address
 				hl = hl_cache[hv]  # random hard locations selected for this address
 				csum = np.sum(contents[hl], axis=0)  # counter sum
-				recalled_vector = csum > 0   # will be binary vector, also works as int8
+				nadds = csum[-1]     # number of items added to form this sum
+				ovcounts[nadds - self.nact] += 1  # for making distribution of overlaps
+				recalled_vector = csum[0:-1] > 0   # will be binary vector, also works as int8; slice to remove nadds
 				recalled_data = np.logical_xor(address, recalled_vector)
 				hamming_distances = np.count_nonzero(im[:,] != recalled_data, axis=1)
 				selected_item = np.argmin(hamming_distances)
@@ -269,7 +278,34 @@ class Ovc:
 		perr = fail_count / trial_count
 		self.plot(mhcounts, "hamming distances found", "hamming distance", "count")
 		self.ehdist = mhcounts / trial_count  # form distribution of match hammings
+		self.emp_overlaps = ovcounts / np.sum(ovcounts)
 		self.emp_overall_perr = perr
+
+
+	def empiricalOverlapError(self):
+		# find probability of error vs number of overlaps empirically
+		error_counts = np.zeros(self.max_num_overlaps + 1, dtype=np.float)
+		ntrials = 50000
+		vlen = 1000  # number of trials done simultaneously
+		trial_count = 0
+		while trial_count < ntrials:
+			pcounter = np.full(vlen, self.nact, dtype=np.int32)   # positive bit stored
+			ncounter = np.full(vlen, -self.nact, dtype=np.int32)  # negative bit stored
+			for no in range(1, self.max_num_overlaps+1):
+				vector_to_store = np.random.choice([-1, 1], size=vlen)
+				pcounter += vector_to_store
+				ncounter += vector_to_store
+				pfail = np.count_nonzero(pcounter < 1)
+				nfail = np.count_nonzero(ncounter > 0)
+				error_counts[no] += pfail + nfail
+			trial_count += 2 * vlen
+			if trial_count >= ntrials:
+				break
+		emp_overlap_err = error_counts / trial_count
+		return emp_overlap_err
+
+
+
 
 
 
