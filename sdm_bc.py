@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 from labellines import labelLine, labelLines
 import sys
 import random
+import statistics
+from scipy.stats import norm
+import math
 
 def pop_random_element(L):
 	# pop random element from a list
@@ -84,7 +87,7 @@ class Sparse_distributed_memory:
 		recalled_data = np.int8(isum > 0)
 		return recalled_data
 
-def sdm_empirical_response(bc, word_length, actions, states, choices, nrows, nact, ntrials=3000):
+def sdm_empirical_response(bc, word_length, actions, states, choices, nrows, nact, ntrials=12000):
 	# find empirical response of sdm
 	trial_count = 0
 	fail_count = 0
@@ -101,17 +104,35 @@ def sdm_empirical_response(bc, word_length, actions, states, choices, nrows, nac
 				data = np.logical_xor(address, np.roll(im_states[next_state], 1))
 				sdm.store(address, data)
 		# recall transitions
+		match_hammings = []
+		distractor_hammings = []
 		for state in range(states):
 			for transition in fsa[state]:
 				action, next_state = transition
 				address = np.logical_xor(im_states[state], im_actions[action])
 				recalled_data = sdm.recall(address)
 				recalled_next_state_vector = np.roll(np.logical_xor(address, recalled_data) , -1)
-				found_next_state = np.argmin(np.count_nonzero( recalled_next_state_vector!=im_states, axis=1))
+				hamming_distances = np.count_nonzero( recalled_next_state_vector!=im_states, axis=1)
+				match_hammings.append(hamming_distances[next_state])
+				found_next_state = np.argmin(hamming_distances)
 				if found_next_state != next_state:
 					fail_count += 1
+					distractor_hammings.append(hamming_distances[found_next_state])
+				else:
+					hamming_distances[next_state] = word_length
+					closest_distractor = np.argmin(hamming_distances)
+					distractor_hammings.append(hamming_distances[closest_distractor])
 				trial_count += 1
-	return (fail_count / trial_count)
+	error_rate = fail_count / trial_count
+	mm = statistics.mean(match_hammings)  # match mean
+	mv = statistics.variance(match_hammings)
+	dm = statistics.mean(distractor_hammings)  # distractor mean
+	dv = statistics.variance(distractor_hammings)
+	cm = dm - mm  # combined mean
+	cs = math.sqrt(mv + dv)  # combined standard deviation
+	predicted_error_rate = norm.cdf(0, loc=cm, scale=cs)
+	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate}
+	return info
 
 
 def fraction_rows_activated(m, k):
@@ -136,15 +157,18 @@ def sdm_response_info(size, bc, word_length=512, actions=10, states=100, choices
 	nact = round(fraction_rows_activated(nrows, number_items_stored)*nrows)
 	if nact == 0:
 		nact = 1
-	sdm_response = sdm_empirical_response(bc, word_length, actions, states, choices, nrows, nact)
-	info={"err":sdm_response, "nrows":nrows, "nact":nact}
+	sdm_response_info = sdm_empirical_response(bc, word_length, actions, states, choices, nrows, nact)
+	info={"err":sdm_response_info["error_rate"], "predicted_error":sdm_response_info["predicted_error_rate"],
+		"nrows":nrows, "nact":nact}
 	return info
 
 def plot_info(sizes, bc_vals, resp_info):
 	plots_info = [
 		{"subplot": 221, "key":"err","title":"SDM error with different counter bits", "ylabel":"Recall error"},
-		{"subplot": 222, "key":"nrows","title":"Number rows in SDM vs. size and counter bits","ylabel":"Number rows"},
-		{"subplot": 223, "key":"nact","title":"SDM activation count vs counter bits and size","ylabel":"Activation Count"},
+		{"subplot": 222, "key":"predicted_error","title":"SDM predicted error with different counter bits",
+			"ylabel":"Recall error", "scale":"log"},
+		{"subplot": 223, "key":"nrows","title":"Number rows in SDM vs. size and counter bits","ylabel":"Number rows"},
+		{"subplot": 224, "key":"nact","title":"SDM activation count vs counter bits and size","ylabel":"Activation Count"},
 		 ]
 	for pi in plots_info:
 		plt.subplot(pi["subplot"])
@@ -156,10 +180,10 @@ def plot_info(sizes, bc_vals, resp_info):
 			plt.errorbar(sizes, yvals, yerr=None, label='%s bit' % bc_vals[i], linewidth=1,)# fmt="-k",) # linestyle='dashed',
 		labelLines(plt.gca().get_lines(), zorder=2.5)
 		if log_scale:
-			plt.xscale('log')
+			plt.yscale('log')
 			log_msg = " (log scale)"
 			# plt.xticks([2, 3, 4, 5, 10, 20, 40, 100, 200])
-			ax1.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+			# ax1.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
 		else:
 			log_msg = ""
 			# plt.xticks([2, 25, 50, 75, 100, 125, 150, 175, 200])
