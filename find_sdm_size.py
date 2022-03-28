@@ -61,7 +61,7 @@ def sber_hypergeometric(m, k):
 	b = m - nact
 	n = nact
 	var1 = n *(a/m)*(b/m)*((m-n)/(m-1))
-	var = (k -1) * var1 + nact
+	var = (k -1) * var1 + nact  # I don't understand why nact hat to added to the variance, but it works 
 	delta = norm.cdf(0, loc=mean, scale=math.sqrt(var))
 	return (delta, nact)
 
