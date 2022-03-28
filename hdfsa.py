@@ -51,6 +51,10 @@ class Env:
 	 	  "flag":"m", "required_init":"i", "default":2048 },
 		{ "name":"activation_count", "kw":{"help":"Number memory rows to activate for each address (sdm)","type":int},
 		  "flag":"a", "required_init":"m", "default":20},
+		{ "name":"counter_magnitude", "kw":{"help":"Max magnitude of SDM counter; zero if no limit","type":int},
+		  "flag":"M", "required_init":"m", "default":0},
+		{ "name":"counter_zero_ok", "kw":{"help":"Allow counter value to be zero, 1-yes, 0-no","type":int,
+		  "choices":[0, 1]}, "flag":"Z", "required_init":"m", "default":1},
 		{ "name":"noise_percent", "kw":{"help":"Percent of bits to change in memory to test noise resiliency",
 		  "type":float}, "flag":"n", "required_init":"m", "default":0.0},
 		{ "name":"debug", "kw":{"help":"Debug mode","type":int, "choices":[0, 1]},
@@ -421,7 +425,7 @@ class SdmA(Memory):
 class Sdm:
 	# implements a sparse distributed memory
 	def __init__(self, address_length=128, word_length=128, num_rows=512, nact=5, noise_percent=0,
-		sdm_address_method=0, debug=False):
+		sdm_address_method=0, counter_magnitude=0, counter_zero_ok=1, debug=False):
 		# nact - number of active addresses used (top matches) for reading or writing
 		self.address_length = address_length
 		self.word_length = word_length
@@ -432,6 +436,9 @@ class Sdm:
 		self.addresses = initialize_binary_matrix(num_rows, word_length)
 		self.debug = debug
 		self.sdm_address_method = sdm_address_method
+		self.counter_magnitude = counter_magnitude  # maximum possible magnitute of counter when finalized
+		self.counter_zero_ok = counter_zero_ok  # Allow counter to be zero.  1-yes, 0-no.
+												# Used to force binary counters (-1/+1 without zero)
 		self.fmt = "0%sb" % word_length
 		self.hits = np.zeros((num_rows,), dtype=np.int16)
 		self.stored = {} # stores number of times value stored and read [<data>, <store_count>, <read_count>]
@@ -445,7 +452,8 @@ class Sdm:
 			self.data_array[i] += d
 			# check here for magnitude value greater than 128
 			overflow = np.any(np.abs(self.data_array[i] > 127))
-			if overflow:
+			if overflow and False:
+				print("Found overflow in SDM counter")
 				sys.exit("Found overflow in SDM counter")
 				np.clip(self.data_array[i], -127, 127, out=self.data_array[i])
 			self.hits[i] += 1
@@ -482,6 +490,23 @@ class Sdm:
 			return
 		for i in range(self.num_rows):
 			add_noise(self.data_array[i], self.noise_percent)
+
+	def truncate_counters(self):
+		# truncate counters to magniture specified
+		if self.counter_magnitude == 0:
+			return
+		self.data_array[self.data_array > self.counter_magnitude] = self.counter_magnitude
+		self.data_array[self.data_array < -self.counter_magnitude] = -self.counter_magnitude
+		if self.counter_zero_ok == 0:
+			# replace zero counter values with random +1 or -1
+			random_plus_or_minus_one = np.random.randint(0,high=2,size=(self.num_rows, self.word_length), dtype=np.int8) * 2 -1
+			# there might be a fast way to do this in numpy without making a new copy of the array, but I couldn't find a way
+			for i in range(self.num_rows):
+				for j in range(self.word_length):
+					if self.data_array[i,j] == 0:
+						self.data_array[i,j] = random_plus_or_minus_one[i,j]
+			# self.data_array = numpy.where(self.data_array == 0, [x, y, ]/)
+			# self.data_array[self.data_array == 0] = random_plus_or_minus_one
 
 	def show_hits(self):
 		# display histogram of overlapping hits
@@ -859,27 +884,34 @@ class FSA_sdm_store(FSA_store):
 		self.sdm = Sdm(address_length=self.word_length, word_length=self.word_length,
 			num_rows=self.pvals["num_rows"], nact=self.pvals["activation_count"],
 			noise_percent=self.pvals["noise_percent"], sdm_address_method=self.pvals["sdm_address_method"],
+			counter_magnitude=self.pvals["counter_magnitude"], counter_zero_ok=self.pvals["counter_zero_ok"],
 			debug=self.debug)
 		self.bytes_required = (self.word_length + int(self.word_length / 8)) * self.pvals["num_rows"]
 
 	def save_transition(self, state_v, action_v, next_state_v):
 		# self.sdm.store(state_v ^ action_v, next_state_v)
 		# store binding with state and action so all next_states stored are unique
-		self.sdm.store(state_v ^ action_v, state_v ^ action_v ^ next_state_v)
+		# self.sdm.store(state_v ^ action_v, state_v ^ action_v ^ next_state_v)
+		self.sdm.store(state_v ^ action_v, state_v ^ action_v ^ rotate_right(next_state_v, self.word_length))
 
 	def finalize_store(self):
 		if self.pvals["noise_percent"] > 0:
 			self.sdm.add_noise()
 		if self.custor is not None:
 			self.custor.record(self.sdm)  # save counter statistics
+		if self.pvals["counter_magnitude"] > 0:
+			self.sdm.truncate_counters()
 		# self.sdm.show_hits()
 
 	def recall_transition(self, state_v, action_v):
 		# recall next_state_v from state_v and action_v
 		# return self.sdm.read(state_v ^ action_v)
-		found_v = self.sdm.read(state_v ^ action_v)
+		# found_v = self.sdm.read(state_v ^ action_v)
 		# unbind with state and action
-		return state_v ^ action_v ^ found_v
+		recalled_v = self.sdm.read(state_v ^ action_v)
+		found_v = rotate_left(state_v ^ action_v ^ recalled_v, self.word_length)
+		# return state_v ^ action_v ^ found_v
+		return found_v
 
 	def get_storage_requirements(self):
 		return ("sdm counter: %s bytes" % (self.word_length * self.pvals["num_rows"]))
