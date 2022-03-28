@@ -87,30 +87,81 @@ class Sparse_distributed_memory:
 		recalled_data = np.int8(isum > 0)
 		return recalled_data
 
-def sdm_empirical_response(bc, word_length, actions, states, choices, nrows, nact, ntrials=12000):
-	# find empirical response of sdm
+	def 
+
+def Bundle_memory:
+		# implements a bundle memory
+	def __init__(self, word_length):
+		# future work?: bc - number of bits to use in each counter after finalizing counter matrix
+		# this would require a matrix for binding, too complex for now.  So, assume 1 bit always after threshold. 
+		self.word_length = word_length
+		self.bc = bc
+		self.data_array = np.zeros(word_length, dtype=np.int16)
+		self.num_items_stored = 0
+
+	def store(self, data):
+		# store binary word data at top nact addresses matching address
+		dpn = data * 2 - 1   # convert to +/- 1
+		self.data_array += dpn
+		self.number_items_stored += 1
+
+	def truncate_counters(self):
+		# truncate counters to number of bits in bc.  First force the number of items stored to be odd so that
+		# only odd values are stored
+		if self.num_items_stored % 2 != 1:
+			# add random binary value so an odd number of items are stored
+			random_plus_or_minus_one = np.random.randint(0,high=2,size=self.word_length, dtype=np.int8) * 2 -1
+			self.data_array += random_plus_or_minus_one
+		magnitute = 2**int(self.bc) / 2
+		self.data_array[self.data_array > magnitute] = magnitude
+		self.data_array[self.data_array < -magnitute] = magnitude
+
+
+	def recall(self, address):
+		# since each element of data_array (bundle) may have more than one bit, to generalize xor, invert
+		# address then multiply by data_array
+		recalled_data = -1 * ((address * 2) - 1) * self.data_array
+		return recalled_data
+
+def empirical_response(bc, word_length, actions, states, choices, nrows, nact=None, ntrials=12000):
+	# find empirical response of sdm or bundle
+	# if nact == None, then using bundle, else using sdm
+	using_sdm = nact is not None
 	trial_count = 0
 	fail_count = 0
 	while trial_count < ntrials:
 		fsa = finite_state_automaton(actions, states, choices)
 		im_actions = np.random.randint(0,high=2,size=(actions, word_length), dtype=np.int8)
 		im_states = np.random.randint(0,high=2,size=(states, word_length), dtype=np.int8)
-		sdm = Sparse_distributed_memory(word_length, nrows, nact, bc)
+		if using_sdm:
+			# using sparse distributed memory
+			sdm = Sparse_distributed_memory(word_length, nrows, nact, bc)
+		else:
+			bun = Bundle_memory(word_length, bc)
+			im_actions = im_actions * 2 - 1  # convert to +/- 1
+			im_states = im_states * 2 - 1
 		# store transitions
 		for state in range(states):
 			for transition in fsa[state]:
 				action, next_state = transition
 				address = np.logical_xor(im_states[state], im_actions[action])
 				data = np.logical_xor(address, np.roll(im_states[next_state], 1))
-				sdm.store(address, data)
+				if using_sdm:
+					sdm.store(address, data)
+				else:
+					bun.store(data)
 		# recall transitions
+		if using_sdm:
+			sdm.truncate_counters()
+		else:
+			bun.truncate_counters()
 		match_hammings = []
 		distractor_hammings = []
 		for state in range(states):
 			for transition in fsa[state]:
 				action, next_state = transition
 				address = np.logical_xor(im_states[state], im_actions[action])
-				recalled_data = sdm.recall(address)
+				recalled_data = sdm.recall(address) if using_sdm else bun.recall(address)
 				recalled_next_state_vector = np.roll(np.logical_xor(address, recalled_data) , -1)
 				hamming_distances = np.count_nonzero( recalled_next_state_vector!=im_states, axis=1)
 				match_hammings.append(hamming_distances[next_state])
@@ -133,6 +184,9 @@ def sdm_empirical_response(bc, word_length, actions, states, choices, nrows, nac
 	predicted_error_rate = norm.cdf(0, loc=cm, scale=cs)
 	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate}
 	return info
+
+
+def bundle_empirical_response(bc, word_length, actions, states, choices, ntrials=3000):
 
 
 def fraction_rows_activated(m, k):
