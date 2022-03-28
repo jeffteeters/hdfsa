@@ -160,7 +160,9 @@ class Calculator:
 			self.calculate_loop_values(0.5)
 		elif values_to_plot == "e":
 			self.calculate_item_memory_match_values()
-		elif values_to_plot in ("d", "g"):
+		elif values_to_plot in ("d"):
+			self.bunl_vs_k()
+		elif values_to_plot in ("g"):
 			self.test_dplen_function()
 		elif values_to_plot == "p":
 			self.show_petti_mean_function()
@@ -468,6 +470,28 @@ class Calculator:
 		for i in range(num_items):
 			bm.append(xmpz(random.getrandbits(word_length)))
 		return bm
+
+	def bunl_vs_k(self):
+		# plot bundle length vs number items for different error rates
+		# based on dplen function
+		perrs = [5, 2.5, 1, 0.1]  # percent error to try
+		kvals = np.arange(5, 1000, 5)
+		# compute all bundle lengths
+		bundle_lengths = {}
+		for per in perrs:
+			bundle_lengths[per] = [self.bunlen(k, per/100.0) for k in kvals]
+		# make plot
+		xvals = kvals
+		title = "Bundle length vs K for different desired percent error"
+		fig = Figure(title=title, xvals=xvals, grid=True,
+				xlabel="Num items", ylabel="bungle length", xaxis_labels=None,
+				legend_location="upper left",
+				yvals=bundle_lengths[perrs[0]], ebar=None, legend="%s%% error" % perrs[0], logyscale=False, fmt="-")
+		for per in perrs[1:]:
+			fig.add_line(bundle_lengths[per], legend="%s%% error" % per)
+		self.figures.append(fig)
+
+
 
 	def test_dplen_function(self):
 		# test function that returns length of vector needed for particular error rate
