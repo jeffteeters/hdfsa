@@ -30,7 +30,15 @@ def finite_state_automaton(num_actions, num_states, num_choices):
 		fsa.append(nas)
 	return fsa
 
-class Sparse_distributed_memory:
+class Memory:
+	# superclass for SDM and bundle
+
+	def nothing():
+		return 1
+
+
+
+class Sparse_distributed_memory(Memory):
 	# implements a sparse distributed memory
 
 	def __init__(self, word_length, nrows, nact, bc):
@@ -67,9 +75,9 @@ class Sparse_distributed_memory:
 		# truncate counters to number of bits in bc.  if bc < 5, zero is included in the range only if
 		# bc has a 0.5 fractional part.  if bc >= 5, always include zero in the range.
 		include_zero = self.bc >= 0 or int(self.bc * 10) % 10 == 5
-		magnitute = 2**int(bc) / 2
-		self.data_array[self.data_array > self.counter_magnitude] = self.counter_magnitude
-		self.data_array[self.data_array < -self.counter_magnitude] = -self.counter_magnitude
+		magnitude = 2**int(self.bc) / 2
+		self.data_array[self.data_array > magnitude] = magnitude
+		self.data_array[self.data_array < -magnitude] = -magnitude
 		if not include_zero:
 			# replace zero counter values with random +1 or -1
 			# random_plus_or_minus_one = np.random.randint(0,high=2,size=(self.num_rows, self.word_length), dtype=np.int8) * 2 -1
@@ -79,6 +87,7 @@ class Sparse_distributed_memory:
 					if self.data_array[i,j] == 0:
 						self.data_array[i,j] = random.choice((-1, +1))
 
+
 	def recall(self, address):
 		row_ids = self.select(address)
 		isum = np.int32(self.data_array[row_ids[0]].copy())  # np.int32 is to convert to int32 to have range for sum
@@ -87,43 +96,34 @@ class Sparse_distributed_memory:
 		recalled_data = np.int8(isum > 0)
 		return recalled_data
 
-	def 
 
-def Bundle_memory:
+def Bundle_memory(Memory):
 		# implements a bundle memory
 	def __init__(self, word_length):
-		# future work?: bc - number of bits to use in each counter after finalizing counter matrix
-		# this would require a matrix for binding, too complex for now.  So, assume 1 bit always after threshold. 
 		self.word_length = word_length
-		self.bc = bc
 		self.data_array = np.zeros(word_length, dtype=np.int16)
 		self.num_items_stored = 0
 
 	def store(self, data):
-		# store binary word data at top nact addresses matching address
+		# store data
 		dpn = data * 2 - 1   # convert to +/- 1
 		self.data_array += dpn
 		self.number_items_stored += 1
 
 	def truncate_counters(self):
-		# truncate counters to number of bits in bc.  First force the number of items stored to be odd so that
-		# only odd values are stored
+		# Threshold counters. First force the number of items stored to be odd
 		if self.num_items_stored % 2 != 1:
 			# add random binary value so an odd number of items are stored
 			random_plus_or_minus_one = np.random.randint(0,high=2,size=self.word_length, dtype=np.int8) * 2 -1
 			self.data_array += random_plus_or_minus_one
-		magnitute = 2**int(self.bc) / 2
-		self.data_array[self.data_array > magnitute] = magnitude
-		self.data_array[self.data_array < -magnitute] = magnitude
-
+		self.data_array = (self.data_array > 0).astype(np.int8)
 
 	def recall(self, address):
-		# since each element of data_array (bundle) may have more than one bit, to generalize xor, invert
-		# address then multiply by data_array
-		recalled_data = -1 * ((address * 2) - 1) * self.data_array
+		recalled_data = np.logical_xor(address, self.data_array).astype(np.int8)
 		return recalled_data
 
-def empirical_response(bc, word_length, actions, states, choices, nrows, nact=None, ntrials=12000):
+
+def empirical_response(bc, word_length, actions, states, choices, nrows, nact=None, ntrials=1000):
 	# find empirical response of sdm or bundle
 	# if nact == None, then using bundle, else using sdm
 	using_sdm = nact is not None
@@ -133,13 +133,7 @@ def empirical_response(bc, word_length, actions, states, choices, nrows, nact=No
 		fsa = finite_state_automaton(actions, states, choices)
 		im_actions = np.random.randint(0,high=2,size=(actions, word_length), dtype=np.int8)
 		im_states = np.random.randint(0,high=2,size=(states, word_length), dtype=np.int8)
-		if using_sdm:
-			# using sparse distributed memory
-			sdm = Sparse_distributed_memory(word_length, nrows, nact, bc)
-		else:
-			bun = Bundle_memory(word_length, bc)
-			im_actions = im_actions * 2 - 1  # convert to +/- 1
-			im_states = im_states * 2 - 1
+		mem = Sparse_distributed_memory(word_length, nrows, nact, bc) if using_sdm else Bundle_memory(word_length)
 		# store transitions
 		for state in range(states):
 			for transition in fsa[state]:
@@ -147,21 +141,18 @@ def empirical_response(bc, word_length, actions, states, choices, nrows, nact=No
 				address = np.logical_xor(im_states[state], im_actions[action])
 				data = np.logical_xor(address, np.roll(im_states[next_state], 1))
 				if using_sdm:
-					sdm.store(address, data)
+					mem.store(address, data)
 				else:
-					bun.store(data)
+					mem.store(data)
 		# recall transitions
-		if using_sdm:
-			sdm.truncate_counters()
-		else:
-			bun.truncate_counters()
+		mem.truncate_counters()
 		match_hammings = []
 		distractor_hammings = []
 		for state in range(states):
 			for transition in fsa[state]:
 				action, next_state = transition
 				address = np.logical_xor(im_states[state], im_actions[action])
-				recalled_data = sdm.recall(address) if using_sdm else bun.recall(address)
+				recalled_data = mem.recall(address)
 				recalled_next_state_vector = np.roll(np.logical_xor(address, recalled_data) , -1)
 				hamming_distances = np.count_nonzero( recalled_next_state_vector!=im_states, axis=1)
 				match_hammings.append(hamming_distances[next_state])
@@ -186,18 +177,17 @@ def empirical_response(bc, word_length, actions, states, choices, nrows, nact=No
 	return info
 
 
-def bundle_empirical_response(bc, word_length, actions, states, choices, ntrials=3000):
-
 
 def fraction_rows_activated(m, k):
 	# compute optimal fraction rows to activate in sdm
 	# m is number rows, k is number items stored in sdm
 	return 1.0 / ((2*m*k)**(1/3))
 
-def sdm_response_info(size, bc, word_length=512, actions=10, states=100, choices=10, fimp=1.0):
+def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=100, choices=10, fimp=1.0):
 	# compute sdm recall error for random finite state automata
 	# size - number of bytes total storage allocated to sdm and item memory
 	# bc - number of bits in each counter after counter finalized.  Has 0.5 added to include zero
+	# nact - sdm activaction count.  If none, calculate using optimal formula
 	# fimp - fraction of item memory and hard location addresses present (1.0 all present, 0- all generated dynamically)
 	# size - word_length - width (in bits) of address and counter matrix and item memory
 	# actions - number of actions in finite state automaton
@@ -208,15 +198,16 @@ def sdm_response_info(size, bc, word_length=512, actions=10, states=100, choices
 	size_one_row = (word_length / 8) * fimp + (word_length * bcu/8)  # size one address and one counter row
 	nrows = int((size - item_memory_size) / size_one_row)
 	number_items_stored = actions * states
-	nact = round(fraction_rows_activated(nrows, number_items_stored)*nrows)
-	if nact == 0:
-		nact = 1
-	sdm_response_info = sdm_empirical_response(bc, word_length, actions, states, choices, nrows, nact)
+	if nact is None:
+		nact = round(fraction_rows_activated(nrows, number_items_stored)*nrows)
+		if nact == 0:
+			nact = 1
+	sdm_response_info = empirical_response(bc, word_length, actions, states, choices, nrows, nact)
 	info={"err":sdm_response_info["error_rate"], "predicted_error":sdm_response_info["predicted_error_rate"],
 		"nrows":nrows, "nact":nact}
 	return info
 
-def plot_info(sizes, bc_vals, resp_info):
+def plot_info(sizes, bc_vals, resp_info, line_label):
 	plots_info = [
 		{"subplot": 221, "key":"err","title":"SDM error with different counter bits", "ylabel":"Recall error"},
 		{"subplot": 222, "key":"predicted_error","title":"SDM predicted error with different counter bits",
@@ -228,10 +219,10 @@ def plot_info(sizes, bc_vals, resp_info):
 		plt.subplot(pi["subplot"])
 		log_scale = "scale" in pi and pi["scale"] == "log"
 		yvals = [resp_info[bc_vals[0]][i][pi["key"]] for i in range(len(sizes))]
-		plt.errorbar(sizes, yvals, yerr=None, label="%s bit" % bc_vals[0]) # fmt="-k"
+		plt.errorbar(sizes, yvals, yerr=None, label="%s %s" % (bc_vals[0], line_label)) # fmt="-k"
 		for i in range(1, len(bc_vals)):
 			yvals = [resp_info[bc_vals[i]][j][pi["key"]] for j in range(len(sizes))]
-			plt.errorbar(sizes, yvals, yerr=None, label='%s bit' % bc_vals[i], linewidth=1,)# fmt="-k",) # linestyle='dashed',
+			plt.errorbar(sizes, yvals, yerr=None, label="%s %s" % (bc_vals[i], line_label), linewidth=1,)# fmt="-k",) # linestyle='dashed',
 		labelLines(plt.gca().get_lines(), zorder=2.5)
 		if log_scale:
 			plt.yscale('log')
@@ -260,7 +251,7 @@ def main(start_size=10000, step_size=2000, stop_size=30001, bc_vals=[1,1.5, 2, 2
 	for bc in bc_vals:
 		resp_info[bc] = [sdm_response_info(size, bc) for size in sizes]
 	# make plot
-	plot_info(sizes, bc_vals, resp_info)
+	plot_info(sizes, bc_vals, resp_info, line_label="bit")
 
 
 if __name__ == "__main__":
