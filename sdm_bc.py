@@ -123,7 +123,7 @@ def Bundle_memory(Memory):
 		return recalled_data
 
 
-def empirical_response(bc, word_length, actions, states, choices, nrows, nact=None, size=None, ntrials=10000):
+def empirical_response(word_length, actions, states, choices, nrows=None, bc=None, nact=None, size=None, ntrials=20000):
 	# find empirical response of sdm or bundle
 	# if nact == None, then using bundle, else using sdm
 	using_sdm = nact is not None
@@ -146,8 +146,9 @@ def empirical_response(bc, word_length, actions, states, choices, nrows, nact=No
 					mem.store(data)
 		# recall transitions
 		mem.truncate_counters()
-		match_hammings = []
-		distractor_hammings = []
+		hamming_margins = []  # difference between match and distractor hamming distances
+		# match_hammings = []
+		# distractor_hammings = []
 		for state in range(states):
 			for transition in fsa[state]:
 				action, next_state = transition
@@ -155,27 +156,31 @@ def empirical_response(bc, word_length, actions, states, choices, nrows, nact=No
 				recalled_data = mem.recall(address)
 				recalled_next_state_vector = np.roll(np.logical_xor(address, recalled_data) , -1)
 				hamming_distances = np.count_nonzero( recalled_next_state_vector!=im_states, axis=1)
-				match_hammings.append(hamming_distances[next_state])
+				match_hamming = hamming_distances[next_state]
 				found_next_state = np.argmin(hamming_distances)
 				if found_next_state != next_state:
 					fail_count += 1
-					distractor_hammings.append(hamming_distances[found_next_state])
+					distractor_hamming = hamming_distances[found_next_state]
 				else:
 					hamming_distances[next_state] = word_length
 					closest_distractor = np.argmin(hamming_distances)
-					distractor_hammings.append(hamming_distances[closest_distractor])
+					distractor_hamming = hamming_distances[closest_distractor]
+				hamming_margins.append(distractor_hamming - match_hamming)
 				trial_count += 1
 	error_rate = fail_count / trial_count
-	mm = statistics.mean(match_hammings)  # match mean
-	mv = statistics.variance(match_hammings)
-	dm = statistics.mean(distractor_hammings)  # distractor mean
-	dv = statistics.variance(distractor_hammings)
-	cm = dm - mm  # combined mean
-	cs = math.sqrt(mv + dv)  # combined standard deviation
-	predicted_error_rate = norm.cdf(0, loc=cm, scale=cs)
-	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate,
-		"mm":mm, "mv":mv, "dm":dm, "dv":dv, "cm":cm, "cs":cs}
-	plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
+	# mm = statistics.mean(match_hammings)  # match mean
+	# mv = statistics.variance(match_hammings)
+	# dm = statistics.mean(distractor_hammings)  # distractor mean
+	# dv = statistics.variance(distractor_hammings)
+	# cm = dm - mm  # combined mean
+	# cs = math.sqrt(mv + dv)  # combined standard deviation
+	# predicted_error_rate = norm.cdf(0, loc=cm, scale=cs)
+	margin_mean = statistics.mean(hamming_margins)
+	margin_var = statistics.variance(hamming_margins)
+	predicted_error_rate = norm.cdf(0, loc=margin_mean, scale=math.sqrt(margin_var))
+	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate,}
+		# "mm":mm, "mv":mv, "dm":dm, "dv":dv, "cm":cm, "cs":cs}
+	# plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
 	return info
 
 def plot_hist(match_hammings, distractor_hammings, title):
@@ -214,24 +219,44 @@ def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=1
 		nact = round(fraction_rows_activated(nrows, number_items_stored)*nrows)
 		if nact == 0:
 			nact = 1
-	ri = empirical_response(bc, word_length, actions, states, choices, nrows, nact, size=size)
+	ri = empirical_response(word_length, actions, states, choices, nrows, bc, nact, size=size)
 	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],
-		"nrows":nrows, "nact":nact, "mm":ri["mm"], "ms":math.sqrt(ri["mv"]), "dm":ri["dm"], "ds":math.sqrt(ri["dv"]),
-		"cm":ri["cm"], "cs":ri["cs"]
+		"nrows":nrows, "nact":nact,
+		# "mm":ri["mm"], "ms":math.sqrt(ri["mv"]), "dm":ri["dm"], "ds":math.sqrt(ri["dv"]),
+		# "cm":ri["cm"], "cs":ri["cs"]
+		}
+	return info
+
+def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0):
+	# compute bundle recall error for random finite state automata
+	# size - number of bytes total storage allocated to bundle and item memory
+	# fimp - fraction of item memory and hard location addresses present (1.0 all present, 0- all generated dynamically)
+	# actions - number of actions in finite state automaton
+	# states - number of states in finite state automation
+	# choices - number of choices per state
+	item_memory_length = actions + states
+	word_length = (size * 8) / (1 + item_memory_length * fimp)
+	ri = empirical_response(word_length, actions, states, choices, size=size)
+	fraction_memory_used_for_data = word_length / (size * 8) 
+	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],
+		"mem_eff":fraction_memory_used_for_data,
+		# "mm":ri["mm"], "ms":math.sqrt(ri["mv"]), "dm":ri["dm"], "ds":math.sqrt(ri["dv"]),
+		# "cm":ri["cm"], "cs":ri["cs"]
 		}
 	return info
 
 def plot_info(sizes, bc_vals, resp_info, line_label):
 	plots_info = [
 		{"subplot": 221, "key":"err","title":"SDM error with different counter bits", "ylabel":"Recall error"},
-		{"subplot": 222, "key":"predicted_error","title":"SDM predicted error with different counter bits",
-			"ylabel":"Recall error", "scale":"log"},
+		{"subplot": 222, "key":"err","title":"SDM error with different counter bits", "ylabel":"Recall error", "scale":"log"},
+		# {"subplot": 222, "key":"predicted_error","title":"SDM predicted error with different counter bits",
+		#	"ylabel":"Recall error", "scale":"log"},
 		{"subplot": 223, "key":"nrows","title":"Number rows in SDM vs. size and counter bits","ylabel":"Number rows"},
 		{"subplot": 224, "key":"nact","title":"SDM activation count vs counter bits and size","ylabel":"Activation Count"},
-		{"subplot": 221, "key":"mm","title":"Match mean","ylabel":"Hamming distance"},
-		{"subplot": 222, "key":"ms","title":"Match std","ylabel":"Hamming distance"},
-		{"subplot": 223, "key":"dm","title":"Distractor mean","ylabel":"Hamming distance"},
-		{"subplot": 224, "key":"ds","title":"Distractor std","ylabel":"Hamming distance"},
+		# {"subplot": 221, "key":"mm","title":"Match mean","ylabel":"Hamming distance"},
+		# {"subplot": 222, "key":"ms","title":"Match std","ylabel":"Hamming distance"},
+		# {"subplot": 223, "key":"dm","title":"Distractor mean","ylabel":"Hamming distance"},
+		# {"subplot": 224, "key":"ds","title":"Distractor std","ylabel":"Hamming distance"},
 		 ]
 	for pi in plots_info:
 		plt.subplot(pi["subplot"])
