@@ -123,7 +123,7 @@ def Bundle_memory(Memory):
 		return recalled_data
 
 
-def empirical_response(bc, word_length, actions, states, choices, nrows, nact=None, ntrials=1000):
+def empirical_response(bc, word_length, actions, states, choices, nrows, nact=None, size=None, ntrials=10000):
 	# find empirical response of sdm or bundle
 	# if nact == None, then using bundle, else using sdm
 	using_sdm = nact is not None
@@ -173,9 +173,21 @@ def empirical_response(bc, word_length, actions, states, choices, nrows, nact=No
 	cm = dm - mm  # combined mean
 	cs = math.sqrt(mv + dv)  # combined standard deviation
 	predicted_error_rate = norm.cdf(0, loc=cm, scale=cs)
-	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate}
+	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate,
+		"mm":mm, "mv":mv, "dm":dm, "dv":dv, "cm":cm, "cs":cs}
+	plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
 	return info
 
+def plot_hist(match_hammings, distractor_hammings, title):
+	# plot histograms of match mean and distractor hammings
+	bin_start = min(min(match_hammings), min(distractor_hammings))
+	bin_end = max(max(match_hammings), max(distractor_hammings))
+	bins = np.arange(bin_start, bin_end+1, 1)
+	plt.hist(match_hammings, bins, alpha=0.5, label='match_hammings')
+	plt.hist(distractor_hammings, bins, alpha=0.5, label='distractor_hammings')
+	plt.legend(loc='upper right')
+	plt.title(title)
+	plt.show()
 
 
 def fraction_rows_activated(m, k):
@@ -202,9 +214,11 @@ def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=1
 		nact = round(fraction_rows_activated(nrows, number_items_stored)*nrows)
 		if nact == 0:
 			nact = 1
-	sdm_response_info = empirical_response(bc, word_length, actions, states, choices, nrows, nact)
-	info={"err":sdm_response_info["error_rate"], "predicted_error":sdm_response_info["predicted_error_rate"],
-		"nrows":nrows, "nact":nact}
+	ri = empirical_response(bc, word_length, actions, states, choices, nrows, nact, size=size)
+	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],
+		"nrows":nrows, "nact":nact, "mm":ri["mm"], "ms":math.sqrt(ri["mv"]), "dm":ri["dm"], "ds":math.sqrt(ri["dv"]),
+		"cm":ri["cm"], "cs":ri["cs"]
+		}
 	return info
 
 def plot_info(sizes, bc_vals, resp_info, line_label):
@@ -214,6 +228,10 @@ def plot_info(sizes, bc_vals, resp_info, line_label):
 			"ylabel":"Recall error", "scale":"log"},
 		{"subplot": 223, "key":"nrows","title":"Number rows in SDM vs. size and counter bits","ylabel":"Number rows"},
 		{"subplot": 224, "key":"nact","title":"SDM activation count vs counter bits and size","ylabel":"Activation Count"},
+		{"subplot": 221, "key":"mm","title":"Match mean","ylabel":"Hamming distance"},
+		{"subplot": 222, "key":"ms","title":"Match std","ylabel":"Hamming distance"},
+		{"subplot": 223, "key":"dm","title":"Distractor mean","ylabel":"Hamming distance"},
+		{"subplot": 224, "key":"ds","title":"Distractor std","ylabel":"Hamming distance"},
 		 ]
 	for pi in plots_info:
 		plt.subplot(pi["subplot"])
@@ -240,7 +258,8 @@ def plot_info(sizes, bc_vals, resp_info, line_label):
 		plt.xlabel("Size (kB)")
 		plt.ylabel(pi["ylabel"])
 		plt.grid()
-	plt.show()
+		if pi["subplot"] == 224:
+			plt.show()
 	return
 
 
@@ -253,6 +272,17 @@ def main(start_size=10000, step_size=2000, stop_size=30001, bc_vals=[1,1.5, 2, 2
 	# make plot
 	plot_info(sizes, bc_vals, resp_info, line_label="bit")
 
+def vary_nact(start_size=10000, step_size=2000, stop_size=30001, nact_vals=[1,3]):
+	resp_info = {}
+	start_size=18000; step_size=500; stop_size=24001
+	sizes = range(start_size, stop_size, step_size)
+	bc = 1  # used fixed bc
+	for nact in nact_vals:
+		resp_info[nact] = [sdm_response_info(size, bc, nact=nact) for size in sizes]
+	# make plot
+	plot_info(sizes, nact_vals, resp_info, line_label="act")
+
 
 if __name__ == "__main__":
-	main()
+	# main()
+	vary_nact()
