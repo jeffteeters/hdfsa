@@ -97,7 +97,7 @@ class Sparse_distributed_memory(Memory):
 		return recalled_data
 
 
-def Bundle_memory(Memory):
+class Bundle_memory(Memory):
 		# implements a bundle memory
 	def __init__(self, word_length):
 		self.word_length = word_length
@@ -108,7 +108,7 @@ def Bundle_memory(Memory):
 		# store data
 		dpn = data * 2 - 1   # convert to +/- 1
 		self.data_array += dpn
-		self.number_items_stored += 1
+		self.num_items_stored += 1
 
 	def truncate_counters(self):
 		# Threshold counters. First force the number of items stored to be odd
@@ -122,8 +122,70 @@ def Bundle_memory(Memory):
 		recalled_data = np.logical_xor(address, self.data_array).astype(np.int8)
 		return recalled_data
 
+def empirical_response(mem, actions, states, choices, size, ntrials=4000):
+	# find empirical response of sdm or bundle (in mem object)
+	# size is number of bytes allocated to memory, used only for including in plot titles
+	using_sdm = isinstance(mem, Sparse_distributed_memory)
+	trial_count = 0
+	fail_count = 0
+	while trial_count < ntrials:
+		fsa = finite_state_automaton(actions, states, choices)
+		im_actions = np.random.randint(0,high=2,size=(actions, mem.word_length), dtype=np.int8)
+		im_states = np.random.randint(0,high=2,size=(states, mem.word_length), dtype=np.int8)
+		# mem = Sparse_distributed_memory(word_length, nrows, nact, bc) if using_sdm else Bundle_memory(word_length)
+		# store transitions
+		for state in range(states):
+			for transition in fsa[state]:
+				action, next_state = transition
+				address = np.logical_xor(im_states[state], im_actions[action])
+				data = np.logical_xor(address, np.roll(im_states[next_state], 1))
+				if using_sdm:
+					mem.store(address, data)
+				else:
+					mem.store(data)
+		# recall transitions
+		mem.truncate_counters()
+		# hamming_margins = []  # difference between match and distractor hamming distances
+		# match_hammings = []
+		# distractor_hammings = []
+		for state in range(states):
+			for transition in fsa[state]:
+				action, next_state = transition
+				address = np.logical_xor(im_states[state], im_actions[action])
+				recalled_data = mem.recall(address)
+				if using_sdm:
+					recalled_next_state_vector = np.roll(np.logical_xor(address, recalled_data) , -1)
+				else:
+					recalled_next_state_vector = np.roll(recalled_data, -1)  # xor with address done in bundle recall
+				hamming_distances = np.count_nonzero( recalled_next_state_vector!=im_states, axis=1)
+				match_hamming = hamming_distances[next_state]
+				found_next_state = np.argmin(hamming_distances)
+				if found_next_state != next_state:
+					fail_count += 1
+					# distractor_hamming = hamming_distances[found_next_state]
+				# else:
+				# 	hamming_distances[next_state] = word_length
+					# closest_distractor = np.argmin(hamming_distances)
+					# distractor_hamming = hamming_distances[closest_distractor]
+				# hamming_margins.append(distractor_hamming - match_hamming)
+				trial_count += 1
+	error_rate = fail_count / trial_count
+	# mm = statistics.mean(match_hammings)  # match mean
+	# mv = statistics.variance(match_hammings)
+	# dm = statistics.mean(distractor_hammings)  # distractor mean
+	# dv = statistics.variance(distractor_hammings)
+	# cm = dm - mm  # combined mean
+	# cs = math.sqrt(mv + dv)  # combined standard deviation
+	# predicted_error_rate = norm.cdf(0, loc=cm, scale=cs)
+	# margin_mean = statistics.mean(hamming_margins)
+	# margin_var = statistics.variance(hamming_margins)
+	# predicted_error_rate = norm.cdf(0, loc=margin_mean, scale=math.sqrt(margin_var))
+	info = {"error_rate": error_rate, } # "predicted_error_rate":predicted_error_rate,}
+		# "mm":mm, "mv":mv, "dm":dm, "dv":dv, "cm":cm, "cs":cs}
+	# plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
+	return info
 
-def empirical_response(word_length, actions, states, choices, nrows=None, bc=None, nact=None, size=None, ntrials=20000):
+def empirical_response_orig(word_length, actions, states, choices, nrows=None, bc=None, nact=None, size=None, ntrials=200):
 	# find empirical response of sdm or bundle
 	# if nact == None, then using bundle, else using sdm
 	using_sdm = nact is not None
@@ -219,9 +281,13 @@ def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=1
 		nact = round(fraction_rows_activated(nrows, number_items_stored)*nrows)
 		if nact == 0:
 			nact = 1
-	ri = empirical_response(word_length, actions, states, choices, nrows, bc, nact, size=size)
-	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],
+	mem = Sparse_distributed_memory(word_length, nrows, nact, bc)
+	ri = empirical_response(mem, actions, states, choices, size=size)
+	fraction_memory_used_for_data = (word_length*nrows*bcu) / (size * 8) 
+	info={"err":ri["error_rate"], # "predicted_error":ri["predicted_error_rate"],
 		"nrows":nrows, "nact":nact,
+		"word_length":word_length,
+		"mem_eff":fraction_memory_used_for_data,
 		# "mm":ri["mm"], "ms":math.sqrt(ri["mv"]), "dm":ri["dm"], "ds":math.sqrt(ri["dv"]),
 		# "cm":ri["cm"], "cs":ri["cs"]
 		}
@@ -235,11 +301,13 @@ def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0):
 	# states - number of states in finite state automation
 	# choices - number of choices per state
 	item_memory_length = actions + states
-	word_length = (size * 8) / (1 + item_memory_length * fimp)
-	ri = empirical_response(word_length, actions, states, choices, size=size)
+	word_length = int((size * 8) / (1 + item_memory_length * fimp))
+	mem = Bundle_memory(word_length)
+	ri = empirical_response(mem, actions, states, choices, size=size)
 	fraction_memory_used_for_data = word_length / (size * 8) 
-	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],
+	info={"err":ri["error_rate"], # "predicted_error":ri["predicted_error_rate"],
 		"mem_eff":fraction_memory_used_for_data,
+		"bundle_length":word_length,
 		# "mm":ri["mm"], "ms":math.sqrt(ri["mv"]), "dm":ri["dm"], "ds":math.sqrt(ri["dv"]),
 		# "cm":ri["cm"], "cs":ri["cs"]
 		}
@@ -288,7 +356,7 @@ def plot_info(sizes, bc_vals, resp_info, line_label):
 	return
 
 
-def main(start_size=10000, step_size=2000, stop_size=30001, bc_vals=[1,1.5, 2, 2.5,3.5,4.5,5.5,8]):
+def vary_sdm_bc(start_size=10000, step_size=2000, stop_size=30001, bc_vals=[1,1.5, 2, 2.5,3.5,4.5,5.5,8]):
 	bc_vals = [1,1.5, 2, 2.5, 3, 3.5 , 8]
 	resp_info = {}
 	sizes = range(start_size, stop_size, step_size)
@@ -307,7 +375,45 @@ def vary_nact(start_size=10000, step_size=2000, stop_size=30001, nact_vals=[1,3]
 	# make plot
 	plot_info(sizes, nact_vals, resp_info, line_label="act")
 
+def sdm_vs_bundle():
+	# start_size=18000; step_size=500; stop_size=24001
+	start_size=5000; step_size=1000; stop_size=14001
+	sizes = range(start_size, stop_size, step_size)
+	bc = 1  # used fixed bc
+	nact = 1
+	fimp=0.1
+	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp) for size in sizes]  # ri - response info
+	bundle_ri = [bundle_response_info(size, fimp=fimp) for size in sizes]
+	plots_info = [
+		{"subplot": 221, "key":"err","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error"},
+		{"subplot": 222, "key":"err","title":"SDM vs bundle error with fimp=%s (log scale)" % fimp,
+			"ylabel":"Recall error", "scale":"log"},
+		# {"subplot": 222, "key":"mem_eff","title":"SDM vs bundle mem_eff with fimp=%s" % fimp, "ylabel":"Fraction mem used"},
+		{"subplot": 223, "key":"nrows","title":"SDM num rows with fimp=%s" % fimp, "ylabel":"Number rows"},
+		{"subplot": 224, "key":"bundle_length","title":"bundle_length with fimp=%s" % fimp, "ylabel":"Bundle length"},
+		]
+	for pi in plots_info:
+		plt.subplot(pi["subplot"])
+		log_scale = "scale" in pi and pi["scale"] == "log"
+		if pi["key"] in sdm_ri[0]:
+			yvals = [sdm_ri[i][pi["key"]] for i in range(len(sizes))]
+			plt.errorbar(sizes, yvals, yerr=None, label="sdm")
+		if pi["key"] in bundle_ri[0]:
+			yvals = [bundle_ri[i][pi["key"]] for i in range(len(sizes))]
+			plt.errorbar(sizes, yvals, yerr=None, label="bundle")
+		xaxis_labels = ["%s" % int(size/1000) for size in sizes]
+		plt.xticks(sizes,xaxis_labels)
+		if log_scale:
+			plt.yscale('log')
+		plt.title(pi["title"])
+		plt.xlabel("Size (kB)")
+		plt.ylabel(pi["ylabel"])
+		plt.legend(loc='upper right')
+		plt.grid()
+	plt.show()
+
 
 if __name__ == "__main__":
-	# main()
-	vary_nact()
+	# vary_sdm_bc()
+	# vary_nact()
+	sdm_vs_bundle()
