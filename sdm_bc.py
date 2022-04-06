@@ -48,8 +48,10 @@ class Sparse_distributed_memory(Memory):
 		self.nrows = nrows
 		self.nact = nact
 		self.bc = bc
-		self.data_array = np.zeros((nrows, word_length), dtype=np.int16)
-		self.addresses = np.random.randint(0,high=2,size=(nrows, word_length), dtype=np.int8)
+
+	def initialize(self):
+		self.data_array = np.zeros((self.nrows, self.word_length), dtype=np.int16)
+		self.addresses = np.random.randint(0,high=2,size=(self.nrows, self.word_length), dtype=np.int8)
 		self.select_cache = {}
 
 	def select(self, address):
@@ -74,7 +76,7 @@ class Sparse_distributed_memory(Memory):
 	def truncate_counters(self):
 		# truncate counters to number of bits in bc.  if bc < 5, zero is included in the range only if
 		# bc has a 0.5 fractional part.  if bc >= 5, always include zero in the range.
-		include_zero = self.bc >= 0 or int(self.bc * 10) % 10 == 5
+		include_zero = self.bc >= 5 or int(self.bc * 10) % 10 == 5
 		magnitude = 2**int(self.bc) / 2
 		self.data_array[self.data_array > magnitude] = magnitude
 		self.data_array[self.data_array < -magnitude] = -magnitude
@@ -82,7 +84,7 @@ class Sparse_distributed_memory(Memory):
 			# replace zero counter values with random +1 or -1
 			# random_plus_or_minus_one = np.random.randint(0,high=2,size=(self.num_rows, self.word_length), dtype=np.int8) * 2 -1
 			# there might be a fast way to do this in numpy but I couldn't find a way
-			for i in range(self.num_rows):
+			for i in range(self.nrows):
 				for j in range(self.word_length):
 					if self.data_array[i,j] == 0:
 						self.data_array[i,j] = random.choice((-1, +1))
@@ -101,7 +103,9 @@ class Bundle_memory(Memory):
 		# implements a bundle memory
 	def __init__(self, word_length):
 		self.word_length = word_length
-		self.data_array = np.zeros(word_length, dtype=np.int16)
+
+	def initialize(self):
+		self.data_array = np.zeros(self.word_length, dtype=np.int16)
 		self.num_items_stored = 0
 
 	def store(self, data):
@@ -122,7 +126,7 @@ class Bundle_memory(Memory):
 		recalled_data = np.logical_xor(address, self.data_array).astype(np.int8)
 		return recalled_data
 
-def empirical_response(mem, actions, states, choices, size, ntrials=4000):
+def empirical_response(mem, actions, states, choices, size, ntrials=3000):
 	# find empirical response of sdm or bundle (in mem object)
 	# size is number of bytes allocated to memory, used only for including in plot titles
 	using_sdm = isinstance(mem, Sparse_distributed_memory)
@@ -132,6 +136,7 @@ def empirical_response(mem, actions, states, choices, size, ntrials=4000):
 		fsa = finite_state_automaton(actions, states, choices)
 		im_actions = np.random.randint(0,high=2,size=(actions, mem.word_length), dtype=np.int8)
 		im_states = np.random.randint(0,high=2,size=(states, mem.word_length), dtype=np.int8)
+		mem.initialize()
 		# mem = Sparse_distributed_memory(word_length, nrows, nact, bc) if using_sdm else Bundle_memory(word_length)
 		# store transitions
 		for state in range(states):
@@ -185,65 +190,6 @@ def empirical_response(mem, actions, states, choices, size, ntrials=4000):
 	# plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
 	return info
 
-def empirical_response_orig(word_length, actions, states, choices, nrows=None, bc=None, nact=None, size=None, ntrials=200):
-	# find empirical response of sdm or bundle
-	# if nact == None, then using bundle, else using sdm
-	using_sdm = nact is not None
-	trial_count = 0
-	fail_count = 0
-	while trial_count < ntrials:
-		fsa = finite_state_automaton(actions, states, choices)
-		im_actions = np.random.randint(0,high=2,size=(actions, word_length), dtype=np.int8)
-		im_states = np.random.randint(0,high=2,size=(states, word_length), dtype=np.int8)
-		mem = Sparse_distributed_memory(word_length, nrows, nact, bc) if using_sdm else Bundle_memory(word_length)
-		# store transitions
-		for state in range(states):
-			for transition in fsa[state]:
-				action, next_state = transition
-				address = np.logical_xor(im_states[state], im_actions[action])
-				data = np.logical_xor(address, np.roll(im_states[next_state], 1))
-				if using_sdm:
-					mem.store(address, data)
-				else:
-					mem.store(data)
-		# recall transitions
-		mem.truncate_counters()
-		hamming_margins = []  # difference between match and distractor hamming distances
-		# match_hammings = []
-		# distractor_hammings = []
-		for state in range(states):
-			for transition in fsa[state]:
-				action, next_state = transition
-				address = np.logical_xor(im_states[state], im_actions[action])
-				recalled_data = mem.recall(address)
-				recalled_next_state_vector = np.roll(np.logical_xor(address, recalled_data) , -1)
-				hamming_distances = np.count_nonzero( recalled_next_state_vector!=im_states, axis=1)
-				match_hamming = hamming_distances[next_state]
-				found_next_state = np.argmin(hamming_distances)
-				if found_next_state != next_state:
-					fail_count += 1
-					distractor_hamming = hamming_distances[found_next_state]
-				else:
-					hamming_distances[next_state] = word_length
-					closest_distractor = np.argmin(hamming_distances)
-					distractor_hamming = hamming_distances[closest_distractor]
-				hamming_margins.append(distractor_hamming - match_hamming)
-				trial_count += 1
-	error_rate = fail_count / trial_count
-	# mm = statistics.mean(match_hammings)  # match mean
-	# mv = statistics.variance(match_hammings)
-	# dm = statistics.mean(distractor_hammings)  # distractor mean
-	# dv = statistics.variance(distractor_hammings)
-	# cm = dm - mm  # combined mean
-	# cs = math.sqrt(mv + dv)  # combined standard deviation
-	# predicted_error_rate = norm.cdf(0, loc=cm, scale=cs)
-	margin_mean = statistics.mean(hamming_margins)
-	margin_var = statistics.variance(hamming_margins)
-	predicted_error_rate = norm.cdf(0, loc=margin_mean, scale=math.sqrt(margin_var))
-	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate,}
-		# "mm":mm, "mv":mv, "dm":dm, "dv":dv, "cm":cm, "cs":cs}
-	# plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
-	return info
 
 def plot_hist(match_hammings, distractor_hammings, title):
 	# plot histograms of match mean and distractor hammings
@@ -262,7 +208,7 @@ def fraction_rows_activated(m, k):
 	# m is number rows, k is number items stored in sdm
 	return 1.0 / ((2*m*k)**(1/3))
 
-def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=100, choices=10, fimp=1.0):
+def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=100, choices=10, fimp=1.0, bc_for_rows=None):
 	# compute sdm recall error for random finite state automata
 	# size - number of bytes total storage allocated to sdm and item memory
 	# bc - number of bits in each counter after counter finalized.  Has 0.5 added to include zero
@@ -272,14 +218,17 @@ def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=1
 	# actions - number of actions in finite state automaton
 	# states - number of states in finite state automation
 	# choices - number of choices per state
+	# bc_for_rows - bc size used to calculate number of rows.  Used to compare effects of bc with same number rows
 	item_memory_size = ((actions + states) * word_length / 8) * fimp  # size in bytes of item memory
-	bcu = int(bc + .6)  # round up
+	if bc_for_rows is None:
+		bc_for_rows = bc
+	bcu = int(bc_for_rows + .6)  # round up
 	size_one_row = (word_length / 8) * fimp + (word_length * bcu/8)  # size one address and one counter row
 	nrows = int((size - item_memory_size) / size_one_row)
 	number_items_stored = actions * states
 	if nact is None:
 		nact = round(fraction_rows_activated(nrows, number_items_stored)*nrows)
-		if nact == 0:
+		if nact < 1:
 			nact = 1
 	mem = Sparse_distributed_memory(word_length, nrows, nact, bc)
 	ri = empirical_response(mem, actions, states, choices, size=size)
@@ -358,14 +307,28 @@ def plot_info(sizes, bc_vals, resp_info, line_label):
 
 def vary_sdm_bc(start_size=10000, step_size=2000, stop_size=30001, bc_vals=[1,1.5, 2, 2.5,3.5,4.5,5.5,8]):
 	bc_vals = [1,1.5, 2, 2.5, 3, 3.5 , 8]
+	start_size=20000; step_size=1000; stop_size=33001
 	resp_info = {}
 	sizes = range(start_size, stop_size, step_size)
+	bc_for_rows=None
+	nact=None
 	for bc in bc_vals:
-		resp_info[bc] = [sdm_response_info(size, bc) for size in sizes]
+		resp_info[bc] = [sdm_response_info(size, bc, nact=nact, bc_for_rows=bc_for_rows) for size in sizes]
 	# make plot
 	plot_info(sizes, bc_vals, resp_info, line_label="bit")
 
-def vary_nact(start_size=10000, step_size=2000, stop_size=30001, nact_vals=[1,3]):
+def vary_nact(start_size=10000, step_size=2000, stop_size=30001, nact_vals=[1,2, 3, 4, 5]):
+	resp_info = {}
+	start_size=20000; step_size=1000; stop_size=33001
+	sizes = range(start_size, stop_size, step_size)
+	bc = 8  # used fixed bc
+	bc_for_rows=1
+	for nact in nact_vals:
+		resp_info[nact] = [sdm_response_info(size, bc, nact=nact, bc_for_rows=bc_for_rows) for size in sizes]
+	# make plot
+	plot_info(sizes, nact_vals, resp_info, line_label="act")
+
+def vary_fimp(start_size=10000, step_size=2000, stop_size=30001, nact_vals=[1,3]):
 	resp_info = {}
 	start_size=18000; step_size=500; stop_size=24001
 	sizes = range(start_size, stop_size, step_size)
@@ -375,15 +338,20 @@ def vary_nact(start_size=10000, step_size=2000, stop_size=30001, nact_vals=[1,3]
 	# make plot
 	plot_info(sizes, nact_vals, resp_info, line_label="act")
 
+def folds2fimp(folds):
+	# convert number of folds to fraction of item memory present
+	return 1.0 / folds
+
 def sdm_vs_bundle():
 	# start_size=18000; step_size=500; stop_size=24001
 	start_size=5000; step_size=1000; stop_size=14001
 	sizes = range(start_size, stop_size, step_size)
-	bc = 1  # used fixed bc
-	nact = 1
+	bc = 5.5  # used fixed bc
+	nact = None
 	fimp=0.1
 	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp) for size in sizes]  # ri - response info
 	bundle_ri = [bundle_response_info(size, fimp=fimp) for size in sizes]
+	# bundle_ri = [{} for size in sizes]
 	plots_info = [
 		{"subplot": 221, "key":"err","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error"},
 		{"subplot": 222, "key":"err","title":"SDM vs bundle error with fimp=%s (log scale)" % fimp,
@@ -391,6 +359,7 @@ def sdm_vs_bundle():
 		# {"subplot": 222, "key":"mem_eff","title":"SDM vs bundle mem_eff with fimp=%s" % fimp, "ylabel":"Fraction mem used"},
 		{"subplot": 223, "key":"nrows","title":"SDM num rows with fimp=%s" % fimp, "ylabel":"Number rows"},
 		{"subplot": 224, "key":"bundle_length","title":"bundle_length with fimp=%s" % fimp, "ylabel":"Bundle length"},
+		# {"subplot": 224, "key":"nact","title":"sdm activation with fimp=%s" % fimp, "ylabel":"activaction count"},
 		]
 	for pi in plots_info:
 		plt.subplot(pi["subplot"])
