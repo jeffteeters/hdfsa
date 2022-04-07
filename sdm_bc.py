@@ -208,10 +208,11 @@ def fraction_rows_activated(m, k):
 	# m is number rows, k is number items stored in sdm
 	return 1.0 / ((2*m*k)**(1/3))
 
-def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=100, choices=10, fimp=1.0, bc_for_rows=None):
+def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states=100, choices=10, fimp=1.0,
+		bc_for_rows=None, empirical=True):
 	# compute sdm recall error for random finite state automata
 	# size - number of bytes total storage allocated to sdm and item memory
-	# bc - number of bits in each counter after counter finalized.  Has 0.5 added to include zero
+	# bc - number of bits in each counter after counter finalized.  Has 0.5 added to include zero if less than 5
 	# nact - sdm activaction count.  If none, calculate using optimal formula
 	# fimp - fraction of item memory and hard location addresses present (1.0 all present, 0- all generated dynamically)
 	# size - word_length - width (in bits) of address and counter matrix and item memory
@@ -219,6 +220,7 @@ def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=1
 	# states - number of states in finite state automation
 	# choices - number of choices per state
 	# bc_for_rows - bc size used to calculate number of rows.  Used to compare effects of bc with same number rows
+	# empirical - True if should get empirical response, False otherwise
 	item_memory_size = ((actions + states) * word_length / 8) * fimp  # size in bytes of item memory
 	if bc_for_rows is None:
 		bc_for_rows = bc
@@ -231,32 +233,41 @@ def sdm_response_info(size, bc, nact=None, word_length=512, actions=10, states=1
 		if nact < 1:
 			nact = 1
 	mem = Sparse_distributed_memory(word_length, nrows, nact, bc)
-	ri = empirical_response(mem, actions, states, choices, size=size)
+	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None}
+	byte_operations_required_for_recall = (word_length / 8) * states + (word_length / 8) * nrows + nact * (word_length / 8)
+	parallel_operations_required_for_recall = (word_length / 8) + (word_length / 8) + nact * (word_length / 8)
 	fraction_memory_used_for_data = (word_length*nrows*bcu) / (size * 8) 
 	info={"err":ri["error_rate"], # "predicted_error":ri["predicted_error_rate"],
 		"nrows":nrows, "nact":nact,
 		"word_length":word_length,
 		"mem_eff":fraction_memory_used_for_data,
+		"recall_ops": byte_operations_required_for_recall,
+		"recall_pops": parallel_operations_required_for_recall,
 		# "mm":ri["mm"], "ms":math.sqrt(ri["mv"]), "dm":ri["dm"], "ds":math.sqrt(ri["dv"]),
 		# "cm":ri["cm"], "cs":ri["cs"]
 		}
 	return info
 
-def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0):
+def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0, empirical=True):
 	# compute bundle recall error for random finite state automata
 	# size - number of bytes total storage allocated to bundle and item memory
 	# fimp - fraction of item memory and hard location addresses present (1.0 all present, 0- all generated dynamically)
 	# actions - number of actions in finite state automaton
 	# states - number of states in finite state automation
 	# choices - number of choices per state
+	# empirical - True if should get empirical response, False otherwise
 	item_memory_length = actions + states
 	word_length = int((size * 8) / (1 + item_memory_length * fimp))
 	mem = Bundle_memory(word_length)
-	ri = empirical_response(mem, actions, states, choices, size=size)
-	fraction_memory_used_for_data = word_length / (size * 8) 
+	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None}
+	fraction_memory_used_for_data = word_length / (size * 8)
+	byte_operations_required_for_recall = (word_length / 8) * states
+	parallel_operations_required_for_recall = word_length / 8
 	info={"err":ri["error_rate"], # "predicted_error":ri["predicted_error_rate"],
 		"mem_eff":fraction_memory_used_for_data,
 		"bundle_length":word_length,
+		"recall_ops": byte_operations_required_for_recall,
+		"recall_pops": parallel_operations_required_for_recall,
 		# "mm":ri["mm"], "ms":math.sqrt(ri["mv"]), "dm":ri["dm"], "ds":math.sqrt(ri["dv"]),
 		# "cm":ri["cm"], "cs":ri["cs"]
 		}
@@ -342,6 +353,8 @@ def folds2fimp(folds):
 	# convert number of folds to fraction of item memory present
 	return 1.0 / folds
 
+
+
 def sdm_vs_bundle():
 	# start_size=18000; step_size=500; stop_size=24001
 	start_size=5000; step_size=1000; stop_size=14001
@@ -382,7 +395,62 @@ def sdm_vs_bundle():
 	plt.show()
 
 
+def widths_vs_folds():
+	# display plot of SDM length (number of rows) and bundle word length for different number of folds and size
+	# memory
+	start_size=100000; step_size=100000; stop_size=1000001
+	sizes = range(start_size, stop_size, step_size)
+	folds = [1, 2, 4, 8, 16, 32, 64, 128, "inf"]
+	fimps = [ 1 / f for f in folds[0:-1]] + [0.0]
+	sdm_ri = []
+	bun_ri = []
+	for size in sizes:
+		bc = 8
+		sdm_ri.append( [sdm_response_info(size, bc, fimp=fimp, empirical=False) for fimp in fimps] ) # ri - response info
+		bun_ri.append( [bundle_response_info(size, fimp=fimp, empirical=False) for fimp in fimps] )
+	# make plots
+	plots_info = [
+		{"subplot": 221, "key":"nrows","title":"SDM num rows vs num folds", "ylabel":"Number rows"},
+		{"subplot": 222, "key":"bundle_length","title":"bundle_length vs num folds", "ylabel":"Bundle length"},
+		{"subplot": 223, "key":"recall_ops","title":"Recall byte operations vs num folds", "ylabel":"Byte operations",
+			"scale": "log"},
+		{"subplot": 224, "key":"recall_pops","title":"Parallel recall byte operations vs num folds", "ylabel":"Parallel operations",
+			"scale": "log"},
+		]
+	for pi in plots_info:
+		plt.subplot(pi["subplot"])
+		log_scale = "scale" in pi and pi["scale"] == "log"
+		need_mem_label = pi["key"] in sdm_ri[0][0] and pi["key"] in bun_ri[0][0]
+		if pi["key"] in sdm_ri[0][0]:
+			yvals = [sdm_ri[i][0][pi["key"]] for i in range(len(sizes))]
+			mem_label = "sdm " if need_mem_label else ""
+			plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[0])) # fmt="-k"
+			for j in range(1, len(folds)):
+				yvals = [sdm_ri[i][j][pi["key"]] for i in range(len(sizes))]
+				plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[j]), linewidth=1,)# fmt="-k",) # linestyle='dashed',
+			labelLines(plt.gca().get_lines(), zorder=2.5)
+		if pi["key"] in bun_ri[0][0]:
+			mem_label = "bun " if need_mem_label else ""
+			yvals = [bun_ri[i][0][pi["key"]] for i in range(len(sizes))]
+			plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[0])) # fmt="-k"
+			for j in range(1, len(folds)):
+				yvals = [bun_ri[i][j][pi["key"]] for i in range(len(sizes))]
+				plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[j]), linewidth=1,)# fmt="-k",) # linestyle='dashed',
+			labelLines(plt.gca().get_lines(), zorder=2.5)
+		xaxis_labels = ["%s" % int(size/1000) for size in sizes]
+		plt.xticks(sizes,xaxis_labels)
+		if log_scale:
+			plt.yscale('log')
+		plt.title(pi["title"])
+		plt.xlabel("Size (kB)")
+		plt.ylabel(pi["ylabel"])
+		# plt.legend(loc='upper left')
+		plt.grid()
+	plt.show()
+
+
 if __name__ == "__main__":
 	# vary_sdm_bc()
 	# vary_nact()
-	sdm_vs_bundle()
+	# sdm_vs_bundle()
+	widths_vs_folds()
