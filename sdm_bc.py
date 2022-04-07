@@ -8,6 +8,8 @@ import random
 import statistics
 from scipy.stats import norm
 import math
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
 def pop_random_element(L):
 	# pop random element from a list
@@ -126,7 +128,7 @@ class Bundle_memory(Memory):
 		recalled_data = np.logical_xor(address, self.data_array).astype(np.int8)
 		return recalled_data
 
-def empirical_response(mem, actions, states, choices, size, ntrials=3000):
+def empirical_response(mem, actions, states, choices, size, ntrials=1000):
 	# find empirical response of sdm or bundle (in mem object)
 	# size is number of bytes allocated to memory, used only for including in plot titles
 	using_sdm = isinstance(mem, Sparse_distributed_memory)
@@ -448,9 +450,65 @@ def widths_vs_folds():
 		plt.grid()
 	plt.show()
 
+def widths_vs_folds_single_size(size=100000, empirical=True):
+	# display plot of SDM length (number of rows) and bundle word length for different number of folds at a fixed size
+	# memory
+	# empirical == True to include empirical recall error
+	# folds = [1, 2, 4, 8, 16, 32, 64, 128, "inf"]
+	# fimps = [ 1 / f for f in folds[0:-1]] + [0.0]
+	folds = [1, 2, 4, 8, 16, 32, 64] # 8, 16, 32, 64]
+	fimps = [ 1 / f for f in folds]
+	bc = 8
+	sdm_ri = [sdm_response_info(size, bc, fimp=fimp, empirical=empirical) for fimp in fimps]  # ri - response info
+	bun_ri = [bundle_response_info(size, fimp=fimp, empirical=empirical) for fimp in fimps]
+	print("sdm_ri=")
+	pp.pprint(sdm_ri)
+	print("bun_ri=")
+	pp.pprint(bun_ri)
+	# make plots
+	plots_info = [
+		{"subplot": 221, "key":"nrows","title":"SDM num rows vs num folds for size=%s" % size, "ylabel":"Number rows"},
+		{"subplot": 222, "key":"bundle_length","title":"bundle_length vs num folds for size=%s" % size, "ylabel":"Bundle length"},
+		{"subplot": 223, "key":"recall_ops","title":"Recall byte operations vs num folds", "ylabel":"Byte operations",
+			"scale": "log"},
+		{"subplot": 224, "key":"recall_pops","title":"Parallel recall byte operations vs num folds", "ylabel":"Parallel operations",
+			"scale": "log"},
+		{"subplot": 121, "key":"err","title":"SDM vs bundle error vs num folds for size=%s" % size, "ylabel":"Recall error"}, # "scale":"log"},
+		{"subplot": 122, "key":"err","title":"SDM vs bundle error vs num folds for size=%s (log scale)" % size, "ylabel":"Recall error", "scale":"log"},
+		]
+	for pi in plots_info:
+		plt.subplot(pi["subplot"])
+		log_scale = "scale" in pi and pi["scale"] == "log"
+		need_mem_label = pi["key"] in sdm_ri[0] and pi["key"] in bun_ri[0]
+		xpos = list(range(len(folds)))
+		if pi["key"] in sdm_ri[0]:
+			yvals = [sdm_ri[i][pi["key"]] for i in range(len(folds))]
+			mem_label = "sdm " if need_mem_label else ""
+			plt.errorbar(xpos, yvals, yerr=None, label="%s%s" % (mem_label, pi["key"])) # fmt="-k"
+			# yvals = [sdm_ri[i][pi["key"]] for i in range(len(folds))]
+			# plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[j]), linewidth=1,)# fmt="-k",) # linestyle='dashed',
+			# labelLines(plt.gca().get_lines(), zorder=2.5)
+		if pi["key"] in bun_ri[0]:
+			mem_label = "bun " if need_mem_label else ""
+			yvals = [bun_ri[i][pi["key"]] for i in range(len(folds))]
+			plt.errorbar(xpos, yvals, yerr=None, label="%s%s" % (mem_label, pi["key"])) 
+		xaxis_labels = ["%s" % f for f in folds]
+		plt.xticks(xpos,xaxis_labels)
+		if log_scale:
+			plt.yscale('log')
+		plt.title(pi["title"])
+		plt.xlabel("Folds")
+		plt.ylabel(pi["ylabel"])
+		plt.legend(loc='upper left')
+		plt.grid()
+		if pi["subplot"] in (224, 122):
+			plt.show()
+	# plt.show()
+
 
 if __name__ == "__main__":
 	# vary_sdm_bc()
 	# vary_nact()
 	# sdm_vs_bundle()
-	widths_vs_folds()
+	# widths_vs_folds()
+	widths_vs_folds_single_size()
