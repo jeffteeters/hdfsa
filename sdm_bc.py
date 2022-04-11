@@ -235,7 +235,7 @@ def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states
 		if nact < 1:
 			nact = 1
 	mem = Sparse_distributed_memory(word_length, nrows, nact, bc)
-	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None}
+	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None, "predicted_error_rate":None}
 	byte_operations_required_for_recall = (word_length / 8) * states + (word_length / 8) * nrows + nact * (word_length / 8)
 	parallel_operations_required_for_recall = (word_length / 8) + (word_length / 8) + nact * (word_length / 8)
 	fraction_memory_used_for_data = (word_length*nrows*bcu) / (size * 8) 
@@ -261,7 +261,7 @@ def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0, emp
 	item_memory_length = actions + states
 	word_length = int((size * 8) / (1 + item_memory_length * fimp))
 	mem = Bundle_memory(word_length)
-	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None}
+	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None, "predicted_error_rate":None}
 	fraction_memory_used_for_data = word_length / (size * 8)
 	byte_operations_required_for_recall = (word_length / 8) * states
 	parallel_operations_required_for_recall = word_length / 8
@@ -278,9 +278,11 @@ def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0, emp
 def plot_info(sizes, bc_vals, resp_info, line_label):
 	plots_info = [
 		{"subplot": 221, "key":"err","title":"SDM error with different counter bits", "ylabel":"Recall error"},
+		{"subplot": None, "key":"predicted_error","title":"SDM predicted error with different counter bits",
+			"ylabel":"Recall error", "label": "predicted", "legend_location":"upper right" },
 		{"subplot": 222, "key":"err","title":"SDM error with different counter bits", "ylabel":"Recall error", "scale":"log"},
-		# {"subplot": 222, "key":"predicted_error","title":"SDM predicted error with different counter bits",
-		#	"ylabel":"Recall error", "scale":"log"},
+		{"subplot": None, "key":"predicted_error","title":"SDM predicted error with different counter bits",
+			"ylabel":"Recall error", "scale":"log", "label": "predicted","legend_location":"lower left"  },
 		{"subplot": 223, "key":"nrows","title":"Number rows in SDM vs. size and counter bits","ylabel":"Number rows"},
 		{"subplot": 224, "key":"nact","title":"SDM activation count vs counter bits and size","ylabel":"Activation Count"},
 		# {"subplot": 221, "key":"mm","title":"Match mean","ylabel":"Hamming distance"},
@@ -288,14 +290,19 @@ def plot_info(sizes, bc_vals, resp_info, line_label):
 		# {"subplot": 223, "key":"dm","title":"Distractor mean","ylabel":"Hamming distance"},
 		# {"subplot": 224, "key":"ds","title":"Distractor std","ylabel":"Hamming distance"},
 		 ]
-	for pi in plots_info:
-		plt.subplot(pi["subplot"])
+	for pidx in range(len(plots_info)):
+		pi = plots_info[pidx]
+		new_plot = pi["subplot"] is not None
+		finishing_plot = pidx == len(plots_info)-1 or plots_info[pidx+1]["subplot"] is not None
+		if new_plot:
+			plt.subplot(pi["subplot"])
+		label = (pi["label"] if "label" in pi else pi["key"]) + " " + line_label
 		log_scale = "scale" in pi and pi["scale"] == "log"
 		yvals = [resp_info[bc_vals[0]][i][pi["key"]] for i in range(len(sizes))]
-		plt.errorbar(sizes, yvals, yerr=None, label="%s %s" % (bc_vals[0], line_label)) # fmt="-k"
+		plt.errorbar(sizes, yvals, yerr=None, label="%s %s" % (bc_vals[0], label)) # fmt="-k"
 		for i in range(1, len(bc_vals)):
 			yvals = [resp_info[bc_vals[i]][j][pi["key"]] for j in range(len(sizes))]
-			plt.errorbar(sizes, yvals, yerr=None, label="%s %s" % (bc_vals[i], line_label), linewidth=1,)# fmt="-k",) # linestyle='dashed',
+			plt.errorbar(sizes, yvals, yerr=None, label="%s %s" % (bc_vals[i], label), linewidth=1,)# fmt="-k",) # linestyle='dashed',
 		labelLines(plt.gca().get_lines(), zorder=2.5)
 		if log_scale:
 			plt.yscale('log')
@@ -305,22 +312,28 @@ def plot_info(sizes, bc_vals, resp_info, line_label):
 		else:
 			log_msg = ""
 			# plt.xticks([2, 25, 50, 75, 100, 125, 150, 175, 200])
-		xaxis_labels = ["%s" % int(size/1000) for size in sizes]
-		plt.xticks(sizes,xaxis_labels)		
-		# xaxis_labels = ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "10^6" ]
-		# plt.xticks(xvals[mtype],xaxis_labels)
-		plt.title(pi["title"]+log_msg)
-		plt.xlabel("Size (kB)")
-		plt.ylabel(pi["ylabel"])
-		plt.grid()
-		if pi["subplot"] == 224:
-			plt.show()
+		if finishing_plot:
+			xaxis_labels = ["%s" % int(size/1000) for size in sizes]
+			plt.xticks(sizes,xaxis_labels)		
+			# xaxis_labels = ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "10^6" ]
+			# plt.xticks(xvals[mtype],xaxis_labels)
+			plt.title(pi["title"]+log_msg)
+			plt.xlabel("Size (kB)")
+			plt.ylabel(pi["ylabel"])
+			plt.grid()
+			legend_location = pi["legend_location"] if "legend_location" in pi else "lower right"
+			plt.legend(loc=legend_location)
+			if pi["subplot"] == 224:
+				plt.show()
 	return
 
 
 def vary_sdm_bc(start_size=10000, step_size=2000, stop_size=30001, bc_vals=[1,1.5, 2, 2.5,3.5,4.5,5.5,8]):
-	bc_vals = [1,1.5, 2, 2.5, 3, 3.5 , 8]
-	start_size=20000; step_size=1000; stop_size=33001
+	# bc_vals = [1,1.5, 2, 2.5, 3, 3.5 , 8]
+	# start_size=20000; step_size=1000; stop_size=33001
+	bc_vals = [3.5, 8]
+	# start_size=100000; step_size=100000; stop_size=1000001
+	start_size=25000; step_size=25000; stop_size=200001
 	resp_info = {}
 	sizes = range(start_size, stop_size, step_size)
 	bc_for_rows=None
@@ -420,7 +433,7 @@ def widths_vs_folds():
 	sdm_ri = []
 	bun_ri = []
 	for size in sizes:
-		bc = 8
+		bc = 4
 		sdm_ri.append( [sdm_response_info(size, bc, fimp=fimp, empirical=False) for fimp in fimps] ) # ri - response info
 		bun_ri.append( [bundle_response_info(size, fimp=fimp, empirical=False) for fimp in fimps] )
 	# make plots
@@ -528,9 +541,10 @@ def widths_vs_folds_single_size(size=100000, empirical=True):
 	# plt.show()
 
 
+
 if __name__ == "__main__":
 	# vary_sdm_bc()
 	# vary_nact()
-	sdm_vs_bundle()
-	# widths_vs_folds()
+	# sdm_vs_bundle()
+	widths_vs_folds()
 	# widths_vs_folds_single_size()
