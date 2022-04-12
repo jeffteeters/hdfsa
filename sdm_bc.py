@@ -436,14 +436,20 @@ def widths_vs_folds():
 		bc = 4
 		sdm_ri.append( [sdm_response_info(size, bc, fimp=fimp, empirical=False) for fimp in fimps] ) # ri - response info
 		bun_ri.append( [bundle_response_info(size, fimp=fimp, empirical=False) for fimp in fimps] )
+		# add in ratio to fimp=1
+		for i in range(len(fimps)):
+			sdm_ri[-1][i]["sdm_ratio"] = sdm_ri[-1][i]["nrows"] / sdm_ri[-1][0]["nrows"]
+			bun_ri[-1][i]["bun_ratio"] = bun_ri[-1][i]["bundle_length"] / bun_ri[-1][0]["bundle_length"]
 	# make plots
 	plots_info = [
-		{"subplot": 221, "key":"nrows","title":"SDM num rows vs num folds", "ylabel":"Number rows"},
-		{"subplot": 222, "key":"bundle_length","title":"bundle_length vs num folds", "ylabel":"Bundle length"},
-		{"subplot": 223, "key":"recall_ops","title":"Recall byte operations vs num folds", "ylabel":"Byte operations",
-			"scale": "log"},
-		{"subplot": 224, "key":"recall_pops","title":"Parallel recall byte operations vs num folds", "ylabel":"Parallel operations",
-			"scale": "log"},
+		{"subplot": 221, "key":"nrows","title":"SDM rows vs. folds", "ylabel":"Number rows"},
+		{"subplot": 222, "key":"bundle_length","title":"superposition width vs. folds", "ylabel":"Bundle length"},
+		{"subplot": 223, "key":"sdm_ratio","title":"SDM rows vs. folds ratio", "ylabel":"Ratio"},
+		{"subplot": 224, "key":"bun_ratio","title":"superposition width vs. folds ratio", "ylabel":"Ratio"},
+		# {"subplot": 223, "key":"recall_ops","title":"Recall byte operations vs num folds", "ylabel":"Byte operations",
+		# 	"scale": "log"},
+		# {"subplot": 224, "key":"recall_pops","title":"Parallel recall byte operations vs num folds", "ylabel":"Parallel operations",
+		# 	"scale": "log"},
 		]
 	for pi in plots_info:
 		plt.subplot(pi["subplot"])
@@ -474,6 +480,7 @@ def widths_vs_folds():
 		plt.ylabel(pi["ylabel"])
 		# plt.legend(loc='upper left')
 		plt.grid()
+	plt.savefig('widths_vs_folds.pdf')
 	plt.show()
 
 def widths_vs_folds_single_size(size=100000, empirical=True):
