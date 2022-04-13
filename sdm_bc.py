@@ -7,8 +7,13 @@ import sys
 import random
 import statistics
 from scipy.stats import norm
+from scipy.stats import binom
+import scipy.integrate as integrate
+import scipy
 import math
 import pprint
+from fractions import Fraction
+
 pp = pprint.PrettyPrinter(indent=4)
 
 def pop_random_element(L):
@@ -193,6 +198,157 @@ def empirical_response(mem, actions, states, choices, size, ntrials=3000):
 	return info
 
 
+## begin functions for bundle analytical accuracy
+
+
+# Calculate analytical accuracy of the encoding according to the equation for p_corr from 2017 IEEE Tran paper
+def p_corr (N, D, dp_hit):
+	dp_rej=0.5
+	var_hit = 0.25*N
+	var_rej=var_hit
+	range_var=10 # number of std to take into account
+	fun = lambda u: (1/(np.sqrt(2*np.pi*var_hit)))*np.exp(-((u-N*(dp_rej-dp_hit) )**2)/(2*(var_hit)))*((norm.cdf((u/np.sqrt(var_rej))))**(D-1) ) # analytical equation to calculate the accuracy  
+
+	acc = integrate.quad(fun, (-range_var)*np.sqrt(var_hit), N*dp_rej+range_var*np.sqrt(var_hit)) # integrate over a range of possible values
+	# print("p_corr, N=%s, D=%s, dp_hit=%s, return=%s" % (N, D, dp_hit, acc[0]))
+	return acc[0]
+
+
+#Compute expected Hamming distance
+def  expectedHamming (K):
+	if (K % 2) == 0: # If even number then break ties so add 1
+		K+=1
+	deltaHam = 0.5 - (scipy.special.binom(K-1, 0.5*(K-1)))/2**K  # Pentti's formula for the expected Hamming distance
+	return deltaHam
+
+def BundleErrorAnalytical(N,D,K,ber=0.0):
+	# N - width (number of components) in bundle vector
+	# D - number of items in item memory that must be matched
+	# K - number of vectors stored in bundle
+	# ber - bit error rate (rate of bits flipped).  0 for none.
+	deltaHam=  expectedHamming (K) #expected Hamming distance
+	deltaBER=(1-2*deltaHam)*ber # contribution of noise to the expected Hamming distance
+	dp_hit= deltaHam+deltaBER # total expected Hamming distance
+	est_acc=p_corr (N, D, dp_hit) # expected accuracy
+	est_error = 1 - est_acc  # expected error
+	return est_error
+
+## end functions for bundle analytical accuracy
+
+
+## begin functions for sdm analytical accuracy
+
+# Calculate analytical accuracy of the encoding according to the equation for p_corr from 2017 IEEE Tran paper
+# but use python Fractions and the binonomal distribution to reduce roundoff error
+# return error rather than p_correct for best accuracy
+
+def p_error_Fraction (N, D, dp_hit):
+	wl = N    # word length
+	delta = dp_hit
+	num_distractors = D - 1
+	pflip = Fraction(int(delta*10000), 10000)  # probability of bit flip
+	pdist = Fraction(1, 2) # probability of distractor bit matching
+	match_hamming = []
+	distractor_hamming = []
+	for k in range(wl):
+		ncomb = Fraction(math.comb(wl, k))
+		match_hamming.append(ncomb * pflip ** k * (1-pflip) ** (wl-k))
+		distractor_hamming.append(ncomb * pdist ** k * (1-pdist) ** (wl-k))
+	# print("sum match_hamming=%s, distractor_hamming=%s" % (sum(match_hamming), sum(distractor_hamming)))
+	# if self.env.pvals["show_histograms"]:
+	# 	fig = Figure(title="match and distractor hamming distributions for %s%% bit flips" % xval,
+	# 		xvals=range(wl), grid=False,
+	# 		xlabel="Hamming distance", ylabel="Probability", xaxis_labels=None,
+	# 		legend_location="upper right",
+	# 		yvals=match_hamming, ebar=None, legend="match_hamming", fmt="-g")
+	# 	fig.add_line(distractor_hamming, legend="distractor_hamming", fmt="-m")
+	# 	self.figures.append(fig)
+	dhg = Fraction(1) # fraction distractor hamming greater than match hamming
+	pcor = Fraction(0)  # probability correct
+	for k in range(wl):
+		dhg -= distractor_hamming[k]
+		pcor += match_hamming[k] * dhg ** num_distractors
+	# error = (float((1 - pcor) * 100))  # convert to percent
+	error = float(1 - pcor) # * 100))  # convert to percent
+	return error
+	# return float(pcor)
+
+
+# Calculate analytical accuracy of the encoding according to the equation for p_corr from 2017 IEEE Tran paper
+# but use python integers and the binonomal distribution to reduce roundoff error
+
+
+# def p_corr_binom (N, D, dp_hit):
+# 	bl = N    # word_length (bundle length)
+# 	delta = dp_hit
+# 	num_distractors = D - 1
+# 	# following uses delta only with explicit arrays and binom distribution
+# 	match_hamming_distribution = np.empty(bl, dtype=np.double)
+# 	distractor_hamming_distribution = np.empty(bl, dtype=np.double)
+# 	for h in range(bl):
+# 		match_hamming_distribution[h] = binom.pmf(h, bl, delta)
+# 		distractor_hamming_distribution[h] = binom.pmf(h, bl, 0.5)
+# 	# show_distributions = False
+# 	# if mtype == "sdm" and show_distributions:
+# 	# 	plot_dist(match_hamming_distribution, "match_hamming_distribution, delta=%s" % delta)
+# 	# 	plot_dist(distractor_hamming_distribution, "distractor_hamming_distribution, delta=%s" % delta)
+# 	# now calculate total error
+# 	sum_distractors_less = 0.0
+# 	prob_correct = 0.0
+# 	for h in range(0, bl):
+# 		try:
+# 			sum_distractors_less += distractor_hamming_distribution[h]
+# 			prob_correct_one = 1.0 - sum_distractors_less
+# 			prob_correct += match_hamming_distribution[h] * (prob_correct_one ** num_distractors)
+# 		except RuntimeWarning as err:
+# 			print ('Warning at h=%s, %s' % (h, err))
+# 			print("sum_distractors_less=%s" % sum_distractors_less)
+# 			print("prob_correct_one=%s" % prob_correct_one)
+# 			print("match_hamming_distribution[h] = %s" % match_hamming_distribution[h])
+# 			import pdb; pdb.set_trace()
+# 			sys.exit("aborting")
+# 	return prob_correct
+
+
+def SdmErrorAnalytical(R,K,D,nact=None,word_length=512,ber=0.0):
+	# R - number rows in sdm
+	# K - number of vectors stored in sdm
+	# D - number of items in item memory that must be matched
+	# nact - activation count.  None to compute optimal activaction count based on number of rows (R)
+	# word_length - width (number of components) in each word
+	# ber - bit error rate (rate of counters flipped).  0 for none.
+	# following from page 15 of Pentti's book chapter
+	sdm_num_rows = R
+	num_entities_stored = K
+	sdm_activation_count = get_sdm_activation_count(sdm_num_rows, num_entities_stored) if nact is None else nact 
+	pact = sdm_activation_count / sdm_num_rows
+	mean = sdm_activation_count
+	# following from Pentti's chapter
+	standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows)))
+	average_overlap = ((num_entities_stored - 1) * sdm_activation_count) * (sdm_activation_count / sdm_num_rows)
+	# standard_deviation = math.sqrt(average_overlap * 0.5 * (1 - 0.5)) # compute variance assuming binomonal distribution
+	probability_single_bit_failure = norm(0, 1).cdf(-mean/standard_deviation)
+	# probability_single_bit_failure = norm(mean, standard_deviation).cdf(0.0)
+	deltaHam = probability_single_bit_failure
+	# print("sdm num_rows=%s,act_count=%s,pact=%s,average_overlap=%s,mean=%s,std=%s,probability_single_bit_failure=%s" % (
+	# 	sdm_num_rows, sdm_activation_count, pact, average_overlap, mean, standard_deviation, probability_single_bit_failure))
+	# bl = 512  # 512 bit length words used for sdm
+	# deltaBER=(1-2*deltaHam)*ber # contribution of noise to the expected Hamming distance
+	# dp_hit= deltaHam+deltaBER # total expected Hamming distance
+	# perr = 1 - p_corr (word_length, D, dp_hit)
+	# perr = 1 - p_corr_Fraction(word_length, D, deltaHam)
+	perr = p_error_Fraction(word_length, D, deltaHam)
+	return perr
+
+
+def get_sdm_activation_count(nrows, number_items_stored):
+	nact = round(fraction_rows_activated(nrows, number_items_stored)*nrows)
+	if nact < 1:
+		nact = 1
+	return nact
+
+## end functions for sdm analytical accuracy
+
 def plot_hist(match_hammings, distractor_hammings, title):
 	# plot histograms of match mean and distractor hammings
 	bin_start = min(min(match_hammings), min(distractor_hammings))
@@ -211,7 +367,7 @@ def fraction_rows_activated(m, k):
 	return 1.0 / ((2*m*k)**(1/3))
 
 def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states=100, choices=10, fimp=1.0,
-		bc_for_rows=None, empirical=True):
+		bc_for_rows=None, empirical=True, analytical=False):
 	# compute sdm recall error for random finite state automata
 	# size - number of bytes total storage allocated to sdm and item memory
 	# bc - number of bits in each counter after counter finalized.  Has 0.5 added to include zero if less than 5
@@ -236,10 +392,12 @@ def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states
 			nact = 1
 	mem = Sparse_distributed_memory(word_length, nrows, nact, bc)
 	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None, "predicted_error_rate":None}
+	num_transitions = states * choices
+	ri["analytical_error"] = SdmErrorAnalytical(nrows,num_transitions,states,nact=nact,word_length=word_length) if analytical else None
 	byte_operations_required_for_recall = (word_length / 8) * states + (word_length / 8) * nrows + nact * (word_length / 8)
 	parallel_operations_required_for_recall = (word_length / 8) + (word_length / 8) + nact * (word_length / 8)
 	fraction_memory_used_for_data = (word_length*nrows*bcu) / (size * 8) 
-	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],
+	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],"analytical_error":ri["analytical_error"],
 		"nrows":nrows, "nact":nact,
 		"word_length":word_length,
 		"mem_eff":fraction_memory_used_for_data,
@@ -250,7 +408,7 @@ def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states
 		}
 	return info
 
-def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0, empirical=True):
+def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0, empirical=True, analytical=False):
 	# compute bundle recall error for random finite state automata
 	# size - number of bytes total storage allocated to bundle and item memory
 	# fimp - fraction of item memory and hard location addresses present (1.0 all present, 0- all generated dynamically)
@@ -262,10 +420,12 @@ def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0, emp
 	word_length = int((size * 8) / (1 + item_memory_length * fimp))
 	mem = Bundle_memory(word_length)
 	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None, "predicted_error_rate":None}
+	num_transitions = states * choices
+	ri["analytical_error"] = BundleErrorAnalytical(word_length,states,num_transitions) if analytical else None
 	fraction_memory_used_for_data = word_length / (size * 8)
 	byte_operations_required_for_recall = (word_length / 8) * states
 	parallel_operations_required_for_recall = word_length / 8
-	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],
+	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],"analytical_error":ri["analytical_error"],
 		"mem_eff":fraction_memory_used_for_data,
 		"bundle_length":word_length,
 		"recall_ops": byte_operations_required_for_recall,
@@ -379,20 +539,26 @@ def sdm_vs_bundle():
 	bc = 8
 	nact = None
 	fimp=1
-	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp) for size in sizes]  # ri - response info
-	bundle_ri = [bundle_response_info(size, fimp=fimp) for size in sizes]
+	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp, analytical=True) for size in sizes]  # ri - response info
+	bundle_ri = [bundle_response_info(size, fimp=fimp, analytical=True) for size in sizes]
 	# bundle_ri = [{} for size in sizes]
 	plots_info = [
-		{"subplot": 221, "key":"err","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error"},
+		{"subplot": 121, "key":"err","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+			"label":"found"},
 		{"subplot": None, "key":"predicted_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
-			"label":"predicted "},
-		{"subplot": 222, "key":"err","title":"SDM vs bundle error with fimp=%s (log scale)" % fimp,
-			"ylabel":"Recall error", "scale":"log"},
+			"label":"found_cdf"},
+		{"subplot": None, "key":"analytical_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+			"label":"analytical"},
+		{"subplot": 122, "key":"err","title":"SDM vs bundle error with fimp=%s (log scale)" % fimp,
+			"ylabel":"Recall error", "scale":"log", "label":"found"},
 		{"subplot": None, "key":"predicted_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
-			"label":"predicted ", "scale":"log", "legend_location":"lower left"},
+			"label":"found_cdf",},
+		{"subplot": None, "key":"analytical_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+			"label":"analytical",  "scale":"log", "legend_location":"lower left"},
 		# {"subplot": 222, "key":"mem_eff","title":"SDM vs bundle mem_eff with fimp=%s" % fimp, "ylabel":"Fraction mem used"},
-		{"subplot": 223, "key":"nrows","title":"SDM num rows with fimp=%s" % fimp, "ylabel":"Number rows"},
-		{"subplot": 224, "key":"bundle_length","title":"bundle_length with fimp=%s" % fimp, "ylabel":"Bundle length"},
+		# {"subplot": 223, "key":"nrows","title":"SDM num rows with fimp=%s" % fimp, "ylabel":"Number rows"},
+		# {"subplot": 224, "key":"bundle_length","title":"bundle_length with fimp=%s" % fimp, "ylabel":"Bundle length"},
+
 		# {"subplot": 224, "key":"nact","title":"sdm activation with fimp=%s" % fimp, "ylabel":"activaction count"},
 		]
 	for pidx in range(len(plots_info)):
@@ -403,10 +569,10 @@ def sdm_vs_bundle():
 			plt.subplot(pi["subplot"])
 		label = pi["label"] if "label" in pi else ""
 		log_scale = "scale" in pi and pi["scale"] == "log"
-		if pi["key"] in sdm_ri[0]:
+		if pi["key"] in sdm_ri[0] and sdm_ri[0][pi["key"]] is not None:
 			yvals = [sdm_ri[i][pi["key"]] for i in range(len(sizes))]
 			plt.errorbar(sizes, yvals, yerr=None, label="%ssdm" % label)
-		if pi["key"] in bundle_ri[0]:
+		if pi["key"] in bundle_ri[0]  and bundle_ri[0][pi["key"]] is not None:
 			yvals = [bundle_ri[i][pi["key"]] for i in range(len(sizes))]
 			plt.errorbar(sizes, yvals, yerr=None, label="%sbundle" % label)
 		if finishing_plot:
@@ -427,25 +593,34 @@ def widths_vs_folds():
 	# display plot of SDM length (number of rows) and bundle word length for different number of folds and size
 	# memory
 	start_size=100000; step_size=100000; stop_size=1000001
+	start_size=100000; step_size=100000; stop_size=600001
 	sizes = range(start_size, stop_size, step_size)
 	folds = [1, 2, 4, 8, 16, 32, 64, 128, "inf"]
+	folds = [1, 2, 4]
 	fimps = [ 1 / f for f in folds[0:-1]] + [0.0]
+	fimps = [ 1 / f for f in folds]
 	sdm_ri = []
 	bun_ri = []
 	for size in sizes:
 		bc = 4
-		sdm_ri.append( [sdm_response_info(size, bc, fimp=fimp, empirical=False) for fimp in fimps] ) # ri - response info
-		bun_ri.append( [bundle_response_info(size, fimp=fimp, empirical=False) for fimp in fimps] )
+		sdm_ri.append( [sdm_response_info(size, bc, fimp=fimp, empirical=False, analytical=True) for fimp in fimps] ) # ri - response info
+		bun_ri.append( [bundle_response_info(size, fimp=fimp, empirical=False, analytical=True) for fimp in fimps] )
 		# add in ratio to fimp=1
 		for i in range(len(fimps)):
 			sdm_ri[-1][i]["sdm_ratio"] = sdm_ri[-1][i]["nrows"] / sdm_ri[-1][0]["nrows"]
 			bun_ri[-1][i]["bun_ratio"] = bun_ri[-1][i]["bundle_length"] / bun_ri[-1][0]["bundle_length"]
 	# make plots
 	plots_info = [
-		{"subplot": 221, "key":"nrows","title":"SDM rows vs. folds", "ylabel":"Number rows"},
-		{"subplot": 222, "key":"bundle_length","title":"superposition width vs. folds", "ylabel":"Bundle length"},
-		{"subplot": 223, "key":"sdm_ratio","title":"SDM rows vs. folds ratio", "ylabel":"Ratio"},
-		{"subplot": 224, "key":"bun_ratio","title":"superposition width vs. folds ratio", "ylabel":"Ratio"},
+		# {"subplot": 221, "key":"nrows","title":"SDM rows vs. folds", "ylabel":"Number rows"},
+		# {"subplot": 222, "key":"bundle_length","title":"superposition width vs. folds", "ylabel":"Bundle length"},
+		# {"subplot": 223, "key":"sdm_ratio","title":"SDM rows vs. folds ratio", "ylabel":"Ratio"},
+		# {"subplot": 224, "key":"bun_ratio","title":"superposition width vs. folds ratio", "ylabel":"Ratio"},
+		{"subplot": 121, "key":"analytical_error","title":"Analytical error vs. folds", "ylabel":"Fraction error", "label":"theory error"},
+		{"subplot": 122, "key":"analytical_error","title":"Analytical error vs. folds (log scale)", "ylabel":"Fraction error",
+			"label": "theory error", "scale":"log"},
+		# {"subplot": 223, "key":"sdm_ratio","title":"SDM rows vs. folds ratio", "ylabel":"Ratio"},
+		# {"subplot": 224, "key":"bun_ratio","title":"superposition width vs. folds ratio", "ylabel":"Ratio"},
+
 		# {"subplot": 223, "key":"recall_ops","title":"Recall byte operations vs num folds", "ylabel":"Byte operations",
 		# 	"scale": "log"},
 		# {"subplot": 224, "key":"recall_pops","title":"Parallel recall byte operations vs num folds", "ylabel":"Parallel operations",
@@ -454,8 +629,11 @@ def widths_vs_folds():
 	for pi in plots_info:
 		plt.subplot(pi["subplot"])
 		log_scale = "scale" in pi and pi["scale"] == "log"
-		need_mem_label = pi["key"] in sdm_ri[0][0] and pi["key"] in bun_ri[0][0]
-		if pi["key"] in sdm_ri[0][0]:
+		have_sdm_key = pi["key"] in sdm_ri[0][0] and sdm_ri[0][0][pi["key"]] is not None
+		have_bun_key = pi["key"] in bun_ri[0][0] and bun_ri[0][0][pi["key"]] is not None
+		need_mem_label = have_sdm_key and have_bun_key
+		# import pdb; pdb.set_trace()
+		if have_sdm_key:
 			yvals = [sdm_ri[i][0][pi["key"]] for i in range(len(sizes))]
 			mem_label = "sdm " if need_mem_label else ""
 			plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[0])) # fmt="-k"
@@ -463,7 +641,7 @@ def widths_vs_folds():
 				yvals = [sdm_ri[i][j][pi["key"]] for i in range(len(sizes))]
 				plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[j]), linewidth=1,)# fmt="-k",) # linestyle='dashed',
 			labelLines(plt.gca().get_lines(), zorder=2.5)
-		if pi["key"] in bun_ri[0][0]:
+		if have_bun_key:
 			mem_label = "bun " if need_mem_label else ""
 			yvals = [bun_ri[i][0][pi["key"]] for i in range(len(sizes))]
 			plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[0])) # fmt="-k"
