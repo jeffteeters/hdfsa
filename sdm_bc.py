@@ -213,6 +213,17 @@ def p_corr (N, D, dp_hit):
 	# print("p_corr, N=%s, D=%s, dp_hit=%s, return=%s" % (N, D, dp_hit, acc[0]))
 	return acc[0]
 
+# Same as function above, but use 15 stds instead of 10 return the probability of error
+def p_corr_15 (N, D, dp_hit):
+	dp_rej=0.5
+	var_hit = 0.25*N
+	var_rej=var_hit
+	range_var=15 # 10 # number of std to take into account
+	fun = lambda u: (1/(np.sqrt(2*np.pi*var_hit)))*np.exp(-((u-N*(dp_rej-dp_hit) )**2)/(2*(var_hit)))*((norm.cdf((u/np.sqrt(var_rej))))**(D-1) ) # analytical equation to calculate the accuracy  
+
+	acc = integrate.quad(fun, (-range_var)*np.sqrt(var_hit), N*dp_rej+range_var*np.sqrt(var_hit)) # integrate over a range of possible values
+	# print("p_corr, N=%s, D=%s, dp_hit=%s, return=%s" % (N, D, dp_hit, acc[0]))
+	return acc[0]
 
 #Compute expected Hamming distance
 def  expectedHamming (K):
@@ -229,11 +240,113 @@ def BundleErrorAnalytical(N,D,K,ber=0.0):
 	deltaHam=  expectedHamming (K) #expected Hamming distance
 	deltaBER=(1-2*deltaHam)*ber # contribution of noise to the expected Hamming distance
 	dp_hit= deltaHam+deltaBER # total expected Hamming distance
-	est_acc=p_corr (N, D, dp_hit) # expected accuracy
-	est_error = 1 - est_acc  # expected error
+	# est_acc=p_corr (N, D, dp_hit) # expected accuracy # DOES NOT WORK IF N IS LARGE, E.G. 200K OR ABOVE
+	# est_error = 1 - est_acc  # expected error
+	est_error = p_error_binom(N, D, dp_hit) # expected error
 	return est_error
 
 ## end functions for bundle analytical accuracy
+
+
+## begin alternate functions for bundle analytical accuracy
+
+def p_error_binom (N, D, dp_hit):
+	# compute error by summing values given by two binomial distributions
+	# N - width of word (number of components)
+	# D - number of items in item memory
+	# dp_hit - normalized hamming distance of superposition vector to matching vector in item memory
+	phds = np.arange(N+1)  # possible hamming distances
+	match_hammings = binom.pmf(phds, N+1, dp_hit)
+	distractor_hammings = binom.pmf(phds, N+1, 0.5)
+	num_distractors = D - 1
+	dhg = 1.0 # fraction distractor hamming greater than match hamming
+	p_err = 0.0  # probability error
+	for k in phds:
+		dhg -= distractor_hammings[k]
+		p_err += match_hammings[k] * (1.0 - dhg ** num_distractors)
+	return p_err
+
+
+
+# def compute_theoretical_error(sl, mtype, pflip=0):
+# 	# compute theoretical error based on storage length.  if mtype bind (bundle) sl is bundle length (bl)
+# 	# if mtype is sdm, sl is number of rows in SDM
+# 	# pflip is the probability (percent) of a bit flip (used for bundle only)
+# 	k = 1000  # number of items stored in bundle
+# 	assert mtype in ("sdm", "bind")
+# 	num_distractors = 99
+# 	if mtype == "bind":
+# 		delta = 0.5 - 0.4 / math.sqrt(k - 0.44)  # from Pentti's paper
+# 		if pflip > 0:
+# 			delta += (1-2*delta)*pflip/100.0
+# 		bl = sl
+# 		print("bundle, bl=%s, delta=%s" % (bl, delta))
+# 	else:
+# 		# following from page 15 of Pentti's book chapter
+# 		sdm_num_rows = sl
+# 		sdm_activation_count = get_sdm_activation_count(sdm_num_rows, k) # round(sdm_num_rows / 100)  # used in hdfsa.py
+# 		pact = sdm_activation_count / sdm_num_rows
+# 		mean = sdm_activation_count
+# 		num_entities_stored = k
+# 		# following from Pentti's chapter
+# 		standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows)))
+# 		average_overlap = ((num_entities_stored - 1) * sdm_activation_count) * (sdm_activation_count / sdm_num_rows)
+# 		# standard_deviation = math.sqrt(average_overlap * 0.5 * (1 - 0.5)) # compute variance assuming binomonal distribution
+# 		probability_single_bit_failure = norm(0, 1).cdf(-mean/standard_deviation)
+# 		# probability_single_bit_failure = norm(mean, standard_deviation).cdf(0.0)
+# 		delta = probability_single_bit_failure
+# 		print("sdm num_rows=%s,act_count=%s,pact=%s,average_overlap=%s,mean=%s,std=%s,probability_single_bit_failure=%s" % (
+# 			sdm_num_rows, sdm_activation_count, pact, average_overlap, mean, standard_deviation, probability_single_bit_failure))
+# 		bl = 512  # 512 bit length words used for sdm
+
+# 	# following uses delta only with explicit arrays and binom distribution
+# 	# match_hamming_distribution = np.empty(bl, dtype=np.float64)
+# 	# distractor_hamming_distribution = np.empty(bl, dtype=np.float64)
+# 	match_hamming_distribution = np.empty(bl, dtype=np.double)
+# 	distractor_hamming_distribution = np.empty(bl, dtype=np.double)
+# 	if mtype == "bind":
+# 		# to save time over binom
+# 		mean_hamming_match = delta * bl
+# 		variance_hamming_match = delta * (1 - delta) * bl
+# 		sd_hamming_match = math.sqrt(variance_hamming_match)
+# 		mean_hamming_distractor = 0.5 * bl
+# 		variance_distractor = 0.5 * (1 - 0.5) * bl
+# 		sd_hamming_distractor = math.sqrt(variance_distractor)
+# 	for h in range(bl):
+# 		if mtype == "bind":
+# 			# use normal_dist to save time, faster than binom for long vectors
+# 			match_hamming_distribution[h] = normal_dist(h, mean_hamming_match, sd_hamming_match)
+# 			distractor_hamming_distribution[h] = normal_dist(h, mean_hamming_distractor, sd_hamming_distractor)
+# 		else:
+# 			match_hamming_distribution[h] = binom.pmf(h, bl, delta)
+# 			distractor_hamming_distribution[h] = binom.pmf(h, bl, 0.5)
+# 	show_distributions = False
+# 	if mtype == "sdm" and show_distributions:
+# 		plot_dist(match_hamming_distribution, "match_hamming_distribution, delta=%s" % delta)
+# 		plot_dist(distractor_hamming_distribution, "distractor_hamming_distribution, delta=%s" % delta)
+# 	# now calculate total error
+# 	sum_distractors_less = 0.0
+# 	prob_correct = 0.0
+# 	for h in range(0, bl):
+# 		try:
+# 			sum_distractors_less += distractor_hamming_distribution[h]
+# 			prob_correct_one = 1.0 - sum_distractors_less
+# 			prob_correct += match_hamming_distribution[h] * (prob_correct_one ** num_distractors)
+# 		except RuntimeWarning as err:
+# 			print ('Warning at h=%s, %s' % (h, err))
+# 			print("sum_distractors_less=%s" % sum_distractors_less)
+# 			print("prob_correct_one=%s" % prob_correct_one)
+# 			print("match_hamming_distribution[h] = %s" % match_hamming_distribution[h])
+# 			import pdb; pdb.set_trace()
+
+# 			sys.exit("aborting")
+# 	prob_error = 1.0 - prob_correct
+# 	# import pdb; pdb.set_trace()
+# 	return prob_error
+
+
+
+## end alternate functions for bundle analytical accuracy
 
 
 ## begin functions for sdm analytical accuracy
@@ -593,12 +706,13 @@ def widths_vs_folds():
 	# display plot of SDM length (number of rows) and bundle word length for different number of folds and size
 	# memory
 	start_size=100000; step_size=100000; stop_size=1000001
-	start_size=100000; step_size=100000; stop_size=600001
+	# start_size=100000; step_size=100000; stop_size=600001
 	sizes = range(start_size, stop_size, step_size)
-	folds = [1, 2, 4, 8, 16, 32, 64, 128, "inf"]
-	folds = [1, 2, 4]
+	# folds = [1, 2, 4, 8, 16, 32, 64, 128, "inf"]
+	folds = [1, 2, 4, 8, 16, 32, 64, 128, 256, "inf"]
+	# folds = [1, 2, 4]
 	fimps = [ 1 / f for f in folds[0:-1]] + [0.0]
-	fimps = [ 1 / f for f in folds]
+	# fimps = [ 1 / f for f in folds]
 	sdm_ri = []
 	bun_ri = []
 	for size in sizes:
@@ -636,19 +750,28 @@ def widths_vs_folds():
 		if have_sdm_key:
 			yvals = [sdm_ri[i][0][pi["key"]] for i in range(len(sizes))]
 			mem_label = "sdm " if need_mem_label else ""
+			# print("plotting sdm, mem_label=%s" % mem_label)
+			# print("fold=%s, yvals=%s" % (folds[0], yvals))
 			plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[0])) # fmt="-k"
 			for j in range(1, len(folds)):
 				yvals = [sdm_ri[i][j][pi["key"]] for i in range(len(sizes))]
+				# print("fold=%s, yvals=%s" % (folds[j], yvals))
 				plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[j]), linewidth=1,)# fmt="-k",) # linestyle='dashed',
-			labelLines(plt.gca().get_lines(), zorder=2.5)
+			# labelLines(plt.gca().get_lines(), zorder=2.5)
 		if have_bun_key:
 			mem_label = "bun " if need_mem_label else ""
 			yvals = [bun_ri[i][0][pi["key"]] for i in range(len(sizes))]
+			print("plotting bun, mem_label=%s" % mem_label)
+			print("fold=%s, yvals=%s" % (folds[0], yvals))
 			plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[0])) # fmt="-k"
 			for j in range(1, len(folds)):
 				yvals = [bun_ri[i][j][pi["key"]] for i in range(len(sizes))]
+				print("fold=%s, yvals=%s" % (folds[j], yvals))
 				plt.errorbar(sizes, yvals, yerr=None, label="%s%s" % (mem_label, folds[j]), linewidth=1,)# fmt="-k",) # linestyle='dashed',
+		if have_sdm_key or have_bun_key:
 			labelLines(plt.gca().get_lines(), zorder=2.5)
+		else:
+			sys.exit("trying to plot nothing")
 		xaxis_labels = ["%s" % int(size/1000) for size in sizes]
 		plt.xticks(sizes,xaxis_labels)
 		if log_scale:
@@ -660,6 +783,53 @@ def widths_vs_folds():
 		plt.grid()
 	plt.savefig('widths_vs_folds.pdf')
 	plt.show()
+
+def test_analytical_methods():
+	# compare analytical methods for different size bundle
+	# deltas =  np.linspace(0.1,0.48,10)
+	item_memory_size = 100
+	err_frady = []
+	err_fraction= []
+	err_binom= []
+	test_type = "vary_delta"
+	if test_type == "vary_delta":
+		word_length = 512  # use short word length
+		# deltas = np.linspace(0.05,0.45,15)
+		deltas = np.arange(0.05, 0.46, .05)
+		for delta in deltas:
+			err_frady.append(1.0 - p_corr (word_length, item_memory_size, delta))
+			err_fraction.append(p_error_Fraction (word_length, item_memory_size, delta))
+			err_binom.append(p_error_binom(word_length, item_memory_size, delta))
+		plt.subplot(111)
+		plt.errorbar(deltas, err_frady, yerr=None, label="Frady") # fmt="-k"
+		plt.errorbar(deltas, err_binom, yerr=None, label="binom") # fmt="-k"
+		plt.errorbar(deltas, err_fraction, yerr=None, label="fraction") # fmt="-k"
+		title = "Recall error vs. normalized hamming distance (delta)"
+		xlabel="normalized hamming distance"
+	elif test_type == "vary_word_length":
+		delta_hamming = 0.48738749091081174  # hamming for storing 1001 transitions in a bundle
+		start_size=100000; step_size=100000; stop_size=600001
+		word_lengths = list(range(start_size, step_size, stop_size))
+		for word_length in word_lengths:
+			err_frady.append(1.0 - p_corr (word_length, item_memory_size, delta_hamming))
+			err_binom.append(p_error_binom(word_length, item_memory_size, delta_hamming))
+			# make plots
+			plt.errorbar(word_lengths, err_frady, yerr=None, label="Frady") # fmt="-k"
+			plt.errorbar(word_lengths, err_binom, yerr=None, label="binom") # fmt="-k"
+			title = "Recall error vs word_length"
+			xlabel="word_length"
+	else:
+		sys.exit("Invalid test_type: %s" % test_type)
+	log_scale = True
+	if log_scale:
+		plt.yscale('log')
+	plt.title(title)
+	plt.xlabel(xlabel)
+	plt.ylabel("Recall error fraction")
+	plt.grid()
+	plt.legend(loc='upper left')
+	plt.show()
+
 
 def widths_vs_folds_single_size(size=100000, empirical=True):
 	# display plot of SDM length (number of rows) and bundle word length for different number of folds at a fixed size
@@ -732,4 +902,5 @@ if __name__ == "__main__":
 	# vary_nact()
 	# sdm_vs_bundle()
 	widths_vs_folds()
+	# test_analytical_methods()
 	# widths_vs_folds_single_size()
