@@ -133,7 +133,7 @@ class Bundle_memory(Memory):
 		recalled_data = np.logical_xor(address, self.data_array).astype(np.int8)
 		return recalled_data
 
-def empirical_response(mem, actions, states, choices, size, ntrials=3000):
+def empirical_response(mem, actions, states, choices, size, ntrials=13000):
 	# find empirical response of sdm or bundle (in mem object)
 	# size is number of bytes allocated to memory, used only for including in plot titles
 	using_sdm = isinstance(mem, Sparse_distributed_memory)
@@ -192,7 +192,8 @@ def empirical_response(mem, actions, states, choices, size, ntrials=3000):
 	margin_mean = statistics.mean(hamming_margins)
 	margin_var = statistics.variance(hamming_margins)
 	predicted_error_rate = norm.cdf(0, loc=margin_mean, scale=math.sqrt(margin_var))
-	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate,}
+	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate,
+		"margin_mean": margin_mean, "margin_std": math.sqrt(margin_var)}
 		# "mm":mm, "mv":mv, "dm":dm, "dv":dv, "cm":cm, "cs":cs}
 	# plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
 	return info
@@ -438,7 +439,7 @@ def SdmErrorAnalytical(R,K,D,nact=None,word_length=512,ber=0.0):
 	mean = sdm_activation_count
 	# following from Pentti's chapter
 	standard_deviation = math.sqrt(mean * (1 + pact * num_entities_stored * (1.0 + pact*pact * sdm_num_rows)))
-	average_overlap = ((num_entities_stored - 1) * sdm_activation_count) * (sdm_activation_count / sdm_num_rows)
+	# average_overlap = ((num_entities_stored - 1) * sdm_activation_count) * (sdm_activation_count / sdm_num_rows)
 	# standard_deviation = math.sqrt(average_overlap * 0.5 * (1 - 0.5)) # compute variance assuming binomonal distribution
 	probability_single_bit_failure = norm(0, 1).cdf(-mean/standard_deviation)
 	# probability_single_bit_failure = norm(mean, standard_deviation).cdf(0.0)
@@ -504,13 +505,15 @@ def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states
 		if nact < 1:
 			nact = 1
 	mem = Sparse_distributed_memory(word_length, nrows, nact, bc)
-	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None, "predicted_error_rate":None}
+	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None,
+		"predicted_error_rate":None, "margin_mean": None, "margin_std": None}
 	num_transitions = states * choices
 	ri["analytical_error"] = SdmErrorAnalytical(nrows,num_transitions,states,nact=nact,word_length=word_length) if analytical else None
 	byte_operations_required_for_recall = (word_length / 8) * states + (word_length / 8) * nrows + nact * (word_length / 8)
 	parallel_operations_required_for_recall = (word_length / 8) + (word_length / 8) + nact * (word_length / 8)
 	fraction_memory_used_for_data = (word_length*nrows*bcu) / (size * 8) 
 	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],"analytical_error":ri["analytical_error"],
+		"margin_mean":ri["margin_mean"], "margin_std":ri["margin_std"],
 		"nrows":nrows, "nact":nact,
 		"word_length":word_length,
 		"mem_eff":fraction_memory_used_for_data,
@@ -644,32 +647,39 @@ def folds2fimp(folds):
 
 
 def sdm_vs_bundle():
-	# start_size=18000; step_size=500; stop_size=24001
+	# start_size=16000; step_size=1000; stop_size=33001  # was 500, 24001  # work with  fimp=1.0/16.0
 	# start_size=5000; step_size=1000; stop_size=14001
-	start_size=100000; step_size=100000; stop_size=1000001
+	# start_size=100000; step_size=100000; stop_size=1000001  # full range
+	# start_size=20000; step_size=5000; stop_size=100001
+	start_size=20000; step_size=5000; stop_size=70001
 	sizes = range(start_size, stop_size, step_size)
 	# bc = 5.5  # used fixed bc
-	bc = 8
+	# bc = 3.5
+	bc = 3.5 # 8
 	nact = None
-	fimp=1
-	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp, analytical=True) for size in sizes]  # ri - response info
-	bundle_ri = [bundle_response_info(size, fimp=fimp, analytical=True) for size in sizes]
+	# fimp=1.0/16.0
+	fimp = 1.0
+	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp, analytical=True, empirical=True) for size in sizes]  # ri - response info
+	bundle_ri = [bundle_response_info(size, fimp=fimp, analytical=False, empirical=False) for size in sizes]
 	# bundle_ri = [{} for size in sizes]
 	plots_info = [
-		{"subplot": 121, "key":"err","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+		{"subplot": 221, "key":"err","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"found"},
 		{"subplot": None, "key":"predicted_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"found_cdf"},
 		{"subplot": None, "key":"analytical_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"analytical"},
-		{"subplot": 122, "key":"err","title":"SDM vs bundle error with fimp=%s (log scale)" % fimp,
+		{"subplot": 222, "key":"err","title":"SDM vs bundle error with fimp=%s (log scale)" % fimp,
 			"ylabel":"Recall error", "scale":"log", "label":"found"},
 		{"subplot": None, "key":"predicted_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"found_cdf",},
 		{"subplot": None, "key":"analytical_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"analytical",  "scale":"log", "legend_location":"lower left"},
 		# {"subplot": 222, "key":"mem_eff","title":"SDM vs bundle mem_eff with fimp=%s" % fimp, "ylabel":"Fraction mem used"},
-		# {"subplot": 223, "key":"nrows","title":"SDM num rows with fimp=%s" % fimp, "ylabel":"Number rows"},
+		# {"subplot": 223, "key":"nrows","title":"SDM num rows", "ylabel":"Number rows"},
+		# {"subplot": 224, "key":"nact","title":"SDM num rows activated", "ylabel":"Number rows"},
+		{"subplot": 223, "key":"margin_mean","title":"SDM margin mean", "ylabel":"hamming distance", "yerr_key":"margin_std"},
+		{"subplot": 224, "key":"nact","title":"SDM num rows activated", "ylabel":"Number rows"},
 		# {"subplot": 224, "key":"bundle_length","title":"bundle_length with fimp=%s" % fimp, "ylabel":"Bundle length"},
 
 		# {"subplot": 224, "key":"nact","title":"sdm activation with fimp=%s" % fimp, "ylabel":"activaction count"},
@@ -683,8 +693,10 @@ def sdm_vs_bundle():
 		label = pi["label"] if "label" in pi else ""
 		log_scale = "scale" in pi and pi["scale"] == "log"
 		if pi["key"] in sdm_ri[0] and sdm_ri[0][pi["key"]] is not None:
+			yerr = [sdm_ri[i][pi["yerr_key"]] for i in range(len(sizes))
+				] if "yerr_key" in pi and sdm_ri[0][pi["yerr_key"]] is not None else None
 			yvals = [sdm_ri[i][pi["key"]] for i in range(len(sizes))]
-			plt.errorbar(sizes, yvals, yerr=None, label="%ssdm" % label)
+			plt.errorbar(sizes, yvals, yerr=yerr, label="%ssdm" % label)
 		if pi["key"] in bundle_ri[0]  and bundle_ri[0][pi["key"]] is not None:
 			yvals = [bundle_ri[i][pi["key"]] for i in range(len(sizes))]
 			plt.errorbar(sizes, yvals, yerr=None, label="%sbundle" % label)
@@ -900,7 +912,7 @@ def widths_vs_folds_single_size(size=100000, empirical=True):
 if __name__ == "__main__":
 	# vary_sdm_bc()
 	# vary_nact()
-	# sdm_vs_bundle()
-	widths_vs_folds()
+	sdm_vs_bundle()
+	# widths_vs_folds()
 	# test_analytical_methods()
 	# widths_vs_folds_single_size()
