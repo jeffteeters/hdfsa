@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from labellines import labelLine, labelLines
 import sys
 import random
-import statistics
+# import statistics  # don't use statistics.mean because if argument is list of integers, will round to integer
 from scipy.stats import norm
 from scipy.stats import binom
 import scipy.integrate as integrate
@@ -13,6 +13,7 @@ import scipy
 import math
 import pprint
 from fractions import Fraction
+import ovc as oc
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -133,12 +134,15 @@ class Bundle_memory(Memory):
 		recalled_data = np.logical_xor(address, self.data_array).astype(np.int8)
 		return recalled_data
 
-def empirical_response(mem, actions, states, choices, size, ntrials=13000):
+def empirical_response(mem, actions, states, choices, size, plot_margin_histogram=False, ntrials=13000):
 	# find empirical response of sdm or bundle (in mem object)
 	# size is number of bytes allocated to memory, used only for including in plot titles
 	using_sdm = isinstance(mem, Sparse_distributed_memory)
 	trial_count = 0
 	fail_count = 0
+	epoch_stats = []  # for generating error bars on average response.  One epoch is one storage of fsa
+	hamming_margins = []  # difference between match and distractor hamming distances
+	match_hammings = []
 	while trial_count < ntrials:
 		fsa = finite_state_automaton(actions, states, choices)
 		im_actions = np.random.randint(0,high=2,size=(actions, mem.word_length), dtype=np.int8)
@@ -146,6 +150,7 @@ def empirical_response(mem, actions, states, choices, size, ntrials=13000):
 		mem.initialize()
 		# mem = Sparse_distributed_memory(word_length, nrows, nact, bc) if using_sdm else Bundle_memory(word_length)
 		# store transitions
+		epoch_stats.append({"fail_count":0, "trial_count":0})
 		for state in range(states):
 			for transition in fsa[state]:
 				action, next_state = transition
@@ -157,8 +162,6 @@ def empirical_response(mem, actions, states, choices, size, ntrials=13000):
 					mem.store(data)
 		# recall transitions
 		mem.truncate_counters()
-		hamming_margins = []  # difference between match and distractor hamming distances
-		# match_hammings = []
 		# distractor_hammings = []
 		for state in range(states):
 			for transition in fsa[state]:
@@ -171,9 +174,11 @@ def empirical_response(mem, actions, states, choices, size, ntrials=13000):
 					recalled_next_state_vector = np.roll(recalled_data, -1)  # xor with address done in bundle recall
 				hamming_distances = np.count_nonzero( recalled_next_state_vector!=im_states, axis=1)
 				match_hamming = hamming_distances[next_state]
+				match_hammings.append(match_hamming)
 				found_next_state = np.argmin(hamming_distances)
 				if found_next_state != next_state:
 					fail_count += 1
+					epoch_stats[-1]["fail_count"] += 1
 					distractor_hamming = hamming_distances[found_next_state]
 				else:
 					hamming_distances[next_state] = mem.word_length
@@ -181,23 +186,81 @@ def empirical_response(mem, actions, states, choices, size, ntrials=13000):
 					distractor_hamming = hamming_distances[closest_distractor]
 				hamming_margins.append(distractor_hamming - match_hamming)
 				trial_count += 1
+				epoch_stats[-1]["trial_count"] += 1
 	error_rate = fail_count / trial_count
-	# mm = statistics.mean(match_hammings)  # match mean
+	if len(epoch_stats) > 1:
+		assert epoch_stats[-1]["trial_count"] == states * choices, "must have all transitions stored in each epoch"
+		fail_rates = [epoch_stats[i]["fail_count"]/(states * choices) for i in range(len(epoch_stats))]
+		mean_fail_rate = np.mean(fail_rates)
+		stdev_fail_rate = np.std(fail_rates)
+	else:
+		mean_fail_rate = None
+		stdev_fail_rate = None
+	mm = np.mean(match_hammings)  # match mean
+	empirical_delta = mm / mem.word_length
 	# mv = statistics.variance(match_hammings)
 	# dm = statistics.mean(distractor_hammings)  # distractor mean
 	# dv = statistics.variance(distractor_hammings)
 	# cm = dm - mm  # combined mean
 	# cs = math.sqrt(mv + dv)  # combined standard deviation
 	# predicted_error_rate = norm.cdf(0, loc=cm, scale=cs)
-	margin_mean = statistics.mean(hamming_margins)
-	margin_var = statistics.variance(hamming_margins)
-	predicted_error_rate = norm.cdf(0, loc=margin_mean, scale=math.sqrt(margin_var))
+	margin_mean = np.mean(hamming_margins)
+	margin_std = np.std(hamming_margins)
+	predicted_error_rate = norm.cdf(0, loc=margin_mean, scale=margin_std)
+	if plot_margin_histogram and size in (9000, 15000):
+		title = "size=%s, perr=%s" % (size, predicted_error_rate)
+		plot_margin_hist(hamming_margins, title, margin_mean, margin_std, size, trial_count)
 	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate,
-		"margin_mean": margin_mean, "margin_std": math.sqrt(margin_var)}
+		"empirical_delta":empirical_delta,
+		"margin_mean": margin_mean, "margin_std": margin_std,
+		"mean_fail_rate":mean_fail_rate, "stdev_fail_rate":stdev_fail_rate}
 		# "mm":mm, "mv":mv, "dm":dm, "dv":dv, "cm":cm, "cs":cs}
 	# plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
 	return info
 
+
+def plot_margin_hist(vals, title, margin_mean, margin_std, size, trial_count):
+	nbins = get_nbins(vals)
+	n, bins, patches = plt.hist(vals, nbins, density=False, facecolor='g', alpha=0.75)
+	# from: https://www.geeksforgeeks.org/how-to-plot-normal-distribution-over-histogram-in-python/
+	mu, std = norm.fit(vals)
+	print("size=%s, mu=%s, margin_mean=%s, std=%s, margin_std=%s" %(size, mu, margin_mean, std, margin_std))
+  
+	# Plot the histogram.
+	# plt.hist(data, bins=25, density=True, alpha=0.6, color='b')
+  
+	# Plot the PDF.
+	xmin, xmax = plt.xlim()
+	x = np.linspace(xmin, xmax, 100)
+	p = norm.pdf(x, mu, std) * trial_count
+  
+	plt.plot(x, p, 'k', linewidth=2)
+	title = ("%s, Fit Values: {:.2f} and {:.2f}".format(mu, std)) % title
+	plt.title(title)
+
+	plt.xlabel('Margin value')
+	plt.ylabel('Count')
+	plt.title(title)
+	# plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+	# plt.xlim(40, 160)
+	# plt.ylim(0, 0.03)
+	plt.grid(True)
+	plt.show()
+
+def get_nbins(xv):
+		# calculate number of bins to use in histogram for values in xv
+		xv_range = max(xv) - min(xv)
+		if xv_range == 0:
+			nbins = 3
+		else:
+			nbins = int(xv_range) + 1
+		# if xv_range < 10:
+		#   nbins = 10
+		# elif xv_range > 100:
+		#   nbins = 100
+		# else:
+		#   nbins = int(xv_range) + 1
+		return nbins
 
 ## begin functions for bundle analytical accuracy
 
@@ -258,7 +321,7 @@ def p_error_binom (N, D, dp_hit):
 	# dp_hit - normalized hamming distance of superposition vector to matching vector in item memory
 	phds = np.arange(N+1)  # possible hamming distances
 	match_hammings = binom.pmf(phds, N+1, dp_hit)
-	distractor_hammings = binom.pmf(phds, N+1, 0.5)
+	distractor_hammings = binom.pmf(phds, N+1, 0.5)  # should this be N (not N+1)?
 	num_distractors = D - 1
 	dhg = 1.0 # fraction distractor hamming greater than match hamming
 	p_err = 0.0  # probability error
@@ -266,7 +329,6 @@ def p_error_binom (N, D, dp_hit):
 		dhg -= distractor_hammings[k]
 		p_err += match_hammings[k] * (1.0 - dhg ** num_distractors)
 	return p_err
-
 
 
 # def compute_theoretical_error(sl, mtype, pflip=0):
@@ -481,7 +543,7 @@ def fraction_rows_activated(m, k):
 	return 1.0 / ((2*m*k)**(1/3))
 
 def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states=100, choices=10, fimp=1.0,
-		bc_for_rows=None, empirical=True, analytical=False):
+		bc_for_rows=None, empirical=True, empirical_delta_error=False, analytical=False, plot_margin_histogram=False):
 	# compute sdm recall error for random finite state automata
 	# size - number of bytes total storage allocated to sdm and item memory
 	# bc - number of bits in each counter after counter finalized.  Has 0.5 added to include zero if less than 5
@@ -493,6 +555,7 @@ def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states
 	# choices - number of choices per state
 	# bc_for_rows - bc size used to calculate number of rows.  Used to compare effects of bc with same number rows
 	# empirical - True if should get empirical response, False otherwise
+	# empirical_delta_error - True if should include empirical_delta_error (use empirical delta to calculate theoretical error)
 	item_memory_size = ((actions + states) * word_length / 8) * fimp  # size in bytes of item memory
 	if bc_for_rows is None:
 		bc_for_rows = bc
@@ -505,15 +568,25 @@ def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states
 		if nact < 1:
 			nact = 1
 	mem = Sparse_distributed_memory(word_length, nrows, nact, bc)
-	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None,
-		"predicted_error_rate":None, "margin_mean": None, "margin_std": None}
+	ri = empirical_response(mem, actions, states, choices, size=size,
+			plot_margin_histogram=plot_margin_histogram) if empirical else {"error_rate": None,
+		"predicted_error_rate":None, "margin_mean": None, "margin_std": None,
+		"mean_fail_rate": None, "stdev_fail_rate": None, "empirical_delta": None}
 	num_transitions = states * choices
 	ri["analytical_error"] = SdmErrorAnalytical(nrows,num_transitions,states,nact=nact,word_length=word_length) if analytical else None
+	ri["sdm_ovc_error_predicted"] = oc.Ovc.compute_overall_error(nrows, word_length, nact, num_transitions, states) if analytical else None
+	SdmErrorAnalytical(nrows,num_transitions,states,nact=nact,word_length=word_length) if analytical else None
+	ri["empirical_delta_error"] = p_error_Fraction (word_length, states, ri["empirical_delta"]) if (
+		empirical_delta_error and ri["empirical_delta"] is not None) else None
 	byte_operations_required_for_recall = (word_length / 8) * states + (word_length / 8) * nrows + nact * (word_length / 8)
 	parallel_operations_required_for_recall = (word_length / 8) + (word_length / 8) + nact * (word_length / 8)
 	fraction_memory_used_for_data = (word_length*nrows*bcu) / (size * 8) 
 	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],"analytical_error":ri["analytical_error"],
 		"margin_mean":ri["margin_mean"], "margin_std":ri["margin_std"],
+		"mean_fail_rate":ri["mean_fail_rate"], "stdev_fail_rate":ri["stdev_fail_rate"],
+		"empirical_delta": ri["empirical_delta"],
+		"empirical_delta_error": ri["empirical_delta_error"],
+		"sdm_ovc_error_predicted": ri["sdm_ovc_error_predicted"],
 		"nrows":nrows, "nact":nact,
 		"word_length":word_length,
 		"mem_eff":fraction_memory_used_for_data,
@@ -535,13 +608,16 @@ def bundle_response_info(size, actions=10, states=100, choices=10, fimp=1.0, emp
 	item_memory_length = actions + states
 	word_length = int((size * 8) / (1 + item_memory_length * fimp))
 	mem = Bundle_memory(word_length)
-	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None, "predicted_error_rate":None}
+	ri = empirical_response(mem, actions, states, choices, size=size) if empirical else {"error_rate": None,
+		"predicted_error_rate":None, "mean_fail_rate": None, "stdev_fail_rate": None, "empirical_delta": None}
 	num_transitions = states * choices
 	ri["analytical_error"] = BundleErrorAnalytical(word_length,states,num_transitions) if analytical else None
 	fraction_memory_used_for_data = word_length / (size * 8)
 	byte_operations_required_for_recall = (word_length / 8) * states
 	parallel_operations_required_for_recall = word_length / 8
 	info={"err":ri["error_rate"], "predicted_error":ri["predicted_error_rate"],"analytical_error":ri["analytical_error"],
+		"mean_fail_rate": ri["mean_fail_rate"], "stdev_fail_rate": ri["stdev_fail_rate"],
+		"empirical_delta":ri["empirical_delta"],
 		"mem_eff":fraction_memory_used_for_data,
 		"bundle_length":word_length,
 		"recall_ops": byte_operations_required_for_recall,
@@ -607,9 +683,9 @@ def plot_info(sizes, bc_vals, resp_info, line_label):
 def vary_sdm_bc(start_size=10000, step_size=2000, stop_size=30001, bc_vals=[1,1.5, 2, 2.5,3.5,4.5,5.5,8]):
 	# bc_vals = [1,1.5, 2, 2.5, 3, 3.5 , 8]
 	# start_size=20000; step_size=1000; stop_size=33001
-	bc_vals = [3.5, 8]
+	bc_vals = [1, 3.5, 8]
 	# start_size=100000; step_size=100000; stop_size=1000001
-	start_size=25000; step_size=25000; stop_size=200001
+	start_size=15000; step_size=5000; stop_size=100001
 	resp_info = {}
 	sizes = range(start_size, stop_size, step_size)
 	bc_for_rows=None
@@ -648,37 +724,62 @@ def folds2fimp(folds):
 
 def sdm_vs_bundle():
 	# start_size=16000; step_size=1000; stop_size=33001  # was 500, 24001  # work with  fimp=1.0/16.0
-	# start_size=5000; step_size=1000; stop_size=14001
+	start_size=2000; step_size=1000; stop_size=15001  # for bundle with no item memory
 	# start_size=100000; step_size=100000; stop_size=1000001  # full range
+	# start_size=20000; step_size=10000; stop_size=150001
+	# start_size=20000; step_size=5000; stop_size=80001
 	# start_size=20000; step_size=5000; stop_size=100001
-	start_size=20000; step_size=5000; stop_size=70001
 	sizes = range(start_size, stop_size, step_size)
 	# bc = 5.5  # used fixed bc
 	# bc = 3.5
-	bc = 3.5 # 8
-	nact = None
+	bc = 1
+	# bc = 3.5 # 3.5 # 8
+	# nact = None
+	nact = 1
 	# fimp=1.0/16.0
-	fimp = 1.0
-	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp, analytical=True, empirical=True) for size in sizes]  # ri - response info
-	bundle_ri = [bundle_response_info(size, fimp=fimp, analytical=False, empirical=False) for size in sizes]
+	fimp = 0
+	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp, analytical=True, empirical=True,
+		empirical_delta_error=False, plot_margin_histogram=True) for size in sizes]  # ri - response info
+	print("sdm_ri=")
+	pp.pprint(sdm_ri)
+	bundle_ri = [bundle_response_info(size, fimp=fimp, analytical=True, empirical=True) for size in sizes]
+	include_relative_error = False
+	if include_relative_error:
+		for i in range(len(sizes)):
+			sdm_ri[i]["relative_error"] = abs(sdm_ri[i]["analytical_error"] - sdm_ri[i]["err"])/(
+				max(abs(sdm_ri[i]["analytical_error"]), abs(sdm_ri[i]["err"]))) if sdm_ri[i]["err"] > 0 else (
+				sdm_ri[i-1]["relative_error"] if i > 0 else 1)
 	# bundle_ri = [{} for size in sizes]
 	plots_info = [
 		{"subplot": 221, "key":"err","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"found"},
 		{"subplot": None, "key":"predicted_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"found_cdf"},
+		{"subplot": None, "key":"sdm_ovc_error_predicted","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+			"label":"sdm_ovc_predicted"},
 		{"subplot": None, "key":"analytical_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"analytical"},
+		# {"subplot": None, "key":"empirical_delta_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+		# 	"label":"empirical_delta_err"},
+		# {"subplot": None, "key":"mean_fail_rate","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+		# 	"label":"mean_fail_rate", "yerr_key":"stdev_fail_rate"},
 		{"subplot": 222, "key":"err","title":"SDM vs bundle error with fimp=%s (log scale)" % fimp,
 			"ylabel":"Recall error", "scale":"log", "label":"found"},
 		{"subplot": None, "key":"predicted_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"found_cdf",},
+		{"subplot": None, "key":"sdm_ovc_error_predicted","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+			"label":"sdm_ovc_predicted"},
 		{"subplot": None, "key":"analytical_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"analytical",  "scale":"log", "legend_location":"lower left"},
+		# {"subplot": None, "key":"empirical_delta_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+		# 	"label":"empirical_delta_err", "scale":"log"},
+		# {"subplot": None, "key":"mean_fail_rate","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"mean_error",
+		# 	"label":"mean_fail_rate", "yerr_key":"stdev_fail_rate", "scale":"log"},
 		# {"subplot": 222, "key":"mem_eff","title":"SDM vs bundle mem_eff with fimp=%s" % fimp, "ylabel":"Fraction mem used"},
 		# {"subplot": 223, "key":"nrows","title":"SDM num rows", "ylabel":"Number rows"},
 		# {"subplot": 224, "key":"nact","title":"SDM num rows activated", "ylabel":"Number rows"},
 		{"subplot": 223, "key":"margin_mean","title":"SDM margin mean", "ylabel":"hamming distance", "yerr_key":"margin_std"},
+		# {"subplot": 223, "key":"relative_error","title":"Relative err vs analytical", "ylabel":"Relative error",},
 		{"subplot": 224, "key":"nact","title":"SDM num rows activated", "ylabel":"Number rows"},
 		# {"subplot": 224, "key":"bundle_length","title":"bundle_length with fimp=%s" % fimp, "ylabel":"Bundle length"},
 
@@ -693,7 +794,7 @@ def sdm_vs_bundle():
 		label = pi["label"] if "label" in pi else ""
 		log_scale = "scale" in pi and pi["scale"] == "log"
 		if pi["key"] in sdm_ri[0] and sdm_ri[0][pi["key"]] is not None:
-			yerr = [sdm_ri[i][pi["yerr_key"]] for i in range(len(sizes))
+			yerr = [sdm_ri[i][pi["yerr_key"]]/2.0 for i in range(len(sizes))  # / 2 for symmetric stdev
 				] if "yerr_key" in pi and sdm_ri[0][pi["yerr_key"]] is not None else None
 			yvals = [sdm_ri[i][pi["key"]] for i in range(len(sizes))]
 			plt.errorbar(sizes, yvals, yerr=yerr, label="%ssdm" % label)
@@ -705,6 +806,7 @@ def sdm_vs_bundle():
 			plt.xticks(sizes,xaxis_labels)
 			if log_scale:
 				plt.yscale('log')
+				plt.ylim([10e-16, None])
 			plt.title(pi["title"])
 			plt.xlabel("Size (kB)")
 			plt.ylabel(pi["ylabel"])

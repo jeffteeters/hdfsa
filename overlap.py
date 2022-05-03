@@ -88,6 +88,9 @@ def sdm_delta_empirical(num_rows, num_items_stored, activation_count, num_trials
 			plot_hist(sdm_counters, activation_count, num_items_stored)
 		error_count += num_failed
 		trial_count += num_items_stored
+	# print("overlap sdm_delta_empirical: num_rows=%s, num_items_stored=%s, activation_count=%s, error_count=%s,"
+	# 	" trial_count=%s, num_trials=%s" %
+	# 	(num_rows, num_items_stored, activation_count, error_count, trial_count, num_trials))
 	return error_count / trial_count
 
 def plot_hist(sdm_counters, nact, num_items_stored, row=None):

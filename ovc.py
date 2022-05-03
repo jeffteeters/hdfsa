@@ -8,37 +8,48 @@ import matplotlib.pyplot as plt
 
 class Ovc:
 
-	def __init__(self, nrows, ncols, nact, k, d=2):
+	def __init__(self, nrows, ncols, nact, k, d=2, include_empirical=True):
 		# compute overlaps of target (nact rows) in SDM when k items are stored (k-1 which cause overlaps)
 		# nrows is number of rows (hard locations) in the SDM
 		# ncols is the number of columns
 		# nact is activaction count
 		# k is number of items stored in sdm
 		# d is the number of items in item memory.  Used to compute probability of error in recall
+		# include_empirical is True to display plots and compute empirical distribution
 		self.nrows = nrows
 		self.ncols = ncols
 		self.nact = nact
 		self.k = k
 		self.d = d
+		self.include_empirical = include_empirical
 		self.max_num_overlaps = (k-1) * nact
 		self.ov = {1 : self.one_item_overlaps()}  # 1 item overlaps, means 2 items are stored
 		for i in range(2, k):
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
 		self.perr = self.compute_perr()
-		self.emp_overlap_err = self.empiricalOverlapError()
-		self.plot(self.perr, "Error vs overlaps", "number of overlaps",
-			"probability of error", label="predicted", data2=self.emp_overlap_err, label2="found")
 		self.hdist = self.compute_hamming_dist()
-		self.empiricalError()
-		self.plot(self.ov[k - 1], "Perdicted vs empirical overlap distribution", "number of overlaps",
-			"relative frequency", label="predicted", data2=self.emp_overlaps, label2="found")
-		self.plot(self.hdist, "Perdicted vs empirical match hamming distribution", "hamming distance",
-			"relative frequency", label="predicted", data2=self.ehdist, label2="found")
+		if include_empirical:
+			self.emp_overlap_err = self.empiricalOverlapError()
+			self.empiricalError()
+			self.plot(self.perr, "Error vs overlaps", "number of overlaps",
+				"probability of error", label="predicted", data2=self.emp_overlap_err, label2="found")
+			self.plot(self.ov[k - 1], "Perdicted vs empirical overlap distribution", "number of overlaps",
+				"relative frequency", label="predicted", data2=self.emp_overlaps, label2="found")
+			print("emp_overlaps=%s" % self.emp_overlaps)
+			print("predicted_overlaps=%s" % self.ov[k - 1])
+			print("predicted_hammings=%s" % self.hdist)
+			print("emp_hammings=%s" % self.ehdist)
+			self.plot(self.hdist, "Perdicted vs empirical match hamming distribution", "hamming distance",
+				"relative frequency", label="predicted", data2=self.ehdist, label2="found")
 
-	def compute_overall_error(nrows, ncols, nact, k, d=2):
-		ov = Ovc(nrows, ncols, nact, k, d)
-		overall_perr = ov.compute_overall_perr()
-		return overall_perr
+	def compute_overall_error(nrows, ncols, nact, k, d):
+		ov = Ovc(nrows, ncols, nact, k, d, include_empirical=False)
+		overall_perr_orig = ov.compute_overall_perr()
+		overall_perr = ov.p_error_binom()
+		if not math.isclose(overall_perr_orig, overall_perr):
+			print("ovc error computations differ:\noverall_perr_orig=%s, p_error_binom=%s" % (
+				overall_perr_orig, overall_perr))
+		return overall_perr_orig
 
 
 	def one_item_overlaps(self):
@@ -112,6 +123,7 @@ class Ovc:
 		perr = self.perr    # probability of error for each number of overlap
 		assert len(pov) == len(perr)
 		pmf = np.empty(n + 1)  # probability mass function
+		# import pdb; pdb.set_trace()
 		for h in range(len(pmf)):  # hamming distance
 			phk = binom.pmf(h, n, self.perr)
 			pmf[h] = np.dot(phk, pov)
@@ -138,12 +150,29 @@ class Ovc:
 		n = self.ncols
 		hdist = self.hdist
 		h = np.arange(len(hdist))
-		self.plot(binom.pmf(h, n, 0.5), "distractor pmf", "hamming distance", "probability")
+		# self.plot(binom.pmf(h, n, 0.5), "distractor pmf", "hamming distance", "probability")
 		ph_corr = binom.sf(h, n, 0.5) ** (self.d-1)
-		self.plot(ph_corr, "probability correct", "hamming distance", "fraction correct")
-		self.plot(ph_corr * hdist, "p_corr weighted by hdist", "hamming distance", "weighted p_corr")
+		# self.plot(ph_corr, "probability correct", "hamming distance", "fraction correct")
+		# self.plot(ph_corr * hdist, "p_corr weighted by hdist", "hamming distance", "weighted p_corr")
 		p_corr = np.dot(ph_corr, hdist)
 		return 1 - p_corr
+
+	def p_error_binom(self, use_empirical=False):
+		# compute error by integrating predicted distribution with distractors
+		# should do same function as above
+		match_hammings = self.hdist if not use_empirical else self.ehdist
+		phds = np.arange(self.ncols+1)  # possible hamming distances
+		distractor_hammings = binom.pmf(phds, self.ncols, 0.5)
+		if self.include_empirical:
+			self.plot(match_hammings, "match_hammings vs distractor_hammings", "hamming distance",
+				"relative frequency", label="match_hammings", data2=distractor_hammings, label2="distractor_hammings")
+		num_distractors = self.d - 1
+		dhg = 1.0 # fraction distractor hamming greater than match hamming
+		p_err = 0.0  # probability error
+		for k in phds:
+			dhg -= distractor_hammings[k]
+			p_err += match_hammings[k] * (1.0 - dhg ** num_distractors)
+		return p_err
 
 
 	# def compute_overall_perr_orig(self):
@@ -235,6 +264,8 @@ class Ovc:
 		# compute empirical error by storing then recalling items from SDM
 		trial_count = 0
 		fail_count = 0
+		bit_errors_found = 0
+		bits_compared = 0
 		mhcounts = np.zeros(self.ncols+1, dtype=np.int32)  # match hamming counts
 		ovcounts = np.zeros(self.max_num_overlaps + 1, dtype=np.int32)
 		while trial_count < ntrials:
@@ -244,8 +275,9 @@ class Ovc:
 			im = np.random.randint(0,high=2,size=(self.d, self.ncols), dtype=np.int8)  # item memory
 			addr_base_length = self.k + self.ncols - 1
 			address_base = np.random.randint(0,high=2,size=addr_base_length, dtype=np.int8)
-			exSeq= np.random.randint(low = 0, high = self.d, size=self.k) # radnom sequence to represent
+			exSeq= np.random.randint(low = 0, high = self.d, size=self.k) # random sequence to represent
 			# store sequence
+			# import pdb; pdb.set_trace()
 			for i in range(self.k):
 				address = address_base[i:i+self.ncols]
 				data = im[exSeq[i]]
@@ -272,11 +304,14 @@ class Ovc:
 				if selected_item != exSeq[i]:
 					fail_count += 1
 				mhcounts[hamming_distances[exSeq[i]]] += 1
+				bit_errors_found += hamming_distances[exSeq[i]]
+				bits_compared += self.ncols
 				trial_count += 1
 				if trial_count >= ntrials:
 					break
 		perr = fail_count / trial_count
 		self.plot(mhcounts, "hamming distances found", "hamming distance", "count")
+		print("Empirical bit error rate = %s" % (bit_errors_found / bits_compared))
 		self.ehdist = mhcounts / trial_count  # form distribution of match hammings
 		self.emp_overlaps = ovcounts / np.sum(ovcounts)
 		self.emp_overall_perr = perr
@@ -284,7 +319,7 @@ class Ovc:
 
 	def empiricalOverlapError(self):
 		# find probability of error vs number of overlaps empirically
-		error_counts = np.zeros(self.max_num_overlaps + 1, dtype=np.float)
+		error_counts = np.zeros(self.max_num_overlaps + 1, dtype=float)
 		ntrials = 50000
 		vlen = 1000  # number of trials done simultaneously
 		trial_count = 0
@@ -326,17 +361,17 @@ class Ovc:
 
 
 def main():
-	nrows = 6
-	nact = 2
-	k = 5
-	d = 27
-	ncols = 33
+	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
+	nrows = 80; nact = 2; k = 1000; d = 100; ncols = 512  # near full size 
 	ov = Ovc(nrows, ncols, nact, k, d)
-	overall_perr = ov.compute_overall_perr()
+	predicted_using_theory_dist = ov.p_error_binom() # ov.compute_overall_perr()
+	predicted_using_empirical_dist = ov.p_error_binom(use_empirical=True)
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k, d)
-	emp_err = ov.emp_overall_perr
-	print("for k=%s, d=%s, sdm size=(%s, %s, %s), overall_perr=%s, emp_err=%s" % (k, d, nrows, ncols, nact, overall_perr,
-		emp_err))
+	empirical_err = ov.emp_overall_perr
+	print("for k=%s, d=%s, sdm size=(%s, %s, %s), predicted_using_theory_dist=%s, predicted_using_empirical_dist=%s,"
+		" empirical_err=%s" % (k, d, nrows, ncols, nact, predicted_using_theory_dist, predicted_using_empirical_dist,
+			empirical_err))
 	# ncols = 52
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
 	# print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))

@@ -1067,7 +1067,7 @@ class Calculator:
 						# print("k=k, sdm_match_hamming_mean=%s, sdm_match_hamming_var=%s, percent diff=%s" % (
 						# 	mmean, mvar, abs(mmean- mvar)*100 / (mmean)))
 						fi["sdm_error"].append(sdm_info["nfail"] * 100.0 / (sdm_info["ntrials"]))
-						fi["sdm_ovc_error_predicted"].append(oc.Ovc.compute_overall_error(sdm_nrows, sdm_ncols, sdm_nact, k)*100.0)
+						fi["sdm_ovc_error_predicted"].append(oc.Ovc.compute_overall_error(sdm_nrows, sdm_ncols, sdm_nact, k, codebook_size)*100.0)
 						fi["sdm_delta_found"].append(sdm_info["normalized_hamming"])
 						delta_predicted = fs.single_bit_error_rate(sdm_nrows, k)[0]
 						fi["sdm_delta_predicted"].append(delta_predicted)
@@ -1076,7 +1076,7 @@ class Calculator:
 						# fi["sdm_error_predicted_using_delta_found"].append((1-self.p_corr(sdm_ncols, codebook_size, fi["sdm_delta_found"][-1])) * 100.0)
 						fi["sdm_error_predicted_using_delta_found_fraction"].append((1-self.p_corr_fraction(sdm_ncols, codebook_size, fi["sdm_delta_found"][-1])) * 100.0)
 						fi["sdm_error_predicted_using_hypd+fraction"].append((1-self.p_corr_fraction(sdm_ncols, codebook_size, delta_predicted))*100.0)
-						fi["sdm_delta_empirical"].append(ov.sdm_delta_empirical(sdm_nrows, k, sdm_nact, num_trials=num_trials))
+						fi["sdm_delta_empirical"].append(ov.sdm_delta_empirical(sdm_nrows, k, sdm_nact)) # num_trials=num_trials)) # don't pass num_trials, is too small
 						fi["sdm_match_hamming_mean"].append(sdm_info["match_hamming_mean"])
 						fi["sdm_distractor_hamming_mean"].append(sdm_info["distractor_hamming_mean"])
 						fi["sdm_match_hamming_stdev"].append(sdm_info["match_hamming_stdev"])
