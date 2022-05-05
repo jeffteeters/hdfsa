@@ -5,6 +5,7 @@ from scipy.stats import binom
 from scipy.stats import norm
 import numpy as np
 import matplotlib.pyplot as plt
+import copy
 
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
@@ -28,31 +29,32 @@ class Cop:
 				"initial_chunk=%s" % initial_chunk)
 			assert isinstance(initial_probability, float) and initial_probability < 1.0
 			iar = np.zeros(self.nact, dtype=np.uint16)
-			if initial_chunk > 0:
-				iar[initial_chunk - 1] = 1  # to indicate have one chuck of specified magnitude
+			if initial_chunk is not None:
+				if initial_chunk > 0:
+					iar[initial_chunk - 1] = 1  # to indicate have one chuck of specified magnitude
 				key = ','.join(["%s" % x for x in iar])
-				self.chunk_probabilities[key] = initial_probability
+				self.chunk_probabilities[key] = [initial_probability, iar]
 
 	def add_overlap(self, prev_cop, num_to_add, prob):
 		# add overlap to prev_cop to create new entries in this item.
 		# prev_cop - previous cop which is having overlaps added
 		# num_to_add - number of overlaps to add.  Range must be: 0 <= num_to_add <= nact
 		# prob - probability associate with the overlap, is multiplied by existing probabilities in prev_cop
-		for prev_key, prev_prob in prev_cop.chunk_probabilities.items():
+		for prev_key, prev_info in prev_cop.chunk_probabilities.items():
+			new_prob = prev_info[0] * prob
+			iar = copy.copy(prev_info[1]) # iar = list(map(int, prev_key.split(",")))
 			if num_to_add == 0:
-				new_key = prev_key    # no need to modify previous key
+				new_key = prev_key  # no need to modify previous key
 			else:
 				# make updatted key
-				iar = list(map(int, prev_key.split(",")))
 				iar[num_to_add - 1] += 1   # increment chunk indicator of specified magnitude
 				new_key = ','.join(["%s" % x for x in iar])  # form new key
-			new_prob = prev_prob * prob
 			if new_key in self.chunk_probabilities:
 				# key exists, add to current probability
-				self.chunk_probabilities[new_key] = self.chunk_probabilities[new_key] + new_prob
+				self.chunk_probabilities[new_key][0] += new_prob
 			else:
-				self.chunk_probabilities[new_key] = new_prob
-
+				self.chunk_probabilities[new_key] = [new_prob, iar]
+				
 
 class Ovc:
 
@@ -88,11 +90,18 @@ class Ovc:
 			print("predicted_hammings=%s" % self.hdist)
 			print("emp_hammings=%s" % self.ehdist)
 			print("cops=")
-			for i in range(1,k):
-				print("%s item overlaps:" % i)
-				for j in range(len(self.ov[i]["cop"])):
-					print("element %s" % j)
-					pp.pprint(self.ov[i]["cop"][j].chunk_probabilities)
+			total_patterns = 0
+			for i in range(len(self.ov[k - 1]["cop"])):
+				num_pats = len(self.ov[k - 1]["cop"][i].chunk_probabilities)
+				total_patterns += num_pats
+				print("%s %s item overlaps:" % (num_pats, i))
+				samples = {}
+				for key, value in self.ov[k - 1]["cop"][i].chunk_probabilities.items():
+					samples[key] = value[0]
+					if len(samples) == 10:
+						break
+				pp.pprint(samples)
+			print("total_patterns=%s" % total_patterns)
 			self.plot(self.hdist, "Perdicted vs empirical match hamming distribution", "hamming distance",
 				"relative frequency", label="predicted", data2=self.ehdist, label2="found")
 
@@ -422,9 +431,9 @@ class Ovc:
 
 
 def main():
-	nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
 	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
-	# nrows = 80; nact = 2; k = 1000; d = 100; ncols = 512  # near full size 
+	nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size 
 	ov = Ovc(nrows, ncols, nact, k, d)
 	predicted_using_theory_dist = ov.p_error_binom() # ov.compute_overall_perr()
 	predicted_using_empirical_dist = ov.p_error_binom(use_empirical=True)
