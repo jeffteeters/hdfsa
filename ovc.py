@@ -6,6 +6,54 @@ from scipy.stats import norm
 import numpy as np
 import matplotlib.pyplot as plt
 
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
+
+class Cop:
+	# "chunk overlay probability" - keeps track of multiple overlaps (chunks) onto target rows from the same item.
+	# This is needed because multiple overlaps from the same item change the probability of error when computing
+	# the sum.  For example, a chunk of size 2 would contribute -2 or +2 to the sum.  But two independent items
+	# would contribute either (-2, 0, +2).  Another example, chunk of size 3 contributes -3 or +3.  But three
+	# independent items could contribute: -3, -1, 1, or 3.
+
+	
+	# chunk_ints = {}   # magnitudes stored as numpy array of integers to make combining easier
+
+	def __init__(self, nact, initial_chunk=None, initial_probability=None):
+		# initial_chunk is magnitude of initial overlap.  If specified, must be in range: 0, 1, 2, 3 ... nact
+		self.nact = nact
+		self.chunk_probabilities = {}  # maps chunk key, e.g. "0,1,0", to probability of that combination
+		if initial_chunk is not None:
+			assert isinstance(initial_chunk, int) and initial_chunk >= 0 and initial_chunk <= self.nact,(
+				"initial_chunk=%s" % initial_chunk)
+			assert isinstance(initial_probability, float) and initial_probability < 1.0
+			iar = np.zeros(self.nact, dtype=np.uint16)
+			if initial_chunk > 0:
+				iar[initial_chunk - 1] = 1  # to indicate have one chuck of specified magnitude
+				key = ','.join(["%s" % x for x in iar])
+				self.chunk_probabilities[key] = initial_probability
+
+	def add_overlap(self, prev_cop, num_to_add, prob):
+		# add overlap to prev_cop to create new entries in this item.
+		# prev_cop - previous cop which is having overlaps added
+		# num_to_add - number of overlaps to add.  Range must be: 0 <= num_to_add <= nact
+		# prob - probability associate with the overlap, is multiplied by existing probabilities in prev_cop
+		for prev_key, prev_prob in prev_cop.chunk_probabilities.items():
+			if num_to_add == 0:
+				new_key = prev_key    # no need to modify previous key
+			else:
+				# make updatted key
+				iar = list(map(int, prev_key.split(",")))
+				iar[num_to_add - 1] += 1   # increment chunk indicator of specified magnitude
+				new_key = ','.join(["%s" % x for x in iar])  # form new key
+			new_prob = prev_prob * prob
+			if new_key in self.chunk_probabilities:
+				# key exists, add to current probability
+				self.chunk_probabilities[new_key] = self.chunk_probabilities[new_key] + new_prob
+			else:
+				self.chunk_probabilities[new_key] = new_prob
+
+
 class Ovc:
 
 	def __init__(self, nrows, ncols, nact, k, d=2, include_empirical=True):
@@ -33,12 +81,18 @@ class Ovc:
 			self.empiricalError()
 			self.plot(self.perr, "Error vs overlaps", "number of overlaps",
 				"probability of error", label="predicted", data2=self.emp_overlap_err, label2="found")
-			self.plot(self.ov[k - 1], "Perdicted vs empirical overlap distribution", "number of overlaps",
+			self.plot(self.ov[k - 1]["pmf"], "Perdicted vs empirical overlap distribution", "number of overlaps",
 				"relative frequency", label="predicted", data2=self.emp_overlaps, label2="found")
 			print("emp_overlaps=%s" % self.emp_overlaps)
-			print("predicted_overlaps=%s" % self.ov[k - 1])
+			print("predicted_overlaps=%s" % self.ov[k - 1]["pmf"])
 			print("predicted_hammings=%s" % self.hdist)
 			print("emp_hammings=%s" % self.ehdist)
+			print("cops=")
+			for i in range(1,k):
+				print("%s item overlaps:" % i)
+				for j in range(len(self.ov[i]["cop"])):
+					print("element %s" % j)
+					pp.pprint(self.ov[i]["cop"][j].chunk_probabilities)
 			self.plot(self.hdist, "Perdicted vs empirical match hamming distribution", "hamming distance",
 				"relative frequency", label="predicted", data2=self.ehdist, label2="found")
 
@@ -63,8 +117,10 @@ class Ovc:
 		[M, n, N] = [self.nrows, self.nact, self.nact]
 		rv = hypergeom(M, n, N)
 		x = np.arange(0, n+1)
-		pmf_ov = rv.pmf(x)
-		return pmf_ov
+		pmf = rv.pmf(x)
+		cop = [Cop(self.nact, int(i), pmf[i]) for i in x]
+		ovi = {"pmf":pmf, "cop":cop}
+		return ovi
 
 	def n_item_overlaps(self, n_items):
 		# n_items is number of items beyound the first being stored in the sdm.  In other words, n_items is
@@ -76,8 +132,10 @@ class Ovc:
 		max_num_overlaps = nact * n_items
 		max_num_previous_overlaps = max_num_overlaps - nact
 		pmf = np.empty(max_num_overlaps + 1)  # probability mass function
+		copl = []
 		for no in range(max_num_overlaps + 1):  # number overlaps
 			prob = 0.0
+			cop = Cop(self.nact)
 			if no > max_num_previous_overlaps:
 				cio_start = no - max_num_previous_overlaps
 			else:
@@ -90,10 +148,13 @@ class Ovc:
 			# 	no, cio_start, cio_stop, max_num_overlaps, max_num_previous_overlaps))
 			for cio in range(cio_start, cio_stop+1):  # contributions from current item to overlaps
 				# print("\tAdding ov[%s][%s] * ov[1][%s]" % (n_items-1, no-cio, cio))
-				prob += self.ov[n_items - 1][no - cio] * self.ov[1][cio]
+				prob += self.ov[n_items - 1]["pmf"][no - cio] * self.ov[1]["pmf"][cio]
+				cop.add_overlap(self.ov[n_items - 1]["cop"][no - cio], cio, self.ov[1]["pmf"][cio])
 			pmf[no] = prob
+			copl.append(cop)
 		assert math.isclose(np.sum(pmf), 1.0), "sum of pmf should be 1 is: %s" % np.sum(pmf)
-		return pmf
+		ovi = {"pmf":pmf, "cop":copl}
+		return ovi
 
 	def compute_perr(self):
 		# compute probability of error given number of overlaps
@@ -119,7 +180,7 @@ class Ovc:
 	def compute_hamming_dist(self):
 		# compute distribution of probability of each hamming distance
 		n = self.ncols
-		pov = self.ov[self.k - 1]  # probability of overlaps
+		pov = self.ov[self.k - 1]["pmf"]  # probability of overlaps
 		perr = self.perr    # probability of error for each number of overlap
 		assert len(pov) == len(perr)
 		pmf = np.empty(n + 1)  # probability mass function
@@ -361,9 +422,9 @@ class Ovc:
 
 
 def main():
-	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
 	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
-	nrows = 80; nact = 2; k = 1000; d = 100; ncols = 512  # near full size 
+	# nrows = 80; nact = 2; k = 1000; d = 100; ncols = 512  # near full size 
 	ov = Ovc(nrows, ncols, nact, k, d)
 	predicted_using_theory_dist = ov.p_error_binom() # ov.compute_overall_perr()
 	predicted_using_empirical_dist = ov.p_error_binom(use_empirical=True)
