@@ -74,9 +74,13 @@ class Cop:
 		self.threshold = threshold
 		self.show_pruning = show_pruning
 		self.ov1_pmf = self.compute_one_item_overlap_pmf()
+		# print("self.ov1_pmf=%s" % self.ov1_pmf)
+		self.key_increments = self.compute_key_increments()
 		self.chunk_probabilities = self.set_initial_chunk_probabilities()
-		for i in range(2, k+1):
+		# print("before add_overlap, self.chunk_probabilities=%s" % self.chunk_probabilities)
+		for i in range(2, k):
 			self.add_overlap(i)
+			# print("after add_overlap %s self.chunk_probabilities=\n%s" % (i, self.chunk_probabilities))
 		self.display_result()
 
 	def compute_one_item_overlap_pmf(self):
@@ -87,15 +91,32 @@ class Cop:
 		pmf = rv.pmf(x)
 		return pmf
 
+	def compute_key_increments(self):
+		# keys in the self.chunk_probabilities dictionary are integers with each three digits representing the
+		# overlap count for 0 through nact overlaps.  Least significant digits are used for count of 0 overlaps.
+		# In other words, keys look like: 444333222111000, where 000 is the count of 0 overlaps, and 111 is the
+		# count of 1 overlaps.  The key increment array has the numbers to add to the previous key to convert it
+		# to the new key.
+		ki = 1
+		key_increments = []
+		for i in range(self.nact+1):
+			key_increments.append(ki)
+			ki = ki * 1000
+		# print("key_increments=%s" % key_increments)
+		return key_increments
+
+		# create array of numbers that are added to key
+
 	def set_initial_chunk_probabilities(self):
 		# create dictionary mapping key for pattern to probability of that pattern
 		chunk_probabilities = {}
 		for i in range(self.nact+1):
-			iar = np.zeros(self.nact, dtype=np.uint16)
-			if i > 0:
-				iar[i-1] = 1
-			key = ','.join(["%s" % x for x in iar])
-			chunk_probabilities[key] = self.ov1_pmf[i]
+			chunk_probabilities[self.key_increments[i]] = self.ov1_pmf[i]
+			# iar = np.zeros(self.nact, dtype=np.uint16)
+			# if i > 0:
+			# 	iar[i-1] = 1
+			# key = ','.join(["%s" % x for x in iar])
+			# chunk_probabilities[key] = self.ov1_pmf[i]
 		return chunk_probabilities
 
 	def add_overlap(self, iteration):
@@ -104,24 +125,20 @@ class Cop:
 		chunk_probabilities = self.chunk_probabilities
 		items_before = len(chunk_probabilities)
 		max_probability = 0.
-
 		for prev_key in list(chunk_probabilities):
 			prev_prob = chunk_probabilities[prev_key]
 			for i in range(self.nact + 1):
 				new_prob = prev_prob * self.ov1_pmf[i]
 				if new_prob > max_probability:
 					max_probability = new_prob
-				if i > 0:
-					iar = list(map(int, prev_key.split(",")))
-					iar[i-1] += 1
-					new_key = ','.join(["%s" % x for x in iar])  # form new key
-					if new_key in chunk_probabilities:
-						chunk_probabilities[new_key] += new_prob
-					else:
-						chunk_probabilities[new_key] = new_prob
+				new_key = prev_key + self.key_increments[i]
+				if new_key in chunk_probabilities:
+					chunk_probabilities[new_key] += new_prob
 				else:
-					# no new overlap, key remains the same, just update probability
-					chunk_probabilities[prev_key] = new_prob
+					chunk_probabilities[new_key] = new_prob
+				# print("i=%i, prev=(%s, %s) new=(%s,%s), cp[nk]=%s" % (i, prev_key, prev_prob, new_key, new_prob,
+				# 	chunk_probabilities[new_key]))
+			del chunk_probabilities[prev_key]
 		# now check for terms to remove
 		min_allowd_probability = max_probability / self.threshold
 		prune_count = 0
@@ -535,7 +552,7 @@ class Ovc:
 
 def main():
 	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
-	nrows = 80; nact = 11; k = 100; d = 27; ncols = 51  # near full size 
+	nrows = 80; nact = 7; k = 1000; d = 27; ncols = 51  # near full size 
 	# test new cop class
 	cop = Cop(nrows, nact, k)
 	return
