@@ -10,7 +10,7 @@ import copy
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
-class Cop:
+class Cop_orig:
 	# "chunk overlay probability" - keeps track of multiple overlaps (chunks) onto target rows from the same item.
 	# This is needed because multiple overlaps from the same item change the probability of error when computing
 	# the sum.  For example, a chunk of size 2 would contribute -2 or +2 to the sum.  But two independent items
@@ -54,7 +54,110 @@ class Cop:
 				self.chunk_probabilities[new_key][0] += new_prob
 			else:
 				self.chunk_probabilities[new_key] = [new_prob, iar]
-				
+		
+class Cop:
+	# "chunk overlay probability" - keeps track of multiple overlaps (chunks) onto target rows from the same item.
+	# This is needed because multiple overlaps from the same item change the probability of error when computing
+	# the sum.  For example, a chunk of size 2 would contribute -2 or +2 to the sum.  But two independent items
+	# would contribute either (-2, 0, +2).  Another example, chunk of size 3 contributes -3 or +3.  But three
+	# independent items could contribute: -3, -1, 1, or 3.
+
+	def __init__(self, nrows, nact, k, threshold=100000, show_pruning=False):
+		# nrows - number of rows in sdm
+		# nact - activaction count
+		# k - number of items to store in sdm
+		# threshold - maximum ratio of largest to smallest probability.  Drop patterns that have smaller probability
+		#  This done to limit number of patterns to only those that are contributing the most to the result
+		self.nrows = nrows
+		self.nact = nact
+		self.k = k
+		self.threshold = threshold
+		self.show_pruning = show_pruning
+		self.ov1_pmf = self.compute_one_item_overlap_pmf()
+		self.chunk_probabilities = self.set_initial_chunk_probabilities()
+		for i in range(2, k+1):
+			self.add_overlap(i)
+		self.display_result()
+
+	def compute_one_item_overlap_pmf(self):
+		# based on: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.hypergeom.html#scipy.stats.hypergeom
+		[M, n, N] = [self.nrows, self.nact, self.nact]
+		rv = hypergeom(M, n, N)
+		x = np.arange(0, n+1)
+		pmf = rv.pmf(x)
+		return pmf
+
+	def set_initial_chunk_probabilities(self):
+		# create dictionary mapping key for pattern to probability of that pattern
+		chunk_probabilities = {}
+		for i in range(self.nact+1):
+			iar = np.zeros(self.nact, dtype=np.uint16)
+			if i > 0:
+				iar[i-1] = 1
+			key = ','.join(["%s" % x for x in iar])
+			chunk_probabilities[key] = self.ov1_pmf[i]
+		return chunk_probabilities
+
+	def add_overlap(self, iteration):
+		# givin current chunk_probabilities, update it by multiplying each probability by every probability in
+		# self.ov1_pmf and then combine terms.  Remove any terms with probability less than threshold.
+		chunk_probabilities = self.chunk_probabilities
+		items_before = len(chunk_probabilities)
+		max_probability = 0.
+
+		for prev_key in list(chunk_probabilities):
+			prev_prob = chunk_probabilities[prev_key]
+			for i in range(self.nact + 1):
+				new_prob = prev_prob * self.ov1_pmf[i]
+				if new_prob > max_probability:
+					max_probability = new_prob
+				if i > 0:
+					iar = list(map(int, prev_key.split(",")))
+					iar[i-1] += 1
+					new_key = ','.join(["%s" % x for x in iar])  # form new key
+					if new_key in chunk_probabilities:
+						chunk_probabilities[new_key] += new_prob
+					else:
+						chunk_probabilities[new_key] = new_prob
+				else:
+					# no new overlap, key remains the same, just update probability
+					chunk_probabilities[prev_key] = new_prob
+		# now check for terms to remove
+		min_allowd_probability = max_probability / self.threshold
+		prune_count = 0
+		prune_prob = 0.0
+		total_prob = 0
+		items_before_prune = len(chunk_probabilities)
+		pruned_items = {}
+		for key in list(chunk_probabilities):
+			prob = chunk_probabilities[key]
+			total_prob += prob
+			if prob < min_allowd_probability:
+				pruned_items[key] = prob
+				del chunk_probabilities[key]
+				prune_count += 1
+				prune_prob += prob
+		items_after_prune = len(chunk_probabilities)
+		if self.show_pruning:
+			print("cop %s overlap, items_before=%s, items_before_prune=%s, items_after_prune=%s, prune_count=%s,"
+				" prune_prob=%s, total_prob=%s" % (iteration, items_before, items_before_prune, items_after_prune,
+					prune_count, prune_prob, total_prob))
+			print("pruned_items are: %s" % pruned_items)
+
+
+	def display_result(self):
+		num_items = len(self.chunk_probabilities)
+		total_prob = 0.0
+		for key, prob in self.chunk_probabilities.items():
+			total_prob += prob
+		print("After %s items stored with nact=%s, threshold=%s, size cop = %s, total_probability = %s" % (self.k,
+			self.nact, self.threshold, num_items, total_prob))
+		if self.show_pruning:
+			print("items are:")
+			for key, prob in sorted(self.chunk_probabilities.items()):
+				print("%s: %s" % (key, prob))
+
+
 
 class Ovc:
 
@@ -432,8 +535,14 @@ class Ovc:
 
 def main():
 	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	nrows = 80; nact = 11; k = 100; d = 27; ncols = 51  # near full size 
+	# test new cop class
+	cop = Cop(nrows, nact, k)
+	return
+
+
 	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
-	nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size 
+	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size 
 	ov = Ovc(nrows, ncols, nact, k, d)
 	predicted_using_theory_dist = ov.p_error_binom() # ov.compute_overall_perr()
 	predicted_using_empirical_dist = ov.p_error_binom(use_empirical=True)
