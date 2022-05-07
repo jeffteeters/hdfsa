@@ -2,6 +2,7 @@
 import math
 from scipy.stats import hypergeom
 from scipy.stats import binom
+from scipy.special import binom as binom_coef
 from scipy.stats import norm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -62,7 +63,7 @@ class Cop:
 	# would contribute either (-2, 0, +2).  Another example, chunk of size 3 contributes -3 or +3.  But three
 	# independent items could contribute: -3, -1, 1, or 3.
 
-	def __init__(self, nrows, nact, k, threshold=100000, show_pruning=False):
+	def __init__(self, nrows, nact, k, threshold=10000, show_pruning=False, show_items=True):
 		# nrows - number of rows in sdm
 		# nact - activaction count
 		# k - number of items to store in sdm
@@ -73,6 +74,7 @@ class Cop:
 		self.k = k
 		self.threshold = threshold
 		self.show_pruning = show_pruning
+		self.show_items = show_items
 		self.ov1_pmf = self.compute_one_item_overlap_pmf()
 		# print("self.ov1_pmf=%s" % self.ov1_pmf)
 		self.key_increments = self.compute_key_increments()
@@ -80,6 +82,8 @@ class Cop:
 		# print("before add_overlap, self.chunk_probabilities=%s" % self.chunk_probabilities)
 		for i in range(2, k):
 			self.add_overlap(i)
+			end = "\n" if i % 10 == 0 else ""
+			print("%s-%s "%(i,len(self.chunk_probabilities)), end=end)
 			# print("after add_overlap %s self.chunk_probabilities=\n%s" % (i, self.chunk_probabilities))
 		self.display_result()
 
@@ -169,10 +173,52 @@ class Cop:
 			total_prob += prob
 		print("After %s items stored with nact=%s, threshold=%s, size cop = %s, total_probability = %s" % (self.k,
 			self.nact, self.threshold, num_items, total_prob))
-		if self.show_pruning:
+		if self.show_items:
 			print("items are:")
 			for key, prob in sorted(self.chunk_probabilities.items()):
-				print("%s: %s" % (key, prob))
+				cfreq = self.cop_err(key)
+				print("%s %s: %s" % (key, cfreq, prob))
+
+
+	def cop_err(self, key):
+		# determine probability of error given chunk overlap pattern specified in key
+		cfreq=[]
+		dkey = int(key / 1000)  # remove number zero overlaps
+		while dkey > 0:
+			cfreq.append(dkey % 1000)
+			dkey = int(dkey / 1000)
+		pthresh = self.nact   # if target positive, to cause error, want sum of overlaps to be <= 0; magnituted of sum >= pthresh
+		nthresh = self.nact + 1  # if target negative, to cause error, want sum of overlaps to be > 0; magnitude of sum >= nthresh
+		num_choices = sum(cfreq)
+		num_combinations = 2 ** num_choices
+		perror_rate = self.thresh_count(cfreq, pthresh) /num_combinations
+		nerror_rate = self.thresh_count(cfreq, nthresh) /num_combinations
+		overall_error_rate = (perror_rate + nerror_rate) / 2.0
+		return overall_error_rate
+
+	def thresh_count(cfreq, thresh):
+		# count number of ways sum of overlaps specfied by cfreq are >= thresh
+		# cfreq[i] is the number of i+1 chunk overlaps.  For example, if cfreq[2] = 2, then there are 2 overlaps of magnitute 3
+		if thresh <= 0:
+			# no need to count more, return number of remaining combinations
+			num_combinations = 2 ** sum(cfreq)
+			return num_combinations
+		weight = len(cfreq)  # magnitude of largest overlap
+		mcount = cfreq[-1]   # count of largest overlap
+		x = np.arange(mcount+1)
+		bc = binom_coef(mcount+1, x)  # binomonial coefficients, give number of possible ways to select i items
+		found_count = 0
+		for i in range(1, mcount+1):
+			found_count += bc[i]
+			new_thresh = thresh - weight*i
+			if new_thresh <= 0:
+				return found_count + thresh_count()
+
+
+
+
+
+		# print("cfreq=%s" % cfreq)
 
 
 
@@ -551,8 +597,8 @@ class Ovc:
 
 
 def main():
-	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
-	nrows = 80; nact = 7; k = 1000; d = 27; ncols = 51  # near full size 
+	nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	# nrows = 80; nact = 6; k = 1000; d = 27; ncols = 51  # near full size 
 	# test new cop class
 	cop = Cop(nrows, nact, k)
 	return
