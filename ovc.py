@@ -176,50 +176,82 @@ class Cop:
 		if self.show_items:
 			print("items are:")
 			for key, prob in sorted(self.chunk_probabilities.items()):
-				cfreq = self.cop_err(key)
-				print("%s %s: %s" % (key, cfreq, prob))
+				err = self.cop_err(key)
+				print("%s -> %s" % (key, err))  # later include prob
+			self.test_cop_err()
 
 
 	def cop_err(self, key):
 		# determine probability of error given chunk overlap pattern specified in key
 		cfreq=[]
-		dkey = int(key / 1000)  # remove number zero overlaps
+		dkey = key
 		while dkey > 0:
 			cfreq.append(dkey % 1000)
 			dkey = int(dkey / 1000)
 		pthresh = self.nact   # if target positive, to cause error, want sum of overlaps to be <= 0; magnituted of sum >= pthresh
 		nthresh = self.nact + 1  # if target negative, to cause error, want sum of overlaps to be > 0; magnitude of sum >= nthresh
-		num_choices = sum(cfreq)
+		num_choices = sum(cfreq[1:])
 		num_combinations = 2 ** num_choices
-		perror_rate = self.thresh_count(cfreq, pthresh) /num_combinations
-		nerror_rate = self.thresh_count(cfreq, nthresh) /num_combinations
+		# import pdb; pdb.set_trace()
+		perror_rate = self.thresh_count(cfreq, len(cfreq) - 1, pthresh) /num_combinations
+		nerror_rate = self.thresh_count(cfreq, len(cfreq) - 1, nthresh) /num_combinations
 		overall_error_rate = (perror_rate + nerror_rate) / 2.0
 		return overall_error_rate
 
-	def thresh_count(cfreq, thresh):
+	def thresh_count(self, cfreq, ifs, thresh):
 		# count number of ways sum of overlaps specfied by cfreq are >= thresh
 		# cfreq[i] is the number of i+1 chunk overlaps.  For example, if cfreq[2] = 2, then there are 2 overlaps of magnitute 3
-		if thresh <= 0:
-			# no need to count more, return number of remaining combinations
-			num_combinations = 2 ** sum(cfreq)
-			return num_combinations
-		weight = len(cfreq)  # magnitude of largest overlap
-		mcount = cfreq[-1]   # count of largest overlap
+		# ifs is the number of magnitudes in cfreq.  == 1 for magnitude 1 overlaps (smallest possible).  If equal zero, no more overlaps
+		assert thresh > 0
+		if ifs <= 0:
+			return 0
+		weight = ifs  # magnitude of largest overlap
+		mcount = cfreq[ifs]   # count of largest overlap
 		x = np.arange(mcount+1)
-		bc = binom_coef(mcount+1, x)  # binomonial coefficients, give number of possible ways to select i items
+		bc = binom_coef(mcount, x)  # binomonial coefficients, give number of possible ways to select x items
 		found_count = 0
-		for i in range(1, mcount+1):
-			found_count += bc[i]
+		for i in range(mcount+1):
 			new_thresh = thresh - weight*i
 			if new_thresh <= 0:
-				return found_count + thresh_count()
+				# have reached threshold, now total count
+				found_count += sum(bc[i:]) * 2**sum(cfreq[1:ifs])
+				return found_count
+			found_count += bc[i] * self.thresh_count(cfreq, ifs - 1, new_thresh)
+		return found_count
 
-
-
-
-
-		# print("cfreq=%s" % cfreq)
-
+	def test_cop_err(self, ntrials=10000):
+		max_overlaps = np.array([10, 7, 6, 5, 3], dtype=np.int8)
+		error_rates = np.zeros(len(max_overlaps), dtype=float)
+		weights = np.arange(1,len(max_overlaps)+1)  # will be like: 1,2,3,4,5
+		tests_per_loop = 1000
+		for nact in range(1, len(max_overlaps) + 1):
+			trial_count = 0
+			error_count = 0
+			while trial_count < ntrials:
+				cfreq = np.random.randint(max_overlaps[0:nact]+1, high=None)
+				if(sum(cfreq)==0):
+					continue
+				key = 0
+				for i in range(nact):
+					key = key * 1000 + cfreq[nact - i - 1]
+				key = key * 1000   # shift so no overlaps takes first three digits in key
+				if key == 4000:
+					import pdb; pdb.set_trace()
+				predicted_error_rate = self.cop_err(key)
+				sw = np.repeat(weights[0:nact], cfreq) # like: [1,1,1,1,1,2,2,3,3,3,4,4,5] if cfreq=[5,2,3,2,1]
+				mul = np.random.choice([-1, 1], size=(tests_per_loop, len(sw)))
+				sums = np.matmul(mul, sw)
+				pfail = np.count_nonzero(sums + nact < 1)
+				nfail = np.count_nonzero(sums - nact > 0)
+				error_count += pfail + nfail
+				trial_count += 2 * tests_per_loop
+				found_error_rate = error_count / trial_count
+				if predicted_error_rate == found_error_rate:
+					percent_difference = "None"
+				else:
+					percent_difference = (predicted_error_rate - found_error_rate)* 100 / ((predicted_error_rate + found_error_rate)/2)
+				print("nact=%s, key=%s, error predicted=%s, found=%s, difference=%s%%" % (
+					nact, key, predicted_error_rate, found_error_rate, percent_difference))
 
 
 class Ovc:
