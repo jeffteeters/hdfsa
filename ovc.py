@@ -85,6 +85,7 @@ class Cop:
 			end = "\n" if i % 10 == 0 else ""
 			print("%s-%s "%(i,len(self.chunk_probabilities)), end=end)
 			# print("after add_overlap %s self.chunk_probabilities=\n%s" % (i, self.chunk_probabilities))
+		self.add_error_rate()
 		self.display_result()
 
 	def compute_one_item_overlap_pmf(self):
@@ -165,20 +166,28 @@ class Cop:
 					prune_count, prune_prob, total_prob))
 			print("pruned_items are: %s" % pruned_items)
 
+	def add_error_rate(self):
+		# add error rate to chunk_probabilities
+		chunk_probabilities = self.chunk_probabilities
+		for key in list(chunk_probabilities):
+			prob = chunk_probabilities[key]
+			err = self.cop_err(self.nact, key)
+			chunk_probabilities[key] = (prob, err)
 
 	def display_result(self):
 		num_items = len(self.chunk_probabilities)
 		total_prob = 0.0
-		for key, prob in self.chunk_probabilities.items():
+		for key, info in self.chunk_probabilities.items():
+			prob, err = info
 			total_prob += prob
 		print("After %s items stored with nact=%s, threshold=%s, size cop = %s, total_probability = %s" % (self.k,
 			self.nact, self.threshold, num_items, total_prob))
 		if self.show_items:
+			max_num_to_show = 50
 			print("items are:")
-			for key, prob in sorted(self.chunk_probabilities.items()):
-				err = self.cop_err(self.nact, key)
-				print("%s -> %s" % (key, err))  # later include prob
-			self.test_cop_err()
+			for key, info in sorted(self.chunk_probabilities.items())[0:max_num_to_show]:
+				print("%s -> %s" % (key, info))
+			# self.test_cop_err()
 
 	def cop_err(self, nact, key):
 		# determine probability of error given chunk overlap pattern specified in key
@@ -221,8 +230,6 @@ class Cop:
 		# import pdb; pdb.set_trace()
 		return error_rate
 
-
-
 	def cop_err_empirical(self, nact, key, trials=100000):
 		# perform multiple trials to calculate empirical error, used to compare with perdicted error
 		cfreq=[]
@@ -243,7 +250,6 @@ class Cop:
 		trial_count = 2 * trials
 		error_rate = error_count / trial_count
 		return error_rate
-
 
 
 	# def thresh_count(self, cfreq, ifs, thresh):
