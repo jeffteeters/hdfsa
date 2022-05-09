@@ -28,7 +28,9 @@ class Cop_orig:
 		if initial_chunk is not None:
 			assert isinstance(initial_chunk, int) and initial_chunk >= 0 and initial_chunk <= self.nact,(
 				"initial_chunk=%s" % initial_chunk)
-			assert isinstance(initial_probability, float) and initial_probability < 1.0
+			if not (isinstance(initial_probability, float) and initial_probability <= 1.0):
+				print("initial_probability=%s, type=%s" % (initial_probability, type(initial_probability)))
+			assert isinstance(initial_probability, float) and initial_probability <= 1.0
 			iar = np.zeros(self.nact, dtype=np.uint16)
 			if initial_chunk is not None:
 				if initial_chunk > 0:
@@ -202,7 +204,6 @@ class Cop:
 		assert len(cfreq) <= nact
 		cw = []  # chunk weights, will store all possible weights for each chunk size, weights are multiples of nact
 		cp = []  # chunk probabilities, stores probability of each weight, from binomonial distribution
-		# import pdb; pdb.set_trace()
 		for i in range(len(cfreq)):
 			weight = i+1
 			nchunks = cfreq[i]   # number of chunks of size i+1
@@ -216,18 +217,12 @@ class Cop:
 		for i in range(1, len(cfreq)):
 			chunk_weights = np.add.outer(cw[i],chunk_weights).flatten()
 			chunk_probabilities = np.outer(cp[i],chunk_probabilities).flatten()
-		# print("chunk_weights, len=%s: %s" % (len(chunk_weights), chunk_weights))
-		# print("chunk_probabilities, len%s: %s" % (len(chunk_probabilities), chunk_probabilities))
 		# if target positive, to cause error, want sum of overlaps plus target <= 0
 		perror_sum = np.dot(chunk_weights + nact <= 0, chunk_probabilities)
 		# if target negative, to cause error, want sum of overlaps plus target > 0
 		nerror_sum = np.dot(chunk_weights - nact > 0, chunk_probabilities)
-		# print("perror_sum=%s" % perror_sum)
-		# print("nerror_sum=%s" % nerror_sum)
 		prob_sum = np.sum(chunk_probabilities)
-		# print("prob_sum=%s" % prob_sum)
 		error_rate = (perror_sum + nerror_sum) / (2* prob_sum)  # divide by 2 because positive and negative errors summed
-		# import pdb; pdb.set_trace()
 		return error_rate
 
 	def cop_err_empirical(self, nact, key, trials=100000):
@@ -251,27 +246,6 @@ class Cop:
 		error_rate = error_count / trial_count
 		return error_rate
 
-
-	# def thresh_count(self, cfreq, ifs, thresh):
-	# 	# count number of ways sum of overlaps specfied by cfreq are >= thresh
-	# 	# cfreq[i] is the number of i+1 chunk overlaps.  For example, if cfreq[2] = 2, then there are 2 overlaps of magnitute 3
-	# 	# ifs is the number of magnitudes in cfreq.  == 1 for magnitude 1 overlaps (smallest possible).  If equal zero, no more overlaps
-	# 	assert thresh > 0
-	# 	if ifs <= 0:
-	# 		return 0
-	# 	weight = ifs  # magnitude of largest overlap
-	# 	mcount = cfreq[ifs]   # count of largest overlap
-	# 	x = np.arange(mcount+1)
-	# 	bc = binom_coef(mcount, x)  # binomonial coefficients, give number of possible ways to select x items
-	# 	found_count = 0
-	# 	for i in range(mcount+1):
-	# 		new_thresh = thresh - weight*i
-	# 		if new_thresh <= 0:
-	# 			# have reached threshold, now total count
-	# 			found_count += sum(bc[i:]) * 2**sum(cfreq[1:ifs])
-	# 			return found_count
-	# 		found_count += bc[i] * self.thresh_count(cfreq, ifs - 1, new_thresh)
-	# 	return found_count
 
 	def test_cop_err(self, ntrials=10):
 		max_overlaps = np.array([20, 4, 6, 5, 3], dtype=np.int8)
@@ -298,44 +272,42 @@ class Cop:
 					nact, key, predicted_error_rate, found_error_rate, percent_difference))
 				trial_count += 1
 
+	def compute_hamming_dist(self, ncols):
+		# compute distribution of probability of each hamming distance
+		n = ncols
+		chunk_probabilities = self.chunk_probabilities
+		pov = np.empty(len(chunk_probabilities), dtype=np.float64)  # probability of overlaps
+		perr = np.empty(len(chunk_probabilities), dtype=np.float64) # probability of error for each pattern of overlap
+		i = 0
+		for key, info in chunk_probabilities.items():
+			prob, err = info
+			pov[i] = prob
+			perr[i] = err
+			i += 1
+		assert len(pov) == len(perr)
+		pmf = np.empty(n + 1)  # probability mass function
+		for h in range(len(pmf)):  # hamming distance
+			phk = binom.pmf(h, n, perr)
+			pmf[h] = np.dot(phk, pov)
+		print("hdist (pmf) sum is %s (should be close to 1)" % np.sum(pmf))
+		# assert math.isclose(np.sum(pmf), 1.0), "hdist sum is not equal to 1, is: %s" % np.sum(pmf)
+		self.ncols = ncols
+		self.hdist = pmf
 
-	def test_cop_err_orig(self, ntrials=10):
-		max_overlaps = np.array([10, 7, 6, 5, 3], dtype=np.int8)
-		error_rates = np.zeros(len(max_overlaps), dtype=float)
-		weights = np.arange(1,len(max_overlaps)+1)  # will be like: 1,2,3,4,5
-		tests_per_loop = 1000 # 100000
-		for nact in range(1, len(max_overlaps) + 1):
-			trial_count = 0
-			error_count = 0
-			while trial_count < ntrials:
-				cfreq = np.random.randint(max_overlaps[0:nact]+1, high=None)
-				if(sum(cfreq)==0):
-					continue
-				key = 0
-				for i in range(nact):
-					key = key * 1000 + cfreq[nact - i - 1]
-				key = key * 1000   # shift so no overlaps takes first three digits in key
-				# cfreq = np.zeros(nact, dtype=np.int32)
-				# cfreq[0] = 1
-				# # if nact == 2:
-				# # 	import pdb; pdb.set_trace()
-				# key = 1000
-				predicted_error_rate = self.cop_err(nact, key)
-				sw = np.repeat(weights[0:nact], cfreq) # like: [1,1,1,1,1,2,2,3,3,3,4,4,5] if cfreq=[5,2,3,2,1]
-				mul = np.random.choice([-1, 1], size=(tests_per_loop, len(sw)))
-				sums = np.matmul(mul, sw)
-				pfail = np.count_nonzero(sums + nact <= 0)
-				nfail = np.count_nonzero(sums - nact > 0)
-				error_count += pfail + nfail
-				trial_count += 2 * tests_per_loop
-				found_error_rate = error_count / trial_count
-				if predicted_error_rate == found_error_rate:
-					percent_difference = "None"
-				else:
-					percent_difference = round(abs(predicted_error_rate - found_error_rate)* 100 /
-					   ((predicted_error_rate + found_error_rate)/2), 2)
-				print("nact=%s, key=%s, error predicted=%s, found=%s, difference=%s%%" % (
-					nact, key, predicted_error_rate, found_error_rate, percent_difference))
+	def compute_overall_perr(self, d):
+		# compute overall error, by integrating over all hamming distances
+		# ncols is the number of columns in each row of the sdm
+		# d is number of item in item memory
+		n = self.ncols
+		hdist = self.hdist
+		h = np.arange(len(hdist))
+		# self.plot(binom.pmf(h, n, 0.5), "distractor pmf", "hamming distance", "probability")
+		ph_corr = binom.sf(h, n, 0.5) ** (d-1)
+		# self.plot(ph_corr, "probability correct", "hamming distance", "fraction correct")
+		# self.plot(ph_corr * hdist, "p_corr weighted by hdist", "hamming distance", "weighted p_corr")
+		p_corr = np.dot(ph_corr, hdist)
+		self.overall_perr = 1 - p_corr
+		return self.overall_perr
 
 
 class Ovc:
@@ -360,31 +332,38 @@ class Ovc:
 			self.ov[i] = self.n_item_overlaps(i)  # i items overlap, means i+1 items are stored
 		self.perr = self.compute_perr()
 		self.hdist = self.compute_hamming_dist()
+		# compute error via new Cop class
+		cop = Cop(nrows, nact, k)
+		cop.compute_hamming_dist(ncols)
+		cop_error = cop.compute_overall_perr(d)
+		self.cop = cop
 		if include_empirical:
 			self.emp_overlap_err = self.empiricalOverlapError()
 			self.empiricalError()
-			self.plot(self.perr, "Error vs overlaps", "number of overlaps",
-				"probability of error", label="predicted", data2=self.emp_overlap_err, label2="found")
-			self.plot(self.ov[k - 1]["pmf"], "Perdicted vs empirical overlap distribution", "number of overlaps",
-				"relative frequency", label="predicted", data2=self.emp_overlaps, label2="found")
-			print("emp_overlaps=%s" % self.emp_overlaps)
-			print("predicted_overlaps=%s" % self.ov[k - 1]["pmf"])
-			print("predicted_hammings=%s" % self.hdist)
-			print("emp_hammings=%s" % self.ehdist)
-			print("cops=")
-			total_patterns = 0
-			for i in range(len(self.ov[k - 1]["cop"])):
-				num_pats = len(self.ov[k - 1]["cop"][i].chunk_probabilities)
-				total_patterns += num_pats
-				print("%s %s item overlaps:" % (num_pats, i))
-				samples = {}
-				for key, value in self.ov[k - 1]["cop"][i].chunk_probabilities.items():
-					samples[key] = value[0]
-					if len(samples) == 10:
-						break
-				pp.pprint(samples)
-			print("total_patterns=%s" % total_patterns)
+			# self.plot(self.perr, "Error vs overlaps", "number of overlaps",
+			# 	"probability of error", label="predicted", data2=self.emp_overlap_err, label2="found")
+			# self.plot(self.ov[k - 1]["pmf"], "Perdicted vs empirical overlap distribution", "number of overlaps",
+			# 	"relative frequency", label="predicted", data2=self.emp_overlaps, label2="found")
+			# print("emp_overlaps=%s" % self.emp_overlaps)
+			# print("predicted_overlaps=%s" % self.ov[k - 1]["pmf"])
+			# print("predicted_hammings=%s" % self.hdist)
+			# print("emp_hammings=%s" % self.ehdist)
+			# print("cops=")
+			# total_patterns = 0
+			# for i in range(len(self.ov[k - 1]["cop"])):
+			# 	num_pats = len(self.ov[k - 1]["cop"][i].chunk_probabilities)
+			# 	total_patterns += num_pats
+			# 	print("%s %s item overlaps:" % (num_pats, i))
+			# 	samples = {}
+			# 	for key, value in self.ov[k - 1]["cop"][i].chunk_probabilities.items():
+			# 		samples[key] = value[0]
+			# 		if len(samples) == 10:
+			# 			break
+			# 	pp.pprint(samples)
+			# print("total_patterns=%s" % total_patterns)
 			self.plot(self.hdist, "Perdicted vs empirical match hamming distribution", "hamming distance",
+				"relative frequency", label="predicted", data2=self.ehdist, label2="found")
+			self.plot(cop.hdist, "Perdicted vs empirical match hamming distribution (via cop)", "hamming distance",
 				"relative frequency", label="predicted", data2=self.ehdist, label2="found")
 
 	def compute_overall_error(nrows, ncols, nact, k, d):
@@ -409,7 +388,7 @@ class Ovc:
 		rv = hypergeom(M, n, N)
 		x = np.arange(0, n+1)
 		pmf = rv.pmf(x)
-		cop = [Cop(self.nact, int(i), pmf[i]) for i in x]
+		cop = [Cop_orig(self.nact, int(i), pmf[i]) for i in x]
 		ovi = {"pmf":pmf, "cop":cop}
 		return ovi
 
@@ -426,7 +405,7 @@ class Ovc:
 		copl = []
 		for no in range(max_num_overlaps + 1):  # number overlaps
 			prob = 0.0
-			cop = Cop(self.nact)
+			cop = Cop_orig(self.nact)
 			if no > max_num_previous_overlaps:
 				cio_start = no - max_num_previous_overlaps
 			else:
@@ -713,23 +692,23 @@ class Ovc:
 
 
 def main():
-	nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
 	# nrows = 80; nact = 6; k = 1000; d = 27; ncols = 51  # near full size 
 	# test new cop class
-	cop = Cop(nrows, nact, k)
-	return
+	# cop = Cop(nrows, nact, k)
+	# return
 
-
-	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
+	nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
 	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size 
 	ov = Ovc(nrows, ncols, nact, k, d)
 	predicted_using_theory_dist = ov.p_error_binom() # ov.compute_overall_perr()
 	predicted_using_empirical_dist = ov.p_error_binom(use_empirical=True)
+	predicted_using_cop = ov.cop.overall_perr
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k, d)
 	empirical_err = ov.emp_overall_perr
 	print("for k=%s, d=%s, sdm size=(%s, %s, %s), predicted_using_theory_dist=%s, predicted_using_empirical_dist=%s,"
-		" empirical_err=%s" % (k, d, nrows, ncols, nact, predicted_using_theory_dist, predicted_using_empirical_dist,
-			empirical_err))
+		" predicted_using_cop=%s, empirical_err=%s" % (k, d, nrows, ncols, nact, predicted_using_theory_dist,
+			predicted_using_empirical_dist, predicted_using_cop, empirical_err))
 	# ncols = 52
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
 	# print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
