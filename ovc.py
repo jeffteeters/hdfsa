@@ -2,7 +2,7 @@
 import math
 from scipy.stats import hypergeom
 from scipy.stats import binom
-from scipy.special import binom as binom_coef
+# from scipy.special import binom as binom_coef
 from scipy.stats import norm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -176,54 +176,100 @@ class Cop:
 		if self.show_items:
 			print("items are:")
 			for key, prob in sorted(self.chunk_probabilities.items()):
-				err = self.cop_err(key)
+				err = self.cop_err(self.nact, key)
 				print("%s -> %s" % (key, err))  # later include prob
 			self.test_cop_err()
 
-
-	def cop_err(self, key):
+	def cop_err(self, nact, key):
 		# determine probability of error given chunk overlap pattern specified in key
 		cfreq=[]
-		dkey = key
+		# print("entered cop_err, key=%s" % key)
+		dkey = int(key / 1000)  # strip off no overlap count
+		if dkey == 0:
+			return 0.0  # no overlap, so error rate is zero
 		while dkey > 0:
 			cfreq.append(dkey % 1000)
 			dkey = int(dkey / 1000)
-		pthresh = self.nact   # if target positive, to cause error, want sum of overlaps to be <= 0; magnituted of sum >= pthresh
-		nthresh = self.nact + 1  # if target negative, to cause error, want sum of overlaps to be > 0; magnitude of sum >= nthresh
-		num_choices = sum(cfreq[1:])
-		num_combinations = 2 ** num_choices
+		assert len(cfreq) <= nact
+		cw = []  # chunk weights, will store all possible weights for each chunk size, weights are multiples of nact
+		cp = []  # chunk probabilities, stores probability of each weight, from binomonial distribution
 		# import pdb; pdb.set_trace()
-		perror_rate = self.thresh_count(cfreq, len(cfreq) - 1, pthresh) /num_combinations
-		nerror_rate = self.thresh_count(cfreq, len(cfreq) - 1, nthresh) /num_combinations
-		overall_error_rate = (perror_rate + nerror_rate) / 2.0
-		return overall_error_rate
+		for i in range(len(cfreq)):
+			weight = i+1
+			nchunks = cfreq[i]   # number of chunks of size i+1
+			x = np.arange(nchunks+1)
+			chunk_weights = x * weight - (nchunks - x) * weight  # positive weights - negative weights
+			chunk_probabilities = binom.pmf(x, nchunks, 0.5)  # binomonial coefficients, give number of possible ways to select x items
+			cw.append(chunk_weights)
+			cp.append(chunk_probabilities)
+		chunk_weights = cw[0]
+		chunk_probabilities = cp[0]
+		for i in range(1, len(cfreq)):
+			chunk_weights = np.add.outer(cw[i],chunk_weights).flatten()
+			chunk_probabilities = np.outer(cp[i],chunk_probabilities).flatten()
+		# print("chunk_weights, len=%s: %s" % (len(chunk_weights), chunk_weights))
+		# print("chunk_probabilities, len%s: %s" % (len(chunk_probabilities), chunk_probabilities))
+		# if target positive, to cause error, want sum of overlaps plus target <= 0
+		perror_sum = np.dot(chunk_weights + nact <= 0, chunk_probabilities)
+		# if target negative, to cause error, want sum of overlaps plus target > 0
+		nerror_sum = np.dot(chunk_weights - nact > 0, chunk_probabilities)
+		# print("perror_sum=%s" % perror_sum)
+		# print("nerror_sum=%s" % nerror_sum)
+		prob_sum = np.sum(chunk_probabilities)
+		# print("prob_sum=%s" % prob_sum)
+		error_rate = (perror_sum + nerror_sum) / (2* prob_sum)  # divide by 2 because positive and negative errors summed
+		# import pdb; pdb.set_trace()
+		return error_rate
 
-	def thresh_count(self, cfreq, ifs, thresh):
-		# count number of ways sum of overlaps specfied by cfreq are >= thresh
-		# cfreq[i] is the number of i+1 chunk overlaps.  For example, if cfreq[2] = 2, then there are 2 overlaps of magnitute 3
-		# ifs is the number of magnitudes in cfreq.  == 1 for magnitude 1 overlaps (smallest possible).  If equal zero, no more overlaps
-		assert thresh > 0
-		if ifs <= 0:
-			return 0
-		weight = ifs  # magnitude of largest overlap
-		mcount = cfreq[ifs]   # count of largest overlap
-		x = np.arange(mcount+1)
-		bc = binom_coef(mcount, x)  # binomonial coefficients, give number of possible ways to select x items
-		found_count = 0
-		for i in range(mcount+1):
-			new_thresh = thresh - weight*i
-			if new_thresh <= 0:
-				# have reached threshold, now total count
-				found_count += sum(bc[i:]) * 2**sum(cfreq[1:ifs])
-				return found_count
-			found_count += bc[i] * self.thresh_count(cfreq, ifs - 1, new_thresh)
-		return found_count
 
-	def test_cop_err(self, ntrials=10000):
-		max_overlaps = np.array([10, 7, 6, 5, 3], dtype=np.int8)
+
+	def cop_err_empirical(self, nact, key, trials=100000):
+		# perform multiple trials to calculate empirical error, used to compare with perdicted error
+		cfreq=[]
+		dkey = int(key / 1000)  # strip off no overlap count
+		if dkey == 0:
+			return 0.0  # no overlap, so error rate is zero
+		while dkey > 0:
+			cfreq.append(dkey % 1000)
+			dkey = int(dkey / 1000)
+		assert len(cfreq) <= nact
+		weights = np.arange(1,len(cfreq)+1)  # will be like: 1,2,3,4,5
+		sw = np.repeat(weights, cfreq) # like: [1,1,1,1,1,2,2,3,3,3,4,4,5] if cfreq=[5,2,3,2,1]
+		mul = np.random.choice([-1, 1], size=(trials, len(sw)))
+		sums = np.matmul(mul, sw)
+		pfail = np.count_nonzero(sums + nact <= 0)
+		nfail = np.count_nonzero(sums - nact > 0)
+		error_count = pfail + nfail
+		trial_count = 2 * trials
+		error_rate = error_count / trial_count
+		return error_rate
+
+
+
+	# def thresh_count(self, cfreq, ifs, thresh):
+	# 	# count number of ways sum of overlaps specfied by cfreq are >= thresh
+	# 	# cfreq[i] is the number of i+1 chunk overlaps.  For example, if cfreq[2] = 2, then there are 2 overlaps of magnitute 3
+	# 	# ifs is the number of magnitudes in cfreq.  == 1 for magnitude 1 overlaps (smallest possible).  If equal zero, no more overlaps
+	# 	assert thresh > 0
+	# 	if ifs <= 0:
+	# 		return 0
+	# 	weight = ifs  # magnitude of largest overlap
+	# 	mcount = cfreq[ifs]   # count of largest overlap
+	# 	x = np.arange(mcount+1)
+	# 	bc = binom_coef(mcount, x)  # binomonial coefficients, give number of possible ways to select x items
+	# 	found_count = 0
+	# 	for i in range(mcount+1):
+	# 		new_thresh = thresh - weight*i
+	# 		if new_thresh <= 0:
+	# 			# have reached threshold, now total count
+	# 			found_count += sum(bc[i:]) * 2**sum(cfreq[1:ifs])
+	# 			return found_count
+	# 		found_count += bc[i] * self.thresh_count(cfreq, ifs - 1, new_thresh)
+	# 	return found_count
+
+	def test_cop_err(self, ntrials=10):
+		max_overlaps = np.array([20, 4, 6, 5, 3], dtype=np.int8)
 		error_rates = np.zeros(len(max_overlaps), dtype=float)
-		weights = np.arange(1,len(max_overlaps)+1)  # will be like: 1,2,3,4,5
-		tests_per_loop = 1000
 		for nact in range(1, len(max_overlaps) + 1):
 			trial_count = 0
 			error_count = 0
@@ -235,13 +281,44 @@ class Cop:
 				for i in range(nact):
 					key = key * 1000 + cfreq[nact - i - 1]
 				key = key * 1000   # shift so no overlaps takes first three digits in key
-				if key == 4000:
-					import pdb; pdb.set_trace()
-				predicted_error_rate = self.cop_err(key)
+				predicted_error_rate = self.cop_err(nact, key)
+				found_error_rate = self.cop_err_empirical(nact, key)
+				if predicted_error_rate == found_error_rate:
+					percent_difference = "None"
+				else:
+					percent_difference = round(abs(predicted_error_rate - found_error_rate)* 100 /
+					   ((predicted_error_rate + found_error_rate)/2), 2)
+				print("nact=%s, key=%s, error predicted=%s, found=%s, difference=%s%%" % (
+					nact, key, predicted_error_rate, found_error_rate, percent_difference))
+				trial_count += 1
+
+
+	def test_cop_err_orig(self, ntrials=10):
+		max_overlaps = np.array([10, 7, 6, 5, 3], dtype=np.int8)
+		error_rates = np.zeros(len(max_overlaps), dtype=float)
+		weights = np.arange(1,len(max_overlaps)+1)  # will be like: 1,2,3,4,5
+		tests_per_loop = 1000 # 100000
+		for nact in range(1, len(max_overlaps) + 1):
+			trial_count = 0
+			error_count = 0
+			while trial_count < ntrials:
+				cfreq = np.random.randint(max_overlaps[0:nact]+1, high=None)
+				if(sum(cfreq)==0):
+					continue
+				key = 0
+				for i in range(nact):
+					key = key * 1000 + cfreq[nact - i - 1]
+				key = key * 1000   # shift so no overlaps takes first three digits in key
+				# cfreq = np.zeros(nact, dtype=np.int32)
+				# cfreq[0] = 1
+				# # if nact == 2:
+				# # 	import pdb; pdb.set_trace()
+				# key = 1000
+				predicted_error_rate = self.cop_err(nact, key)
 				sw = np.repeat(weights[0:nact], cfreq) # like: [1,1,1,1,1,2,2,3,3,3,4,4,5] if cfreq=[5,2,3,2,1]
 				mul = np.random.choice([-1, 1], size=(tests_per_loop, len(sw)))
 				sums = np.matmul(mul, sw)
-				pfail = np.count_nonzero(sums + nact < 1)
+				pfail = np.count_nonzero(sums + nact <= 0)
 				nfail = np.count_nonzero(sums - nact > 0)
 				error_count += pfail + nfail
 				trial_count += 2 * tests_per_loop
@@ -249,7 +326,8 @@ class Cop:
 				if predicted_error_rate == found_error_rate:
 					percent_difference = "None"
 				else:
-					percent_difference = (predicted_error_rate - found_error_rate)* 100 / ((predicted_error_rate + found_error_rate)/2)
+					percent_difference = round(abs(predicted_error_rate - found_error_rate)* 100 /
+					   ((predicted_error_rate + found_error_rate)/2), 2)
 				print("nact=%s, key=%s, error predicted=%s, found=%s, difference=%s%%" % (
 					nact, key, predicted_error_rate, found_error_rate, percent_difference))
 
