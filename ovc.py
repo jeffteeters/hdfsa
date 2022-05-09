@@ -300,14 +300,36 @@ class Cop:
 		# d is number of item in item memory
 		n = self.ncols
 		hdist = self.hdist
+		# import pdb; pdb.set_trace()
 		h = np.arange(len(hdist))
 		# self.plot(binom.pmf(h, n, 0.5), "distractor pmf", "hamming distance", "probability")
+		# distractor_pmf = binom.pmf(h, n, 0.5)  # this tried to account for matching hammings, but does not work
+		# match_hammings_area = (hdist / (hdist + distractor_pmf)) / n
 		ph_corr = binom.sf(h, n, 0.5) ** (d-1)
+		# ph_corr = (binom.sf(h, n, 0.5) + match_hammings_area) ** (d-1)
 		# self.plot(ph_corr, "probability correct", "hamming distance", "fraction correct")
 		# self.plot(ph_corr * hdist, "p_corr weighted by hdist", "hamming distance", "weighted p_corr")
 		p_corr = np.dot(ph_corr, hdist)
 		self.overall_perr = 1 - p_corr
 		return self.overall_perr
+
+	def p_error_binom(self, d):
+		# compute error by integrating predicted distribution with distractors
+		# should do same function as above
+		match_hammings = self.hdist
+		phds = np.arange(self.ncols+1)  # possible hamming distances
+		distractor_hammings = binom.pmf(phds, self.ncols, 0.5)
+		# if self.include_empirical:
+		# 	self.plot(match_hammings, "match_hammings vs distractor_hammings", "hamming distance",
+		# 		"relative frequency", label="match_hammings", data2=distractor_hammings, label2="distractor_hammings")
+		num_distractors = d - 1
+		dhg = 1.0 # fraction distractor hamming greater than match hamming
+		p_err = 0.0  # probability error
+		for k in phds:
+			dhg -= distractor_hammings[k]
+			p_err += match_hammings[k] * (1.0 - dhg ** num_distractors)
+		self.overall_perr_binom = p_err
+		return p_err
 
 
 class Ovc:
@@ -336,6 +358,7 @@ class Ovc:
 		cop = Cop(nrows, nact, k)
 		cop.compute_hamming_dist(ncols)
 		cop_error = cop.compute_overall_perr(d)
+		cop_error_binonimal = cop.p_error_binom(d)
 		self.cop = cop
 		if include_empirical:
 			self.emp_overlap_err = self.empiricalOverlapError()
@@ -692,23 +715,24 @@ class Ovc:
 
 
 def main():
-	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
 	# nrows = 80; nact = 6; k = 1000; d = 27; ncols = 51  # near full size 
 	# test new cop class
 	# cop = Cop(nrows, nact, k)
 	# return
 
-	nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
+	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
 	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size 
 	ov = Ovc(nrows, ncols, nact, k, d)
 	predicted_using_theory_dist = ov.p_error_binom() # ov.compute_overall_perr()
 	predicted_using_empirical_dist = ov.p_error_binom(use_empirical=True)
 	predicted_using_cop = ov.cop.overall_perr
+	predicted_using_cop_binom = ov.cop.overall_perr_binom
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k, d)
 	empirical_err = ov.emp_overall_perr
 	print("for k=%s, d=%s, sdm size=(%s, %s, %s), predicted_using_theory_dist=%s, predicted_using_empirical_dist=%s,"
-		" predicted_using_cop=%s, empirical_err=%s" % (k, d, nrows, ncols, nact, predicted_using_theory_dist,
-			predicted_using_empirical_dist, predicted_using_cop, empirical_err))
+		" predicted_using_cop=%s, predicted_using_cop_binom=%s, empirical_err=%s" % (k, d, nrows, ncols, nact, predicted_using_theory_dist,
+			predicted_using_empirical_dist, predicted_using_cop, predicted_using_cop_binom, empirical_err))
 	# ncols = 52
 	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
 	# print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
