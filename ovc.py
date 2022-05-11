@@ -225,7 +225,7 @@ class Cop:
 		error_rate = (perror_sum + nerror_sum) / (2* prob_sum)  # divide by 2 because positive and negative errors summed
 		return error_rate
 
-	def cop_err_empirical(self, nact, key, trials=100000):
+	def cop_err_empirical(self, nact, key, trials=10000):
 		# perform multiple trials to calculate empirical error, used to compare with perdicted error
 		cfreq=[]
 		dkey = int(key / 1000)  # strip off no overlap count
@@ -638,7 +638,7 @@ class Ovc:
 		self.plot(self.hdist, "hamming distribution", "hamming distance", "probability")
 
 
-	def empiricalError(self, ntrials=2000000, debug=False, count_multiple_matches_as_error = True, show_error_rate_vs_hamming_distance=True):
+	def empiricalError(self, ntrials=100000, debug=False, count_multiple_matches_as_error=True, show_error_rate_vs_hamming_distance=True):
 		# compute empirical error by storing then recalling items from SDM
 		# count_multiple_matches_as_error = True to count multiple distractor hammings == match as error
 		trial_count = 0
@@ -659,7 +659,7 @@ class Ovc:
 			addr_base_length = self.k + self.ncols - 1
 			# address_base = np.random.randint(0,high=2,size=addr_base_length, dtype=np.int8)
 			## address_base = rng.integers(0, high=2, size=addr_base_length, dtype=np.int8)
-			address_base2 = rng.integers(0, high=2, size=(self.ncols, self.k), dtype=np.int8)
+			address_base2 = rng.integers(0, high=2, size=(self.k, self.ncols), dtype=np.int8)
 			# exSeq= np.random.randint(low = 0, high = self.d, size=self.k) # random sequence to represent
 			exSeq = rng.integers(0, high=self.d, size=self.k, dtype=np.int16)
 			if debug:
@@ -782,10 +782,13 @@ class Ovc:
 
 def main():
 	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
-	# nrows = 80; nact = 6; k = 1000; d = 27; ncols = 51  # near full size
-	nrows = 1; nact = 1; k = 3; d = 3; ncols = 3  # test for understand match hamming
+	nrows = 80; nact = 3; k = 51; d = 27; ncols = 33  # near full size
+	# nrows = 1; nact = 1; k = 3; d = 3; ncols = 3  # test for understand match hamming
 	# test new cop class
 	# cop = Cop(nrows, nact, k)
+	# cop.compute_hamming_dist(ncols)
+	# predicted_using_cop = cop.compute_overall_perr(d)
+
 	# return
 
 	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time

@@ -13,48 +13,23 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 
-class Cop:
-	# chunk overlap pattern
-
-	def __init__(self, nrows, nact, k, threshold=10000, show_pruning=False, show_items=True):
-		# nrows - number of rows in sdm
-		# nact - activaction count
-		# k - number of items to store in sdm
-		# threshold - maximum ratio of largest to smallest probability.  Drop patterns that have smaller probability
-		#  This done to limit number of patterns to only those that are contributing the most to the result
-		self.nrows = nrows
-		self.nact = nact
-		self.k = k
-		self.threshold = threshold
-		self.show_pruning = show_pruning
-		self.show_items = show_items
-		self.ov1_pmf = self.compute_one_item_overlap_pmf()
-		# print("self.ov1_pmf=%s" % self.ov1_pmf)
-		self.key_increments = self.compute_key_increments()
-		self.chunk_probabilities = self.set_initial_chunk_probabilities()
-		# print("before add_overlap, self.chunk_probabilities=%s" % self.chunk_probabilities)
-		for i in range(2, k):
-			self.add_overlap(i)
-			end = "\n" if i % 10 == 0 else ""
-			print("%s-%s "%(i,len(self.chunk_probabilities)), end=end)
-			# print("after add_overlap %s self.chunk_probabilities=\n%s" % (i, self.chunk_probabilities))
-		self.add_error_rate()
-		self.display_result()
-
-
 class Sdm_error_analytical:
 
 	# Compute error of recall vector from SDM and matching to item memory
 
-	def __init__(self, nrows, nact, k, threshold=10000, show_pruning=False, show_items=True):
+	def __init__(self, nrows, nact, k, ncols=None, d=None, threshold=10000, show_pruning=False, show_items=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
 		# k - number of items to store in sdm
+		# ncols - number of columns in each row of sdm
+		# d - size of item memory (d-1 are distractors)
 		# threshold - maximum ratio of largest to smallest probability.  Drop patterns that have smaller probability
 		#  This done to limit number of patterns to only those that are contributing the most to the result
 		self.nrows = nrows
 		self.nact = nact
 		self.k = k
+		self.ncols = ncols
+		self.d = d
 		self.threshold = threshold
 		self.show_pruning = show_pruning
 		self.show_items = show_items
@@ -67,9 +42,8 @@ class Sdm_error_analytical:
 		for i in range(2, k):
 			self.add_overlap(i)
 			end = "\n" if i % 10 == 0 else ""
-			print("%s-%s "%(i,len(self.chunk_probabilities)), end=end)
-			# print("after add_overlap %s self.chunk_probabilities=\n%s" % (i, self.chunk_probabilities))
-		self.add_error_rate()
+			print("%s-%s "%(i,len(self.cop_key)), end=end)
+		self.cop_err = np.array([self.cop_error_rate(self.nact, key) for key in self.cop_key])
 		self.display_result()
 
 	def compute_one_item_overlap_pmf(self):
@@ -81,70 +55,133 @@ class Sdm_error_analytical:
 		return pmf
 
 	def compute_key_increments(self):
-		# keys in the self.chunk_probabilities dictionary are integers with each 7 bits (0 to 127) representing the
+		# keys in the self.chunk_probabilities dictionary are integers with each three digits representing the
 		# overlap count for 0 through nact overlaps.  Least significant digits are used for count of 0 overlaps.
 		# In other words, keys look like: 444333222111000, where 000 is the count of 0 overlaps, and 111 is the
 		# count of 1 overlaps.  The key increment array has the numbers to add to the previous key to convert it
 		# to the new key.
-		key_increments=np.arange(self.nact+1, dtype=np.uint)*128
-		key_increments[0] = 1   # set first key increment so it's not zero.  Others are all 1 (multiple of 128)
-		# ki = 1
-		# key_increments = []
-		# for i in range(self.nact+1):
-		# 	key_increments.append(ki)
-		# 	ki = ki * 128
-		# # print("key_increments=%s" % key_increments)
+		key_increments=np.empty(self.nact+1, dtype=np.uint)
+		ki = 1
+		for i in range(self.nact+1):
+			key_increments[i] = ki
+			ki = ki * 1000
+		print("key_increments=%s" % key_increments)
 		return key_increments
 
 	def add_overlap(self, iteration):
 		# givin current cop_key, cop_prob, update it by multiplying each probability by every probability in
 		# self.ov1_pmf and then combine terms.  Remove any terms with probability less than threshold
-		cop_key = np.add.outer(self.key_increments, cop_key).flatten()
-		cop_prb = np.outer(self.ov1_pmf, cop_prb).flatten()
-		
+		self.cop_key = np.add.outer(self.key_increments, self.cop_key).flatten()
+		self.cop_prb = np.outer(self.ov1_pmf, self.cop_prb).flatten()
+		# make array of bin numbers for using bincount to combine probabilities that have the same key
+		# from: https://stackoverflow.com/questions/3403973/fast-replacement-of-values-in-a-numpy-array
+		# Method method_searchsort(), in post by Jean Lescut
+		# print("before combine: len(cop_key)=%s" % len(self.cop_key))
+		# print("cop_key=%s" % self.cop_key)
+		# print("cop_prb=%s" % self.cop_prb)
+		keys = np.unique(self.cop_key)
+		bins = np.arange(keys.size)
+		sort_idx = np.argsort(keys)
+		idx = np.searchsorted(keys, self.cop_key, sorter=sort_idx)
+		out = bins[sort_idx][idx]
+		self.cop_prb = np.bincount(out, weights=self.cop_prb, minlength=len(bins))
+		self.cop_key = keys[bins]
+		# print("after combine: len(cop_key)=%s" % len(self.cop_key))
+		# print("cop_key=%s" % self.cop_key)
+		# print("cop_prb=%s" % self.cop_prb)
+		# import pdb; pdb.set_trace()
 
+	def display_result(self):
+		num_items = len(self.cop_key)
+		total_prob = sum(self.cop_prb)
+		print("After %s items stored with nact=%s, threshold=%s, size cop = %s, total_probability = %s" % (self.k,
+			self.nact, self.threshold, num_items, total_prob))
+		if self.show_items:
+			max_num_to_show = 50
+			print("items are:")
+			for i in range(min(max_num_to_show, len(self.cop_key))):
+				print("%s -> %s,%s" % (self.cop_key[i], self.cop_prb[i], self.cop_err[i]))
+			# self.test_cop_err()
 
+	def cop_error_rate(self, nact, key):
+		# determine probability of error given chunk overlap pattern specified in key
+		cfreq=[]
+		# print("entered cop_err, key=%s" % key)
+		dkey = int(key / 1000)  # strip off no overlap count
+		if dkey == 0:
+			return 0.0  # no overlap, so error rate is zero
+		while dkey > 0:
+			cfreq.append(dkey % 1000)
+			dkey = int(dkey / 1000)
+		assert len(cfreq) <= nact
+		cw = []  # chunk weights, will store all possible weights for each chunk size, weights are multiples of nact
+		cp = []  # chunk probabilities, stores probability of each weight, from binomonial distribution
+		for i in range(len(cfreq)):
+			weight = i+1
+			nchunks = cfreq[i]   # number of chunks of size i+1
+			x = np.arange(nchunks+1)
+			chunk_weights = x * weight - (nchunks - x) * weight  # positive weights - negative weights
+			chunk_probabilities = binom.pmf(x, nchunks, 0.5)  # binomonial coefficients, give number of possible ways to select x items
+			cw.append(chunk_weights)
+			cp.append(chunk_probabilities)
+		chunk_weights = cw[0]
+		chunk_probabilities = cp[0]
+		for i in range(1, len(cfreq)):
+			chunk_weights = np.add.outer(cw[i],chunk_weights).flatten()
+			chunk_probabilities = np.outer(cp[i],chunk_probabilities).flatten()
+		# if target positive, to cause error, want sum of overlaps plus target <= 0
+		perror_sum = np.dot(chunk_weights + nact <= 0, chunk_probabilities)
+		# if target negative, to cause error, want sum of overlaps plus target > 0
+		nerror_sum = np.dot(chunk_weights - nact > 0, chunk_probabilities)
+		prob_sum = np.sum(chunk_probabilities)
+		cop_error_rate = (perror_sum + nerror_sum) / (2* prob_sum)  # divide by 2 because positive and negative errors summed
+		return cop_error_rate
 
+	def compute_hamming_dist(self, ncols=None):
+		# compute distribution of probability of each hamming distance
+		if ncols is None:
+			assert self.ncols is not None, "must specify ncols to compute_hamming_dist"
+			ncols = self.ncols
+		else:
+			self.ncols = ncols  # save passed in ncols
+		hdist = np.empty(ncols + 1)  # probability mass function
+		for h in range(len(hdist)):  # hamming distance
+			phk = binom.pmf(h, ncols, self.cop_err)
+			hdist[h] = np.dot(phk, self.cop_prb)
+		print("hdist (pmf) sum is %s (should be close to 1)" % np.sum(hdist))
+		# assert math.isclose(np.sum(pmf), 1.0), "hdist sum is not equal to 1, is: %s" % np.sum(pmf)
+		self.hdist = hdist
 
-		chunk_probabilities = self.chunk_probabilities
-		items_before = len(chunk_probabilities)
-		max_probability = 0.
-		for prev_key in list(chunk_probabilities):
-			prev_prob = chunk_probabilities[prev_key]
-			for i in range(self.nact + 1):
-				new_prob = prev_prob * self.ov1_pmf[i]
-				if new_prob > max_probability:
-					max_probability = new_prob
-				new_key = prev_key + self.key_increments[i]
-				if new_key in chunk_probabilities:
-					chunk_probabilities[new_key] += new_prob
-				else:
-					chunk_probabilities[new_key] = new_prob
-				# print("i=%i, prev=(%s, %s) new=(%s,%s), cp[nk]=%s" % (i, prev_key, prev_prob, new_key, new_prob,
-				# 	chunk_probabilities[new_key]))
-			del chunk_probabilities[prev_key]
-		# now check for terms to remove
-		min_allowd_probability = max_probability / self.threshold
-		prune_count = 0
-		prune_prob = 0.0
-		total_prob = 0
-		items_before_prune = len(chunk_probabilities)
-		pruned_items = {}
-		for key in list(chunk_probabilities):
-			prob = chunk_probabilities[key]
-			total_prob += prob
-			if prob < min_allowd_probability:
-				pruned_items[key] = prob
-				del chunk_probabilities[key]
-				prune_count += 1
-				prune_prob += prob
-		items_after_prune = len(chunk_probabilities)
-		if self.show_pruning:
-			print("cop %s overlap, items_before=%s, items_before_prune=%s, items_after_prune=%s, prune_count=%s,"
-				" prune_prob=%s, total_prob=%s" % (iteration, items_before, items_before_prune, items_after_prune,
-					prune_count, prune_prob, total_prob))
-			print("pruned_items are: %s" % pruned_items)
+	def compute_overall_perr(self, d=None):
+		# compute overall error rate, by integrating over all hamming distances with distractor distribution
+		# ncols is the number of columns in each row of the sdm
+		# d is number of item in item memory
+		if d is None:
+			assert self.d is not None, "Must specify d to compute_overall_perr"
+			d = self.d
+		else:
+			self.d = d  # save passed in d
+		n = self.ncols
+		hdist = self.hdist
+		h = np.arange(len(hdist))
+		# self.plot(binom.pmf(h, n, 0.5), "distractor pmf", "hamming distance", "probability")
+		# distractor_pmf = binom.pmf(h, n, 0.5)  # this tried to account for matching hammings, but does not work
+		# match_hammings_area = (hdist / (hdist + distractor_pmf)) / n
+		ph_corr = binom.sf(h, n, 0.5) ** (d-1)
+		# ph_corr = (binom.sf(h, n, 0.5) + match_hammings_area) ** (d-1)
+		# self.plot(ph_corr, "probability correct", "hamming distance", "fraction correct")
+		# self.plot(ph_corr * hdist, "p_corr weighted by hdist", "hamming distance", "weighted p_corr")
+		p_corr = np.dot(ph_corr, hdist)
+		self.overall_perr = 1 - p_corr
+		return self.overall_perr
 
+	def ae(nrows, ncols, nact, k, d):
+		# compute analytical error rate
+		# Class function to enable computing error rate with one call
+		sae = Sdm_error_analytical(nrows, nact, k)
+		sae.compute_hamming_dist(ncols)
+		overall_perr = sae.compute_overall_perr(d)
+		return overall_perr
 
 
 class Cop:
@@ -178,8 +215,6 @@ class Cop:
 			# print("after add_overlap %s self.chunk_probabilities=\n%s" % (i, self.chunk_probabilities))
 		self.add_error_rate()
 		self.display_result()
-
-
 
 
 
@@ -412,3 +447,41 @@ class Cop:
 			p_err += match_hammings[k] * (1.0 - dhg ** num_distractors)
 		self.overall_perr_binom = p_err
 		return p_err
+
+
+def main():
+	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	nrows=80; nact=3; k=100; d=27; ncols=33  # gives 0.0178865
+	# nrows = 80; nact = 6; k = 1000; d = 27; ncols = 51  # near full size
+	# nrows = 1; nact = 1; k = 3; d = 3; ncols = 3  # test for understand match hamming
+	# test new cop class
+	# cop = Cop(nrows, nact, k)
+	# return
+
+	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
+	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size
+	ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
+	print("for k=%s, d=%s, sdm size=(%s, %s, %s), predicted analytical error=%s" % (k, d, nrows, ncols, nact, ae))
+
+	# ae = Sdm_error_analytical(nrows, nact, k)
+	# ae.error_rate
+	# nrows, nact, k, ncols=None, d=
+	# ae.perr()
+
+
+	# predicted_using_theory_dist = ov.p_error_binom() # ov.compute_overall_perr()
+	# predicted_using_empirical_dist = ov.p_error_binom(use_empirical=True)
+	# predicted_using_cop = ov.cop.overall_perr
+	# predicted_using_cop_binom = ov.cop.overall_perr_binom
+	# # overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k, d)
+	# empirical_err = ov.emp_overall_perr
+	# print("for k=%s, d=%s, sdm size=(%s, %s, %s), predicted_using_theory_dist=%s, predicted_using_empirical_dist=%s,"
+	# 	" predicted_using_cop=%s, predicted_using_cop_binom=%s, empirical_err=%s" % (k, d, nrows, ncols, nact, predicted_using_theory_dist,
+	# 		predicted_using_empirical_dist, predicted_using_cop, predicted_using_cop_binom, empirical_err))
+	# ncols = 52
+	# overall_perr = Ovc.compute_overall_error(nrows, ncols, nact, k)
+	# print("for k=%s, sdm size=(%s, %s, %s), overall_perr=%s" % (k, nrows, ncols, nact, overall_perr))
+
+
+if __name__ == "__main__":
+	main()
