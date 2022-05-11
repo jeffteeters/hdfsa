@@ -300,7 +300,6 @@ class Cop:
 		# d is number of item in item memory
 		n = self.ncols
 		hdist = self.hdist
-		# import pdb; pdb.set_trace()
 		h = np.arange(len(hdist))
 		# self.plot(binom.pmf(h, n, 0.5), "distractor pmf", "hamming distance", "probability")
 		# distractor_pmf = binom.pmf(h, n, 0.5)  # this tried to account for matching hammings, but does not work
@@ -324,13 +323,38 @@ class Cop:
 		# 		"relative frequency", label="match_hammings", data2=distractor_hammings, label2="distractor_hammings")
 		num_distractors = d - 1
 		dhg = 1.0 # fraction distractor hamming greater than match hamming
+		p_corr = 0.0  # probability correct
+		for k in phds:
+			# compute p_correct if match and distractor hammings are the same
+			p_corr_same_hamming = match_hammings[k] *distractor_hammings[k] * (match_hammings[k] / (match_hammings[k] + distractor_hammings[k]) ** num_distractors)
+			# p_corr_same_hamming = match_hammings[k] *distractor_hammings[k] * (1-((distractor_hammings[k] / (match_hammings[k] + distractor_hammings[k])) ** num_distractors))
+			# compute p_correct if match and distractor hammings are different
+			dhg -= distractor_hammings[k]
+			p_corr_different_hamming = match_hammings[k] * (dhg ** num_distractors)
+			p_corr_combined = p_corr_same_hamming + p_corr_different_hamming
+			p_corr += p_corr_combined
+			# p_err += match_hammings[k] * (1.0 - dhg ** num_distractors)
+		p_err = 1 - p_corr
+		self.overall_perr_binom = p_err
+		return p_err
+
+	def p_error_binom_orig(self, d):
+		# compute error by integrating predicted distribution with distractors
+		# should do same function as above
+		match_hammings = self.hdist
+		phds = np.arange(self.ncols+1)  # possible hamming distances
+		distractor_hammings = binom.pmf(phds, self.ncols, 0.5)
+		# if self.include_empirical:
+		# 	self.plot(match_hammings, "match_hammings vs distractor_hammings", "hamming distance",
+		# 		"relative frequency", label="match_hammings", data2=distractor_hammings, label2="distractor_hammings")
+		num_distractors = d - 1
+		dhg = 1.0 # fraction distractor hamming greater than match hamming
 		p_err = 0.0  # probability error
 		for k in phds:
 			dhg -= distractor_hammings[k]
 			p_err += match_hammings[k] * (1.0 - dhg ** num_distractors)
 		self.overall_perr_binom = p_err
 		return p_err
-
 
 class Ovc:
 
@@ -614,26 +638,41 @@ class Ovc:
 		self.plot(self.hdist, "hamming distribution", "hamming distance", "probability")
 
 
-	def empiricalError(self, ntrials=100000):
+	def empiricalError(self, ntrials=2000000, debug=False, count_multiple_matches_as_error = True, show_error_rate_vs_hamming_distance=True):
 		# compute empirical error by storing then recalling items from SDM
+		# count_multiple_matches_as_error = True to count multiple distractor hammings == match as error
 		trial_count = 0
 		fail_count = 0
 		bit_errors_found = 0
 		bits_compared = 0
 		mhcounts = np.zeros(self.ncols+1, dtype=np.int32)  # match hamming counts
 		ovcounts = np.zeros(self.max_num_overlaps + 1, dtype=np.int32)
+		rng = np.random.default_rng()
+		if show_error_rate_vs_hamming_distance:
+			error_count_vs_hamming = np.zeros(self.ncols+1, dtype=np.int32)
 		while trial_count < ntrials:
 			# setup sdm structures
 			hl_cache = {}  # cache mapping address to random hard locations
 			contents = np.zeros((self.nrows, self.ncols+1,), dtype=np.int8)  # contents matrix
-			im = np.random.randint(0,high=2,size=(self.d, self.ncols), dtype=np.int8)  # item memory
+			im = rng.integers(0, high=2, size=(self.d, self.ncols), dtype=np.int8)
+			# im = np.random.randint(0,high=2,size=(self.d, self.ncols), dtype=np.int8)  # item memory
 			addr_base_length = self.k + self.ncols - 1
-			address_base = np.random.randint(0,high=2,size=addr_base_length, dtype=np.int8)
-			exSeq= np.random.randint(low = 0, high = self.d, size=self.k) # random sequence to represent
+			# address_base = np.random.randint(0,high=2,size=addr_base_length, dtype=np.int8)
+			## address_base = rng.integers(0, high=2, size=addr_base_length, dtype=np.int8)
+			address_base2 = rng.integers(0, high=2, size=(self.ncols, self.k), dtype=np.int8)
+			# exSeq= np.random.randint(low = 0, high = self.d, size=self.k) # random sequence to represent
+			exSeq = rng.integers(0, high=self.d, size=self.k, dtype=np.int16)
+			if debug:
+				print("EmpiricalError, trial %s" % (trial_count+1))
+				print("im=%s" % im)
+				print("address_base2=%s" % address_base2)
+				print("exSeq=%s" % exSeq)
+				print("contents=%s" % contents)
 			# store sequence
 			# import pdb; pdb.set_trace()
 			for i in range(self.k):
-				address = address_base[i:i+self.ncols]
+				## address = address_base[i:i+self.ncols]
+				address = address_base2[i]
 				data = im[exSeq[i]]
 				vector_to_store = np.append(np.logical_xor(address, data), [1])
 				hv = hash(address.tobytes()) # hash of address
@@ -641,10 +680,16 @@ class Ovc:
 					hl_cache[hv] =  np.random.choice(self.nrows, size=self.nact, replace=False)
 				hl = hl_cache[hv]  # random hard locations selected for this address
 				contents[hl] += vector_to_store*2-1  # convert vector to +1 / -1 then store
+				if debug:
+					print("Storing item %s" % (i+1))
+					print("address=%s, data=%s, vector_to_store=%s, contents=%s" % (address, data, vector_to_store, contents))
 			# recall sequence
 			# import pdb; pdb.set_trace()
+			if debug:
+				print("Starting recall")
 			for i in range(self.k):
-				address = address_base[i:i+self.ncols]
+				## address = address_base[i:i+self.ncols]
+				address = address_base2[i]
 				data = im[exSeq[i]]
 				hv = hash(address.tobytes()) # hash of address
 				hl = hl_cache[hv]  # random hard locations selected for this address
@@ -654,17 +699,38 @@ class Ovc:
 				recalled_vector = csum[0:-1] > 0   # will be binary vector, also works as int8; slice to remove nadds
 				recalled_data = np.logical_xor(address, recalled_vector)
 				hamming_distances = np.count_nonzero(im[:,] != recalled_data, axis=1)
+				mhcounts[hamming_distances[exSeq[i]]] += 1
+				bit_errors_found += hamming_distances[exSeq[i]]
+				hamming_d_found = hamming_distances[exSeq[i]]
 				selected_item = np.argmin(hamming_distances)
 				if selected_item != exSeq[i]:
 					fail_count += 1
-				mhcounts[hamming_distances[exSeq[i]]] += 1
-				bit_errors_found += hamming_distances[exSeq[i]]
+					if show_error_rate_vs_hamming_distance:
+						error_count_vs_hamming[hamming_distances[exSeq[i]]] += 1
+				elif count_multiple_matches_as_error:
+					# check for another item with the same hamming distance, if found, count as error
+					hamming_distances[selected_item] = self.ncols+1
+					next_closest = np.argmin(hamming_distances)
+					if(hamming_distances[next_closest] == hamming_d_found):
+						fail_count += 1
+						if show_error_rate_vs_hamming_distance:
+							error_count_vs_hamming[hamming_d_found] += 1
 				bits_compared += self.ncols
 				trial_count += 1
 				if trial_count >= ntrials:
 					break
+				if debug:
+					print("Recall item %s" % (i+1))
+					print("address=%s,data=%s,csum=%s,recalled_vector=%s,recalled_data=%s,hamming_distances=%s,hamming_d_found=%s,fail_count=%s" % (
+						address,data,csum,recalled_vector,recalled_data,hamming_distances,hamming_d_found,fail_count))
+				if debug and trial_count > 10:
+					debug=False
 		perr = fail_count / trial_count
 		self.plot(mhcounts, "hamming distances found", "hamming distance", "count")
+		if show_error_rate_vs_hamming_distance:
+			error_rate_vs_hamming = [error_count_vs_hamming[x]/mhcounts[x] for x in range(len(mhcounts))]
+			self.plot(error_rate_vs_hamming, "error rate vs hamming distances found", "hamming distance", "error rate")
+			print("error_rate_vs_hamming=%s" % error_rate_vs_hamming)
 		print("Empirical bit error rate = %s" % (bit_errors_found / bits_compared))
 		self.ehdist = mhcounts / trial_count  # form distribution of match hammings
 		self.emp_overlaps = ovcounts / np.sum(ovcounts)
@@ -715,8 +781,9 @@ class Ovc:
 
 
 def main():
-	nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
-	# nrows = 80; nact = 6; k = 1000; d = 27; ncols = 51  # near full size 
+	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
+	# nrows = 80; nact = 6; k = 1000; d = 27; ncols = 51  # near full size
+	nrows = 1; nact = 1; k = 3; d = 3; ncols = 3  # test for understand match hamming
 	# test new cop class
 	# cop = Cop(nrows, nact, k)
 	# return
