@@ -23,7 +23,7 @@ class Sdm_error_analytical:
 	# would contribute either (-2, 0, +2).  Another example, chunk of size 3 contributes -3 or +3.  But three
 	# independent items could contribute: -3, -1, 1, or 3.
 
-	def __init__(self, nrows, nact, k, ncols=None, d=None, threshold=10000, show_pruning=False, show_items=False):
+	def __init__(self, nrows, nact, k, ncols=None, d=None, threshold=10000, show_pruning=False, show_items=True):
 		# nrows - number of rows in sdm
 		# nact - activaction count
 		# k - number of items to store in sdm
@@ -40,7 +40,8 @@ class Sdm_error_analytical:
 		self.show_pruning = show_pruning
 		self.show_items = show_items
 		self.ov1_pmf = self.compute_one_item_overlap_pmf()
-		# print("self.ov1_pmf=%s" % self.ov1_pmf)
+		if self.show_items:
+			print("self.ov1_pmf=%s" % self.ov1_pmf)
 		self.key_increments = self.compute_key_increments()
 		self.cop_key = self.key_increments.copy()
 		self.cop_prb = self.ov1_pmf.copy()
@@ -57,6 +58,9 @@ class Sdm_error_analytical:
 		self.display_result()
 
 	def compute_one_item_overlap_pmf(self):
+		if self.nrows == 1:
+			assert self.nact == 1, "If nrows is 1, nact must be 1"
+			return np.array([1.0,], dtype=np.float64)  # special case
 		# based on: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.hypergeom.html#scipy.stats.hypergeom
 		[M, n, N] = [self.nrows, self.nact, self.nact]
 		rv = hypergeom(M, n, N)
@@ -70,6 +74,9 @@ class Sdm_error_analytical:
 		# In other words, keys look like: 444333222111000, where 000 is the count of 0 overlaps, and 111 is the
 		# count of 1 overlaps.  The key increment array has the numbers to add to the previous key to convert it
 		# to the new key.
+		if self.nact == 1:
+			# special case
+			return(np.array([1000,], dtype=np.uint))
 		key_increments=np.empty(self.nact+1, dtype=np.uint)
 		ki = 1
 		for i in range(self.nact+1):
