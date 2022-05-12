@@ -232,14 +232,14 @@ class Sdm_error_analytical:
 		# self.plot(ph_corr, "probability correct", "hamming distance", "fraction correct")
 		# self.plot(ph_corr * hdist, "p_corr weighted by hdist", "hamming distance", "weighted p_corr")
 		p_corr = np.dot(ph_corr, hdist)
-		self.overall_perr = 1 - p_corr
-		return self.overall_perr
+		self.perr = 1 - p_corr
+		return self.perr
 
 	def ae(nrows, ncols, nact, k, d):
 		# compute analytical error rate
 		# Class function to enable computing error rate with one call
 		sae = Sdm_error_analytical(nrows, nact, k, ncols, d)
-		return sae.overall_perr
+		return sae.perr
 
 def main():
 	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case

@@ -115,7 +115,7 @@ class Sdm_ee():
 						address,data,csum,recalled_vector,recalled_data,hamming_distances,hamming_d_found,fail_count))
 				if debug and trial_count > 10:
 					debug=False
-		self.overall_perr = fail_count / trial_count  # overall probability of error
+		self.perr = fail_count / trial_count  # overall probability of error
 		self.mhcounts = mhcounts   # count of hamming distances found to matching item
 		self.error_rate_vs_hamming = [error_count_vs_hamming[x]/mhcounts[x] for x in range(len(mhcounts))
 			] if self.save_error_rate_vs_hamming_distance else None
@@ -146,7 +146,7 @@ def main():
 		plot(ee.error_rate_vs_hamming, "error rate vs hamming distances found", "hamming distance", "error rate")
 		print("error_rate_vs_hamming=%s" % error_rate_vs_hamming)
 	print("Bit error rate = %s" % ee.bit_error_rate)
-	print("overall perr=%s" % ee.overall_perr)
+	print("overall perr=%s" % ee.perr)
 
 
 if __name__ == "__main__":
