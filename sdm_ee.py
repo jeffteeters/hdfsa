@@ -6,7 +6,7 @@ class Sdm_ee():
 
 	# calculate SDM empirical error
 
-	def __init__(self, nrows, ncols, nact, k, d, ntrials=100000, count_multiple_matches_as_error=True, debug=False,
+	def __init__(self, nrows, ncols, nact, k, d, ntrials=10000, count_multiple_matches_as_error=True, debug=False,
 			save_error_rate_vs_hamming_distance=False):
 		# nrows is number of rows (hard locations) in the SDM
 		# ncols is the number of columns

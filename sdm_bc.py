@@ -13,7 +13,8 @@ import scipy
 import math
 import pprint
 from fractions import Fraction
-import ovc as oc
+# import ovc as oc
+import sdm_ae
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -134,7 +135,8 @@ class Bundle_memory(Memory):
 		recalled_data = np.logical_xor(address, self.data_array).astype(np.int8)
 		return recalled_data
 
-def empirical_response(mem, actions, states, choices, size, plot_margin_histogram=False, ntrials=13000):
+def empirical_response(mem, actions, states, choices, size, plot_margin_histogram=False,
+	count_multiple_matches_as_error=True, ntrials=5000):
 	# find empirical response of sdm or bundle (in mem object)
 	# size is number of bytes allocated to memory, used only for including in plot titles
 	using_sdm = isinstance(mem, Sparse_distributed_memory)
@@ -181,9 +183,11 @@ def empirical_response(mem, actions, states, choices, size, plot_margin_histogra
 					epoch_stats[-1]["fail_count"] += 1
 					distractor_hamming = hamming_distances[found_next_state]
 				else:
-					hamming_distances[next_state] = mem.word_length
+					hamming_distances[next_state] = mem.word_length + 1
 					closest_distractor = np.argmin(hamming_distances)
 					distractor_hamming = hamming_distances[closest_distractor]
+					if distractor_hamming == match_hamming and count_multiple_matches_as_error:
+						fail_count += 1
 				hamming_margins.append(distractor_hamming - match_hamming)
 				trial_count += 1
 				epoch_stats[-1]["trial_count"] += 1
@@ -574,8 +578,8 @@ def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states
 		"mean_fail_rate": None, "stdev_fail_rate": None, "empirical_delta": None}
 	num_transitions = states * choices
 	ri["analytical_error"] = SdmErrorAnalytical(nrows,num_transitions,states,nact=nact,word_length=word_length) if analytical else None
-	ri["sdm_ovc_error_predicted"] = oc.Ovc.compute_overall_error(nrows, word_length, nact, num_transitions, states) if analytical else None
-	SdmErrorAnalytical(nrows,num_transitions,states,nact=nact,word_length=word_length) if analytical else None
+	ri["sdm_cop_error_predicted"] = sdm_ae.Sdm_error_analytical.ae(nrows, word_length, nact, num_transitions, states
+		) if analytical else None
 	ri["empirical_delta_error"] = p_error_Fraction (word_length, states, ri["empirical_delta"]) if (
 		empirical_delta_error and ri["empirical_delta"] is not None) else None
 	byte_operations_required_for_recall = (word_length / 8) * states + (word_length / 8) * nrows + nact * (word_length / 8)
@@ -586,7 +590,7 @@ def sdm_response_info(size, bc=8, nact=None, word_length=512, actions=10, states
 		"mean_fail_rate":ri["mean_fail_rate"], "stdev_fail_rate":ri["stdev_fail_rate"],
 		"empirical_delta": ri["empirical_delta"],
 		"empirical_delta_error": ri["empirical_delta_error"],
-		"sdm_ovc_error_predicted": ri["sdm_ovc_error_predicted"],
+		"sdm_cop_error_predicted": ri["sdm_cop_error_predicted"],
 		"nrows":nrows, "nact":nact,
 		"word_length":word_length,
 		"mem_eff":fraction_memory_used_for_data,
@@ -729,13 +733,14 @@ def sdm_vs_bundle():
 	# start_size=20000; step_size=10000; stop_size=150001
 	# start_size=20000; step_size=5000; stop_size=80001
 	# start_size=20000; step_size=5000; stop_size=100001
+	# start_size=20000; step_size=5000; stop_size=50001
 	sizes = range(start_size, stop_size, step_size)
 	# bc = 5.5  # used fixed bc
 	# bc = 3.5
-	bc = 1
-	# bc = 3.5 # 3.5 # 8
-	# nact = None
-	nact = 1
+	# bc = 1
+	bc = 8 # 3.5 # 3.5 # 8
+	nact = None
+	# nact = 1
 	# fimp=1.0/16.0
 	fimp = 0
 	sdm_ri = [sdm_response_info(size, bc, nact=nact, fimp=fimp, analytical=True, empirical=True,
@@ -755,8 +760,8 @@ def sdm_vs_bundle():
 			"label":"found"},
 		{"subplot": None, "key":"predicted_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"found_cdf"},
-		{"subplot": None, "key":"sdm_ovc_error_predicted","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
-			"label":"sdm_ovc_predicted"},
+		{"subplot": None, "key":"sdm_cop_error_predicted","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+			"label":"sdm_cop_predicted"},
 		{"subplot": None, "key":"analytical_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"analytical"},
 		# {"subplot": None, "key":"empirical_delta_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
@@ -767,8 +772,8 @@ def sdm_vs_bundle():
 			"ylabel":"Recall error", "scale":"log", "label":"found"},
 		{"subplot": None, "key":"predicted_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"found_cdf",},
-		{"subplot": None, "key":"sdm_ovc_error_predicted","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
-			"label":"sdm_ovc_predicted"},
+		{"subplot": None, "key":"sdm_cop_error_predicted","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
+			"label":"sdm_cop_predicted"},
 		{"subplot": None, "key":"analytical_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
 			"label":"analytical",  "scale":"log", "legend_location":"lower left"},
 		# {"subplot": None, "key":"empirical_delta_error","title":"SDM vs bundle error with fimp=%s" % fimp, "ylabel":"Recall error",
