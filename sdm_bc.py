@@ -135,7 +135,7 @@ class Bundle_memory(Memory):
 		recalled_data = np.logical_xor(address, self.data_array).astype(np.int8)
 		return recalled_data
 
-def empirical_response(mem, actions, states, choices, size, plot_margin_histogram=False,
+def empirical_response(mem, actions, states, choices, size=None, plot_margin_histogram=False,
 	count_multiple_matches_as_error=True, ntrials=5000):
 	# find empirical response of sdm or bundle (in mem object)
 	# size is number of bytes allocated to memory, used only for including in plot titles
@@ -1013,8 +1013,6 @@ def widths_vs_folds_single_size(size=100000, empirical=True):
 		if pi["subplot"] in (224, 122):
 			plt.show()
 	# plt.show()
-
-
 
 if __name__ == "__main__":
 	# vary_sdm_bc()
