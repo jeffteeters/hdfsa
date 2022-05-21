@@ -139,12 +139,15 @@ def empirical_response(mem, actions, states, choices, size=None, plot_margin_his
 	count_multiple_matches_as_error=True, ntrials=5000):
 	# find empirical response of sdm or bundle (in mem object)
 	# size is number of bytes allocated to memory, used only for including in plot titles
+	print("starting sdm_bc.empirical_response, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
+			mem.nrows, mem.word_length, mem.nact, actions, states, choices))
 	using_sdm = isinstance(mem, Sparse_distributed_memory)
 	trial_count = 0
 	fail_count = 0
 	epoch_stats = []  # for generating error bars on average response.  One epoch is one storage of fsa
 	hamming_margins = []  # difference between match and distractor hamming distances
 	match_hammings = []
+	match_hamming_counts = np.zeros(mem.word_length + 1)
 	while trial_count < ntrials:
 		fsa = finite_state_automaton(actions, states, choices)
 		im_actions = np.random.randint(0,high=2,size=(actions, mem.word_length), dtype=np.int8)
@@ -177,6 +180,7 @@ def empirical_response(mem, actions, states, choices, size=None, plot_margin_his
 				hamming_distances = np.count_nonzero( recalled_next_state_vector!=im_states, axis=1)
 				match_hamming = hamming_distances[next_state]
 				match_hammings.append(match_hamming)
+				match_hamming_counts[match_hamming] += 1
 				found_next_state = np.argmin(hamming_distances)
 				if found_next_state != next_state:
 					fail_count += 1
@@ -217,7 +221,8 @@ def empirical_response(mem, actions, states, choices, size=None, plot_margin_his
 	info = {"error_rate": error_rate, "predicted_error_rate":predicted_error_rate,
 		"empirical_delta":empirical_delta,
 		"margin_mean": margin_mean, "margin_std": margin_std,
-		"mean_fail_rate":mean_fail_rate, "stdev_fail_rate":stdev_fail_rate}
+		"mean_fail_rate":mean_fail_rate, "stdev_fail_rate":stdev_fail_rate,
+		"ehdist": match_hamming_counts / trial_count}
 		# "mm":mm, "mv":mv, "dm":dm, "dv":dv, "cm":cm, "cs":cs}
 	# plot_hist(match_hammings, distractor_hammings, "bc=%s, nact=%s, size=%s" % (bc, nact, size))
 	return info

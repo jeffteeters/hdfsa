@@ -60,7 +60,7 @@ class Sdm_error_analytical:
 			self.compute_hamming_dist()
 			if d is not None:
 				self.compute_overall_perr()
-				# self.compute_overall_perr_fraction()
+				self.compute_overall_perr_fraction()
 		if show_progress:
 			self.display_result()
 

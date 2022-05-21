@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 
 
 class Fast_sdm_empirical():
@@ -17,6 +18,8 @@ class Fast_sdm_empirical():
 		# count_multiple_matches_as_error = True to count multiple distractor hammings == match as error
 		# save_error_rate_vs_hamming_distance true to save error_count_vs_hamming, used to figure out what
 		# happens to error rate when distractor(s) having same hamming distance as match not always counted as error
+		print("starting Fast_sdm_empirical, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
+			nrows, ncols, nact, actions, states, choices))
 		self.nrows = nrows
 		self.ncols = ncols
 		self.nact = nact
@@ -34,8 +37,12 @@ class Fast_sdm_empirical():
 	def empiricalError(self):
 		# compute empirical error by storing then recalling finite state automata from SDM
 		fail_counts = np.zeros(self.epochs, dtype=np.uint16)
+		self.match_hamming_counts = np.zeros(self.ncols+1, dtype=np.uint32)
+		self.distractor_hamming_counts = np.zeros(self.ncols+1, dtype=np.uint32)
 		rng = np.random.default_rng()
 		num_transitions = self.states * self.choices
+		trial_count = 0
+		fail_count = 0
 		for epoch_id in range(self.epochs):
 			im_action = rng.integers(0, high=2, size=(self.actions, self.ncols), dtype=np.int8)
 			im_state = rng.integers(0, high=2, size=(self.states, self.ncols), dtype=np.int8)
@@ -65,26 +72,83 @@ class Fast_sdm_empirical():
 				recalled_vector = (contents[transition_hard_locations[i,:]].sum(axis=0) > 0)
 				recalled_data = np.roll(np.logical_xor(address[i], recalled_vector), -1)
 				hamming_distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)
+				self.match_hamming_counts[hamming_distances[transition_next_state[i]]] += 1
+				self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]] += 1 # a random distractor
+
+				# original code
+				found_fail_original_code = 0
 				two_smallest = np.argpartition(hamming_distances, 2)[0:2]
-				# import pdb; pdb.set_trace()
-				if ((transition_next_state[i] != two_smallest[0] and transition_next_state[i] != two_smallest[1]) or
-					(self.count_multiple_matches_as_error
-						and hamming_distances[two_smallest[0]] == hamming_distances[two_smallest[1]])):
+				if hamming_distances[two_smallest[0]] < hamming_distances[two_smallest[1]]:
+					if transition_next_state[i] != two_smallest[0]:
+						fail_counts[epoch_id] += 1
+						fail_count += 1
+						found_fail_original_code = 1
+				elif hamming_distances[two_smallest[1]] < hamming_distances[two_smallest[0]]:
+					if transition_next_state[i] != two_smallest[1]:
+						fail_counts[epoch_id] += 1
+						fail_count += 1
+						found_fail_original_code = 1
+				elif self.count_multiple_matches_as_error or transition_next_state[i] != two_smallest[0]:
 					fail_counts[epoch_id] += 1
-		print("fail counts are %s" % fail_counts)
+					fail_count += 1
+					found_fail_original_code = 1
+
+				# # import pdb; pdb.set_trace()
+				# if ((transition_next_state[i] != two_smallest[0] and transition_next_state[i] != two_smallest[1]) or
+				# 	(self.count_multiple_matches_as_error
+				# 		and hamming_distances[two_smallest[0]] == hamming_distances[two_smallest[1]])):
+				# 	fail_counts[epoch_id] += 1
+				# 	fail_count += 1
+				# 	found_fail_original_code = 1
+
+				# # code from sdm_bc
+				# found_fail_sdmbc_code = 0
+				# sdmbc_fail_multiple = 0
+				# next_state = transition_next_state[i]
+				# found_next_state = np.argmin(hamming_distances)
+				# if found_next_state != next_state:
+				# 	fail_count += 1
+				# 	fail_counts[epoch_id] += 1
+				# 	found_fail_sdmbc_code = 1
+				# 	# distractor_hamming = hamming_distances[found_next_state]
+				# else:
+				# 	match_hamming = hamming_distances[next_state]
+				# 	hamming_distances[next_state] = self.ncols + 1
+				# 	closest_distractor = np.argmin(hamming_distances)
+				# 	distractor_hamming = hamming_distances[closest_distractor]
+				# 	if distractor_hamming == match_hamming and self.count_multiple_matches_as_error:
+				# 		fail_count += 1
+				# 		fail_counts[epoch_id] += 1
+				# 		found_fail_sdmbc_code = 1
+				# 		sdmbc_fail_multiple = 1
+
+				# if found_fail_original_code != found_fail_sdmbc_code:
+				# 	print("found fail mismatch, sdmbc_fail_multiple=%s" % sdmbc_fail_multiple)
+				# 	import pdb; pdb.set_trace()
+
+
+				trial_count += 1
+		# print("fail counts are %s" % fail_counts)
+		assert np.sum(fail_counts) == fail_count
+		assert trial_count == (num_transitions * self.epochs)
+		perr = fail_count / trial_count
+		self.ehdist = self.match_hamming_counts / (num_transitions * self.epochs)
 		normalized_fail_counts = fail_counts / num_transitions
 		self.mean_error = np.mean(normalized_fail_counts)
 		self.std_error = np.std(normalized_fail_counts)
+		assert math.isclose(self.mean_error, perr)
+		print("fast_sdm_empirical passed assertions, perr=%s" % perr)
 
 
 def main():
 	ncols = 512
 	# nrows=239; nact=3  # should give error rate of 10e-6
-	nrows=86; nact=2  # should be error rate of 10e-2
+	# nrows=86; nact=2  # should be error rate of 10e-2
 	# nrows = 51; nact=1  # should give error 10e-1
-	fse = Fast_sdm_empirical(nrows, ncols, nact)
+	nrows = 1; ncols=20; nact=1; actions=2; states=3; choices=2
+	# fse = Fast_sdm_empirical(nrows, ncols, nact)
 	# nrows = 24; ncols=20; nact=2; actions=2; states=7; choices=2
-	# fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices)
+	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices)
 	print("With nrows=%s, ncols=%s, nact=%s, mean_error=%s, std_error=%s" % (nrows, ncols, nact, fse.mean_error,
 		fse.std_error))
 
