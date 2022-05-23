@@ -66,7 +66,11 @@ class Sparse_distributed_memory(Memory):
 	def select(self, address):
 		# return index of rows with hard locations (addresses) most closly matching address
 		hl_match = np.count_nonzero( address!=self.addresses, axis=1)
-		row_ids = np.argpartition(hl_match, self.nact)[0:self.nact]
+		if self.nrows == 1:
+			# special case of only one row (same as bundle)
+			row_ids = [0,]
+		else:
+			row_ids = np.argpartition(hl_match, self.nact)[0:self.nact]
 		# following code to make sure same rows are selected for the same address (safety check)
 		addr_str = ''.join(map('{:b}'.format, address))
 		if addr_str in self.select_cache:
@@ -136,11 +140,12 @@ class Bundle_memory(Memory):
 		return recalled_data
 
 def empirical_response(mem, actions, states, choices, size=None, plot_margin_histogram=False,
-	count_multiple_matches_as_error=True, ntrials=5000):
+	count_multiple_matches_as_error=True, roll_address=True, ntrials=5000):
 	# find empirical response of sdm or bundle (in mem object)
+	# roll_address set True to rotate address before storing to try and solve interference problem
 	# size is number of bytes allocated to memory, used only for including in plot titles
-	print("starting sdm_bc.empirical_response, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
-			mem.nrows, mem.word_length, mem.nact, actions, states, choices))
+	# print("starting sdm_bc.empirical_response, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
+	# 		mem.nrows, mem.word_length, mem.nact, actions, states, choices))
 	using_sdm = isinstance(mem, Sparse_distributed_memory)
 	trial_count = 0
 	fail_count = 0
@@ -160,6 +165,8 @@ def empirical_response(mem, actions, states, choices, size=None, plot_margin_his
 			for transition in fsa[state]:
 				action, next_state = transition
 				address = np.logical_xor(im_states[state], im_actions[action])
+				if roll_address:
+					address = np.roll(address, state)
 				data = np.logical_xor(address, np.roll(im_states[next_state], 1))
 				if using_sdm:
 					mem.store(address, data)
@@ -172,6 +179,8 @@ def empirical_response(mem, actions, states, choices, size=None, plot_margin_his
 			for transition in fsa[state]:
 				action, next_state = transition
 				address = np.logical_xor(im_states[state], im_actions[action])
+				if roll_address:
+					address = np.roll(address, state)
 				recalled_data = mem.recall(address)
 				if using_sdm:
 					recalled_next_state_vector = np.roll(np.logical_xor(address, recalled_data) , -1)
