@@ -28,7 +28,7 @@ class Bundle_empirical():
 
     # calculate bundle (superposition) empirical error
 
-    def __init__(self, ncols, k, d, ntrials=100000, count_multiple_matches_as_error=False, debug=False):
+    def __init__(self, ncols, k, d, ntrials=100000, count_multiple_matches_as_error=True, debug=False):
         # ncols is the width of the superposition vector
         # k is number of items stored in sdm
         # d is the number of items in item memory.  Used to compute probability of error in recall with d-1 distractors
