@@ -63,6 +63,17 @@ def find_bundle_sizes(desired_sizes):
 	print("Bundle sizes:")
 	for i in range(len(desired_sizes)):
 		print("%s - %s" % (desired_sizes[i], bundle_sizes[i]))
+	# output for bundle sizes:
+	# 	Bundle sizes:
+	# 1 - 24002
+	# 2 - 40503
+	# 3 - 55649
+	# 4 - 70239
+	# 5 - 84572
+	# 6 - 98790
+	# 7 - 112965
+	# 8 - 127134
+	# 9 - 141311
 
 def find_sdm_sizes(desired_sizes):
 	bundle_sizes = [find_sdm_size(x) for x in desired_sizes]
@@ -97,7 +108,7 @@ def find_sdm_sizes(desired_sizes):
 
 def main():
 	desired_sizes = range(1,10)
-	# find_bundle_sizes(desired_sizes)
-	find_sdm_sizes(desired_sizes)
+	find_bundle_sizes(desired_sizes)
+	# find_sdm_sizes(desired_sizes)
 
 main()
