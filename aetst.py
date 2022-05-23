@@ -40,14 +40,16 @@ def hist_err(hdist, ncols, d):
 
 def main():
 	# nrows=6; ncols=33; nact=2; k=6; d=27
-	nrows=6; ncols=33; nact=2; k=6; d=3 # should match 3 states two choices per state
+	# nrows=6; ncols=33; nact=2; k=6; d=3 # should match 3 states two choices per state
+	nrows=1; ncols=128; nact=1; k=9; d=3; actions=3; states=3; choices=3 # should match 3 states 3 choices per state
+	# nrows=1; ncols=16; nact=1; k=5; d=3; actions=1; states=3; choices=1 # should match 3 states 1 choice per state
 	# nrows=1; ncols=128; nact=1; k=7; d=27
 	# nrows=97; ncols=512; nact=2; k=1000; d=100  # size = 50 with bc=3.5
 	# nrows=195; ncols=512; nact=3; k=1000; d=100  # size = 100 with bc=3.5
 	# nrows=508; ncols=512; nact=5; k=1000; d=100  # size = 100 with bc=3.5
 	# nrows=1376; ncols=512; nact=10; k=1000; d=100  # size = 800 with bc=8
 	emp = sdm_emp.Sdm_ee(nrows, ncols, nact, k, d, ntrials=100000)
-	actions=2; states=3; choices=2
+	# actions=2; states=3; choices=2
 	fast_emp = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, actions=actions,
 		states=states, choices=choices, epochs=100000)
 	bc=8
@@ -60,15 +62,18 @@ def main():
 		bundle_err_analytical = bundle_analytical.BundleErrorAnalytical(ncols,d,k)
 		bundle_err_empirical = bundle_empirical.AccuracyEmpirical(ncols,d,k)
 		bundle_err_empirical2 = bundle_empirical.bundle_error_empirical(ncols, k, d)
+		bun_mem = sdm_bc.Bundle_memory(ncols)
+		bun_bc_ri= sdm_bc.empirical_response(bun_mem, actions, states, choices, ntrials=100000)
 	else:
 		bundle_err_analytical = None
 		bundle_err_empirical = None
 		bundle_err_empirical2 = None
 
-	print("for k=%s, d=%s, sdm size=(%s, %s, %s), bundle_err_analytical=%s, bundle_err_empirical=%s, "
-		"bundle_err_empirical2=%s, jaeckel=%s, numerical=%s, fraction=%s, empirical=%s, fast_empirical=%s"
+	print("for k=%s, d=%s, sdm size=(%s, %s, %s), bundle_err_analytical=%s, bundle_err_empirical=%s,"
+		" bundle_err_empirical2=%s, bun_sdmbc_emp=%s, jaeckel=%s, numerical=%s, fraction=%s, empirical=%s, fast_empirical=%s"
 		" sdm_bc_empirical=%s, fast_hist=%s, sdm_bc_hist=%s" % (
 			k, d, nrows, ncols, nact, bundle_err_analytical, bundle_err_empirical, bundle_err_empirical2,
+			bun_bc_ri["error_rate"],
 			jaeckel_error, anl.perr, anl.perr_fraction, emp.perr, fast_emp.mean_error, sdm_bc_ri["error_rate"],
 			hist_err(fast_emp.ehdist, ncols, d), hist_err(sdm_bc_ri["ehdist"], ncols, d)))
 	sdm_emp.plot(anl.hdist, "Perdicted match vs distractor hamming distribution", "hamming distance",
