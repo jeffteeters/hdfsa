@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+from statistics import NormalDist
+import matplotlib.pyplot as plt
 
 
 class Find_interference():
@@ -37,8 +39,9 @@ class Find_interference():
 		self.save_error_rate_vs_hamming_distance = save_error_rate_vs_hamming_distance
 		self.number_terms_to_test = number_terms_to_test
 		self.max_combinations_to_display = max_combinations_to_display
-		self.ri_with_roll = self.empiricalError(roll_address=True)  # ri - result info
-		self.ri_without_roll = self.empiricalError(roll_address=False)
+		self.ri_roll = self.empiricalError(roll_address=True)  # ri - result info
+		self.ri_no_roll = self.empiricalError(roll_address=False)
+		self.overlaps = self.compute_overlaps()
 		self.show_largest_changes()
 
 
@@ -59,6 +62,7 @@ class Find_interference():
 		fail_count = 0
 		assert self.number_terms_to_test is None or self.number_terms_to_test <= num_transitions
 		number_transitions_to_store = num_transitions if self.number_terms_to_test is None else self.number_terms_to_test
+		self.number_transitions_to_store = number_transitions_to_store  # for use in overlaps
 		# largest_match_hamming = 0
 		# combinations_found = 0
 		for epoch_id in range(self.epochs):
@@ -149,18 +153,64 @@ class Find_interference():
 		normalized_fail_counts = fail_counts / num_transitions
 		mean_error = np.mean(normalized_fail_counts)
 		std_error = np.std(normalized_fail_counts)
+		pattern_stats = self.compute_pattern_stats(pattern_hammings)
 		info = {"perr": perr, "hdist":hdist, "mean_error": mean_error, "std_error": std_error,
-			"pattern_hammings": pattern_hammings}
+			"pattern_hammings": pattern_hammings, "pattern_stats": pattern_stats}
 		return info
 		# assert math.isclose(self.mean_error, perr)
 		# print("fast_sdm_empirical passed assertions, perr=%s" % perr)
 		# print("%s combinations found with hamming distance greater than %s" %(combinations_found, largest_match_hamming))
 
+	def compute_pattern_stats(self, pattern_hammings):
+		# computes mean and standard deviation for each component and for all components in pattern hammings
+		pattern_stats = {}
+		# import pdb; pdb.set_trace()
+		for key, ham in pattern_hammings.items():
+			hamar = np.empty((len(ham), ham[0].size), dtype=np.uint16)
+			# copy values from list of arrays to a single 2d array
+			for i in range(len(ham)):
+				hamar[i,:] = ham[i]
+			mean_p = np.mean(hamar, axis=0)
+			std_p = np.std(hamar, axis=0)
+			mean_all = np.mean(hamar)
+			std_all = np.std(hamar)
+			pattern_stats[key] = {"mean_p":mean_p, "std_p":std_p, "mean_all":mean_all, "std_all":std_all}
+		return pattern_stats
+
+	def compute_overlaps(self):
+		# compute overlaps between pattern hammings
+		an = self.ri_no_roll  # address information no roll
+		ar = self.ri_roll  # address with roll information
+		overlaps = {}
+		ov_all = np.empty(len(an["pattern_hammings"].keys()))
+		ov_par = np.empty((len(an["pattern_hammings"].keys()), self.number_transitions_to_store))
+		i = 0
+		for key in an["pattern_hammings"].keys():
+			overlap_all = NormalDist(mu=an["pattern_stats"][key]["mean_all"],
+				sigma=an["pattern_stats"][key]["std_all"]).overlap(
+				NormalDist(mu=ar["pattern_stats"][key]["mean_all"], sigma=ar["pattern_stats"][key]["std_all"]))
+			ov_all[i] = overlap_all
+			overlap_parts = np.empty(an["pattern_stats"][key]["mean_p"].size)
+			for i in range(overlap_parts.size):
+				overlap_parts[i] = NormalDist(mu=an["pattern_stats"][key]["mean_p"][i],
+					sigma=an["pattern_stats"][key]["std_p"][i]).overlap(
+					NormalDist(mu=ar["pattern_stats"][key]["mean_p"][i], sigma=ar["pattern_stats"][key]["std_p"][i]))
+			ov_par[i,:] = overlap_parts
+			overlaps[key] = {"all": overlap_all, "parts": overlap_parts}
+		self.overlaps = overlaps
+		self.ov_all = ov_all
+		self.ov_par = ov_par
+		fig, axs = plt.subplots(1, 2, sharey=True, tight_layout=True)
+		n_bins = 100
+		# We can set the number of bins with the *bins* keyword argument.
+		axs[0].hist(ov_all, bins=n_bins)
+		axs[1].hist(ov_par.flatten(), bins=n_bins)
+		plt.show()
 
 	def show_largest_changes(self):
-		print("error without roll = %s, error with roll =%s" %(self.ri_without_roll["perr"], self.ri_with_roll["perr"]))
-		print("Number patterns without roll=%s, with roll=%s" % (len(self.ri_without_roll["pattern_hammings"]),
-			len(self.ri_without_roll["pattern_hammings"])))
+		print("error without roll = %s, error with roll =%s" %(self.ri_no_roll["perr"], self.ri_roll["perr"]))
+		print("Number patterns without roll=%s, with roll=%s" % (len(self.ri_no_roll["pattern_hammings"]),
+			len(self.ri_roll["pattern_hammings"])))
 		import pdb; pdb.set_trace()
 
 
