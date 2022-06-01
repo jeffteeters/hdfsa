@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import math
 from statistics import NormalDist
 import matplotlib.pyplot as plt
-
+# from numba import jit
+import sys
 
 class Find_interference():
 
@@ -44,10 +45,11 @@ class Find_interference():
 		self.number_transitions_to_store = self.num_transitions if number_terms_to_test is None else number_terms_to_test
 		self.ri_roll = self.empiricalError(roll_address=True)  # ri - result info
 		self.ri_no_roll = self.empiricalError(roll_address=False)
-		self.overlaps = self.compute_overlaps()
+		self.hamming_overlaps = self.compute_overlaps("pattern_stats")
+		self.bit_1_count_overlaps = self.compute_overlaps("pattern_bit_1_stats")
 		self.show_largest_changes()
 
-
+	# @jit
 	def empiricalError(self, roll_address=False):
 		# compute empirical error by storing then recalling finite state automata from SDM
 		# if roll_address is True, shift address vectors before using address to store and recall
@@ -56,6 +58,7 @@ class Find_interference():
 		# "s0,a2,p3;s1,a2,p0; ..." (sorted by state e.g s0, s1, s2, ...)
 		# values are array of match hamming distances for each recalled item in order of transitions
 		pattern_hammings = {}
+		pattern_bit_1_counts = {}  # count of number of bits set to 1 in recall vector
 		fail_counts = np.zeros(self.epochs, dtype=np.uint16)
 		self.match_hamming_counts = np.zeros(self.ncols+1, dtype=np.uint32)
 		self.distractor_hamming_counts = np.zeros(self.ncols+1, dtype=np.uint32)
@@ -101,9 +104,11 @@ class Find_interference():
 				labels[i] = "s%s,a%s,p%s" % (transition_state[tri], transition_action[tri], transition_next_state[tri])
 			lidx = np.argsort(labels)  # index of sorted order of labels
 			sorted_label = ";".join([labels[lidx[i]] for i in range(len(labels))])
+			# import pdb; pdb.set_trace()
 
 			# recall data from contents matrix
 			found_transition_hammings = np.empty(transitions_to_save.size, dtype=np.uint16)
+			found_transition_bit_1_counts = np.empty(transitions_to_save.size, dtype=np.uint16)
 			for i in range(transitions_to_save.size):
 				tri = transitions_to_save[i]  # transition index
 				recalled_vector = (contents[transition_hard_locations[tri,:]].sum(axis=0) > 0)
@@ -111,6 +116,7 @@ class Find_interference():
 				hamming_distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)
 				match_hamming_distance = hamming_distances[transition_next_state[tri]]
 				found_transition_hammings[lidx[i]] = match_hamming_distance
+				found_transition_bit_1_counts[lidx[i]] = np.count_nonzero(recalled_vector)
 				# if match_hamming_distance >= largest_match_hamming:
 				# 	if epoch_id > self.epochs / 2:
 				# 		combinations_found += 1
@@ -126,24 +132,32 @@ class Find_interference():
 				# 		largest_match_hamming = match_hamming_distance
 				self.match_hamming_counts[match_hamming_distance] += 1
 				self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]] += 1 # a random distractor
-
+				# import pdb; pdb.set_trace()
 				two_smallest = np.argpartition(hamming_distances, 2)[0:2]
 				if hamming_distances[two_smallest[0]] < hamming_distances[two_smallest[1]]:
-					if transition_next_state[i] != two_smallest[0]:
+					# if transition_next_state[i] != transition_state[two_smallest[0]]:
+					if transition_next_state[tri] != two_smallest[0]:
 						fail_counts[epoch_id] += 1
 						fail_count += 1
 				elif hamming_distances[two_smallest[1]] < hamming_distances[two_smallest[0]]:
-					if transition_next_state[i] != two_smallest[1]:
+					# if transition_next_state[i] != transition_state[two_smallest[1]]:
+					if transition_next_state[tri] != two_smallest[1]:
 						fail_counts[epoch_id] += 1
 						fail_count += 1
-				elif self.count_multiple_matches_as_error or transition_next_state[i] != two_smallest[0]:
+				# elif self.count_multiple_matches_as_error or transition_next_state[i] != transition_state[two_smallest[0]]:
+				elif self.count_multiple_matches_as_error or transition_next_state[tri] != two_smallest[0]:
 					fail_counts[epoch_id] += 1
 					fail_count += 1
 				trial_count += 1
+				if trial_count > 1000 and fail_count / trial_count > 0.25:
+					print("Finding too mail fails, %s trials, %s fails, fraction=%s " % (trial_count, fail_count, fail_count / trial_count))
+					sys.exit("aborting")
 			if sorted_label not in pattern_hammings:
 				pattern_hammings[sorted_label] = [found_transition_hammings,]
+				pattern_bit_1_counts[sorted_label] = [found_transition_bit_1_counts,]
 			else:
 				pattern_hammings[sorted_label].append(found_transition_hammings)
+				pattern_bit_1_counts[sorted_label].append(found_transition_bit_1_counts)
 
 		# print("fail counts are %s" % fail_counts)
 		assert np.sum(fail_counts) == fail_count
@@ -154,8 +168,10 @@ class Find_interference():
 		mean_error = np.mean(normalized_fail_counts)
 		std_error = np.std(normalized_fail_counts)
 		pattern_stats = self.compute_pattern_stats(pattern_hammings)
+		pattern_bit_1_stats = self.compute_pattern_stats(pattern_bit_1_counts)
 		info = {"perr": perr, "hdist":hdist, "mean_error": mean_error, "std_error": std_error,
-			"pattern_hammings": pattern_hammings, "pattern_stats": pattern_stats}
+			"pattern_hammings": pattern_hammings, "pattern_stats": pattern_stats,
+			"pattern_bit_1_stats":pattern_bit_1_stats}
 		return info
 		# assert math.isclose(self.mean_error, perr)
 		# print("fast_sdm_empirical passed assertions, perr=%s" % perr)
@@ -172,7 +188,7 @@ class Find_interference():
 				hamar[i,:] = ham[i]
 			mean_p = np.mean(hamar, axis=0)
 			std_p = np.std(hamar, axis=0)
-			if np.count_nonzero(std_p) < self.number_terms_to_test:
+			if np.count_nonzero(std_p) < self.number_transitions_to_store:
 				print("found zero std_p: %s" % std_p)
 				import pdb; pdb.set_trace()
 			mean_all = np.mean(hamar)
@@ -180,8 +196,9 @@ class Find_interference():
 			pattern_stats[key] = {"mean_p":mean_p, "std_p":std_p, "mean_all":mean_all, "std_all":std_all}
 		return pattern_stats
 
-	def compute_overlaps(self):
+	def compute_overlaps(self, stats_type):
 		# compute overlaps between pattern hammings
+		assert stats_type in ("pattern_bit_1_stats", "pattern_stats")
 		an = self.ri_no_roll  # address information no roll
 		ar = self.ri_roll  # address with roll information
 		overlaps = {}
@@ -190,47 +207,109 @@ class Find_interference():
 		ov_key = sorted(an["pattern_hammings"].keys())  # sorted keys
 		ia = 0
 		for key in ov_key:
-			overlap_all = 1.0 - NormalDist(mu=an["pattern_stats"][key]["mean_all"],
-				sigma=an["pattern_stats"][key]["std_all"]).overlap(
-				NormalDist(mu=ar["pattern_stats"][key]["mean_all"], sigma=ar["pattern_stats"][key]["std_all"]))
+			# use max(sigma, 0.1) to be sure that sigma is not 0 in case only one entry (for small numbers)
+			overlap_all = 1.0 - NormalDist(mu=an[stats_type][key]["mean_all"],
+				sigma=max(an[stats_type][key]["std_all"], 0.1)).overlap(
+				NormalDist(mu=ar[stats_type][key]["mean_all"], sigma=max(ar[stats_type][key]["std_all"],0.1)))
 			ov_all[ia] = overlap_all
 			overlap_parts = np.empty(self.number_transitions_to_store)
 			for i in range(self.number_transitions_to_store):
-				overlap_parts[i] = 1.0 - NormalDist(mu=an["pattern_stats"][key]["mean_p"][i],
-					sigma=an["pattern_stats"][key]["std_p"][i]).overlap(
-					NormalDist(mu=ar["pattern_stats"][key]["mean_p"][i], sigma=ar["pattern_stats"][key]["std_p"][i]))
+				overlap_parts[i] = 1.0 - NormalDist(mu=an[stats_type][key]["mean_p"][i],
+					sigma=max(an[stats_type][key]["std_p"][i],0.1)).overlap(
+					NormalDist(mu=ar[stats_type][key]["mean_p"][i], sigma=max(ar[stats_type][key]["std_p"][i],0.1)))
 			ov_par[ia,:] = overlap_parts
-			ov_key.append(key)
 			ia += 1
 			overlaps[key] = {"all": overlap_all, "parts": overlap_parts}
-		self.overlaps = overlaps
-		self.ov_all = ov_all
-		self.ov_par = ov_par
-		self.ov_key = ov_key
+		ov_info = {"overlaps": overlaps, "ov_all":ov_all, "ov_par": ov_par, "ov_key":ov_key}
+		# self.overlaps = overlaps
+		# self.ov_all = ov_all
+		# self.ov_par = ov_par
+		# self.ov_key = ov_key
 		fig, axs = plt.subplots(1, 2, sharey=True, tight_layout=True)
 		n_bins = 100
 		# We can set the number of bins with the *bins* keyword argument.
 		axs[0].hist(ov_all, bins=n_bins)
 		axs[1].hist(ov_par.flatten(), bins=n_bins)
+		plt.title(stats_type)
 		plt.show()
+		return ov_info
+
+	# def compute_bit_1_count_overlaps(self):
+	# 	# compute overlaps between pattern hammings
+	# 	an = self.ri_no_roll  # address information no roll
+	# 	ar = self.ri_roll  # address with roll information
+	# 	overlaps = {}
+	# 	ov_all = np.empty(len(an["pattern_hammings"].keys()))
+	# 	ov_par = np.empty((len(an["pattern_hammings"].keys()), self.number_transitions_to_store))
+	# 	ov_key = sorted(an["pattern_hammings"].keys())  # sorted keys
+	# 	ia = 0
+	# 	for key in ov_key:
+	# 		# use max(sigma, 0.1) to be sure that sigma is not 0 in case only one entry (for small numbers)
+	# 		overlap_all = 1.0 - NormalDist(mu=an["pattern_stats"][key]["mean_all"],
+	# 			sigma=max(an["pattern_stats"][key]["std_all"], 0.1)).overlap(
+	# 			NormalDist(mu=ar["pattern_stats"][key]["mean_all"], sigma=max(ar["pattern_stats"][key]["std_all"],0.1)))
+	# 		ov_all[ia] = overlap_all
+	# 		overlap_parts = np.empty(self.number_transitions_to_store)
+	# 		for i in range(self.number_transitions_to_store):
+	# 			overlap_parts[i] = 1.0 - NormalDist(mu=an["pattern_stats"][key]["mean_p"][i],
+	# 				sigma=max(an["pattern_stats"][key]["std_p"][i],0.1)).overlap(
+	# 				NormalDist(mu=ar["pattern_stats"][key]["mean_p"][i], sigma=max(ar["pattern_stats"][key]["std_p"][i],0.1)))
+	# 		ov_par[ia,:] = overlap_parts
+	# 		ia += 1
+	# 		overlaps[key] = {"all": overlap_all, "parts": overlap_parts}
+	# 	self.overlaps = overlaps
+	# 	self.ov_all = ov_all
+	# 	self.ov_par = ov_par
+	# 	self.ov_key = ov_key
+	# 	fig, axs = plt.subplots(1, 2, sharey=True, tight_layout=True)
+	# 	n_bins = 100
+	# 	# We can set the number of bins with the *bins* keyword argument.
+	# 	axs[0].hist(ov_all, bins=n_bins)
+	# 	axs[1].hist(ov_par.flatten(), bins=n_bins)
+	# 	plt.show()
 
 	def show_largest_changes(self):
-		print("error without roll = %s, error with roll =%s" %(self.ri_no_roll["perr"], self.ri_roll["perr"]))
-		print("Number patterns without roll=%s, with roll=%s" % (len(self.ri_no_roll["pattern_hammings"]),
-			len(self.ri_roll["pattern_hammings"])))
+		an = self.ri_no_roll  # address information no roll
+		ar = self.ri_roll  # address with roll information
+		print("error without roll = %s, error with roll =%s" %(an["perr"], ar["perr"]))
+		print("Number patterns without roll=%s, with roll=%s" % (len(an["pattern_hammings"]),
+			len(ar["pattern_hammings"])))
 		# find largest values
 		nc = self.num_combinations_to_display
+		assert self.number_transitions_to_store == self.hamming_overlaps["ov_par"].shape[1]
 		# from: https://stackoverflow.com/questions/10337533/a-fast-way-to-find-the-largest-n-elements-in-an-numpy-array
-		ov_parf = ov_par.flatten()
-		tmp_idx = np.argpartition(-ov_parf, nc)[0:nc]
+		ov_parf = self.hamming_overlaps["ov_par"].flatten()
+		bit1_parf = self.bit_1_count_overlaps["ov_par"].flatten()
+		tmp_idx = np.argsort(-ov_parf)[0:nc]
 		for idx in tmp_idx:
 			ov_amt = ov_parf[idx]
-			key_i = int(idx / self.ov_par.shape[0])
-			trm_i = idx % self.ov_par.shape[0]  # index of term of highest hamming distance
-			terms = self.ov_key[key_i].split(";")
-			terms[trm_i] = "<%s>" % terms[trm_i]
-			print("%s - %s" % (ov_amt, ";".join(terms)))
-
+			bit1_amt = bit1_parf[idx]
+			key_i = int(idx / self.hamming_overlaps["ov_par"].shape[1])
+			trm_i = idx % (key_i * self.hamming_overlaps["ov_par"].shape[1])  # index of term of highest hamming distance
+			key = self.hamming_overlaps["ov_key"][key_i]
+			# bit_1_count_mean = self.bit_1_count_overlaps[]
+			# import pdb; pdb.set_trace()
+			terms = self.hamming_overlaps["ov_key"][key_i].split(";")
+			terms[trm_i] = "*%s*" % terms[trm_i]
+			no_roll_hamming_mean_all = an["pattern_stats"][key]["mean_all"]
+			roll_hamming_mean_all = ar["pattern_stats"][key]["mean_all"]
+			print("\n%s - %s, bit1-%s:" % (round(ov_amt,3), ";".join(terms), round(bit1_amt,3)))
+			print("mean hamming no_roll=%s roll=%s, diff=%s" % (round(no_roll_hamming_mean_all,3),
+				round(roll_hamming_mean_all,3),
+				round(no_roll_hamming_mean_all - roll_hamming_mean_all, 3)))
+			for j in range(self.number_transitions_to_store):
+				no_roll_hamming_mean = an["pattern_stats"][key]["mean_p"][j]
+				no_roll_hamming_std = an["pattern_stats"][key]["std_p"][j]
+				roll_hamming_mean = ar["pattern_stats"][key]["mean_p"][j]
+				roll_hamming_std = ar["pattern_stats"][key]["std_p"][j]
+				print("%s ov diff=%s, hamming no_roll=%s, roll=%s diff=%s" % (terms[j],
+					round(self.hamming_overlaps["ov_par"][key_i][j],3),
+					round(no_roll_hamming_mean,3),
+					# round(no_roll_hamming_std,3),
+					round(roll_hamming_mean,3),
+					# round(roll_hamming_std,3),
+					round(no_roll_hamming_mean - roll_hamming_mean,3)
+					))
 		# import pdb; pdb.set_trace()
 
 
@@ -242,7 +321,7 @@ def main():
 	# nrows = 1; ncols=20; nact=1; actions=2; states=3; choices=2
 	# fse = Fast_sdm_empirical(nrows, ncols, nact)
 	# nrows = 24; ncols=20; nact=2; actions=2; states=7; choices=2
-	nrows=1; ncols=128; nact=1; k=9; d=3; actions=3; states=3; choices=3; epochs=1000000; number_terms_to_test=5
+	nrows=1; ncols=128; nact=1; k=9; d=3; actions=3; states=3; choices=3; epochs=1000000; number_terms_to_test=3
 	fse = Find_interference(nrows, ncols, nact, actions=actions, states=states, choices=choices, epochs=epochs,
 		number_terms_to_test=number_terms_to_test)
 	# print("With nrows=%s, ncols=%s, nact=%s, mean_error=%s, std_error=%s" % (nrows, ncols, nact, fse.mean_error,
@@ -312,5 +391,20 @@ Another one:
 
 	Contains one part inside
 
+ s0,a0,p1;<s0,a1,p0>;s0,a2,p2;s1,a0,p0;s1,a1,p1;s1,a2,p2;s2,a0,p1;s2,a1,p2;s2,a2,p0
+
+ Recall with:
+ s0,a1
+
+ Terms are:
+  s0,a1 * s0,a0,p1 = a0,a1,p1
+  s0,a1 * s0,a1,p0 = p0
+  s0,a1 * s0,a2,p2 = a1,a2,p2
+  s0,a1 * s1,a0,p0 = s0,s1,a0,a1,p0
+  s0,a1 * s1,a1,p1 = s0,p1
+  s0,a1 * s1,a2,p2 = s0,s1,a1,a2,p2
+  s0,a1 * s2,a0,p1 = s0,s2,a0,a1,p1
+  s0,a1 * s2,a1,p2 = s0,s2,p2
+  s0,a1 * s2,a2,p0 = s0,s2,a1,a2,p0
 
 """

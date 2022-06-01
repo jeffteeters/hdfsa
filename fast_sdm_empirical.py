@@ -7,7 +7,8 @@ class Fast_sdm_empirical():
 
 	# calculate SDM empirical error using numpy as much as possible
 
-	def __init__(self, nrows, ncols, nact, actions=10, states=100, choices=10, epochs=10, count_multiple_matches_as_error=True, debug=False,
+	def __init__(self, nrows, ncols, nact, actions=10, states=100, choices=10, epochs=10,
+			count_multiple_matches_as_error=True, roll_address=True, debug=False,
 			save_error_rate_vs_hamming_distance=False):
 		# nrows is number of rows (hard locations) in the SDM
 		# ncols is the number of columns
@@ -29,6 +30,7 @@ class Fast_sdm_empirical():
 		self.epochs = epochs
 		assert actions >= choices, "Number actions must be >= number of choices"
 		self.count_multiple_matches_as_error = count_multiple_matches_as_error
+		self.roll_address = roll_address
 		self.debug = debug
 		self.save_error_rate_vs_hamming_distance = save_error_rate_vs_hamming_distance
 		self.empiricalError()
@@ -63,6 +65,12 @@ class Fast_sdm_empirical():
 			contents = np.zeros((self.nrows, self.ncols), dtype=np.int16)
 			# save FSA into SDM contents matrix
 			address = np.logical_xor(im_state[transition_state], im_action[transition_action])
+			if self.roll_address:
+				# roll each row in address by state number.  This to prevent the mysterious interference
+				# roll done using method in: https://stackoverflow.com/questions/20360675/roll-rows-of-a-matrix-independently
+				rows, column_indices = np.ogrid[:address.shape[0], :address.shape[1]]
+				column_indices = column_indices - transition_state[:, np.newaxis]
+				address = address[rows, column_indices]
 			data = np.logical_xor(address, np.roll(im_state[transition_next_state], 1, axis=1))*2-1
 			for i in range(num_transitions):
 				contents[transition_hard_locations[i,:]] += data[i]
@@ -137,15 +145,16 @@ class Fast_sdm_empirical():
 		self.mean_error = np.mean(normalized_fail_counts)
 		self.std_error = np.std(normalized_fail_counts)
 		assert math.isclose(self.mean_error, perr)
-		print("fast_sdm_empirical passed assertions, perr=%s" % perr)
+		print("fast_sdm_empirical epochs=%s, perr=%s, std_error=%s" % (self.epochs, perr, self.std_error))
 
 
 def main():
-	ncols = 512
+	ncols = 512; actions=10; choices=10; states=100
 	# nrows=239; nact=3  # should give error rate of 10e-6
 	# nrows=86; nact=2  # should be error rate of 10e-2
+	nrows=125; nact=2 # should give error rate 10e-3
 	# nrows = 51; nact=1  # should give error 10e-1
-	nrows = 1; ncols=20; nact=1; actions=2; states=3; choices=2
+	# nrows = 1; ncols=20; nact=1; actions=2; states=3; choices=2
 	# fse = Fast_sdm_empirical(nrows, ncols, nact)
 	# nrows = 24; ncols=20; nact=2; actions=2; states=7; choices=2
 	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices)

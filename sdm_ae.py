@@ -60,7 +60,16 @@ class Sdm_error_analytical:
 			self.compute_hamming_dist()
 			if d is not None:
 				self.compute_overall_perr()
-				self.compute_overall_perr_fraction()
+				# perr_fraction is leveling out when error gets small.  When running plot_sdm_error_vs_dims:
+				# starting 4 (10e-5 error)
+				# warning, in sdmae, perror=9.953150801877975e-06, perr_fraction=2.0241882869370637e-05
+				# starting 5 (10e-6 error)
+				# warning, in sdmae, perror=9.686530652031067e-07, perr_fraction=1.1265137007996028e-05
+				# starting 6
+				# warning, in sdmae, perror=1.0220631629920263e-07, perr_fraction=1.0753236151307854e-05
+				# self.compute_overall_perr_fraction()
+				# if not math.isclose(self.perr, self.perr_fraction):
+				# 	print("warning, in sdmae, perror=%s, perr_fraction=%s" % (self.perr, self.perr_fraction))
 		if show_progress:
 			self.display_result()
 
