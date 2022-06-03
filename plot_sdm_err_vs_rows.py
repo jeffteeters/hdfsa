@@ -12,12 +12,12 @@ import math
 sdm_dims = [
 #  perror, nrows, nact, epochs;  perror is predicted error in 10e-n
   [1, 51, 1, 200],
-  [2, 86, 2, 500],
-  [3, 125, 2, 1000],
-  [4, 168, 2, 5000],
-  [5, 196, 3, 10000],
-  [6, 239, 3, 30000],
-  [7, 285, 3, 60000],
+  [2, 86, 2, 200],
+  [3, 125, 2, 500],
+  [4, 168, 2, 500],
+  [5, 196, 3, 1000],
+  [6, 239, 3, 0],
+  [7, 285, 3, 0],
 #  [8, 312, 4],
 #  [9, 349, 4]
 ]
@@ -35,7 +35,7 @@ for i in range(len(sdm_dims)):
 		# epochs = 100 if perr < 3 else 1000  # int(max((10**perr)*100/1000, 100))
 		print("perr=%s, calling fast_emp with epochs=%s" % (perr, epochs))
 		fast_emp = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, actions=actions,
-			states=states, choices=choices, epochs=epochs) #100000)
+			states=states, choices=choices, epochs=epochs, bits_per_counter=1) #100000)
 		emp_mean.append(fast_emp.mean_error)
 		mean_error = fast_emp.mean_error
 		std_error = fast_emp.std_error
@@ -130,3 +130,43 @@ plt.show()
 # starting Fast_sdm_empirical, nrows=285, ncols=512, nact=3, actions=10, states=100, choices=10
 # fast_sdm_empirical epochs=60000, perr=1e-07, std_error=9.999499987499376e-06
 # Done calling fast empirical
+#
+# real	2312m51.654s
+# user	380m40.024s
+# sys	3m43.139s
+
+# works well with smaller epoch counts:
+# (base) Jeffs-MacBook:hdfsa jt$ time python plot_sdm_err_vs_rows.py 
+# starting 0
+# perr=1, calling fast_emp with epochs=200
+# starting Fast_sdm_empirical, nrows=51, ncols=512, nact=1, actions=10, states=100, choices=10
+# fast_sdm_empirical epochs=200, perr=0.099795, std_error=0.00942777677928365
+# Done calling fast empirical
+# starting 1
+# perr=2, calling fast_emp with epochs=200
+# starting Fast_sdm_empirical, nrows=86, ncols=512, nact=2, actions=10, states=100, choices=10
+# fast_sdm_empirical epochs=200, perr=0.010215, std_error=0.0032555759859047985
+# Done calling fast empirical
+# starting 2
+# perr=3, calling fast_emp with epochs=500
+# starting Fast_sdm_empirical, nrows=125, ncols=512, nact=2, actions=10, states=100, choices=10
+# fast_sdm_empirical epochs=500, perr=0.00111, std_error=0.0010324243313676793
+# Done calling fast empirical
+# starting 3
+# perr=4, calling fast_emp with epochs=500
+# starting Fast_sdm_empirical, nrows=168, ncols=512, nact=2, actions=10, states=100, choices=10
+# fast_sdm_empirical epochs=500, perr=0.000114, std_error=0.00033616067586795455
+# Done calling fast empirical
+# starting 4
+# perr=5, calling fast_emp with epochs=1000
+# starting Fast_sdm_empirical, nrows=196, ncols=512, nact=3, actions=10, states=100, choices=10
+# fast_sdm_empirical epochs=1000, perr=1e-05, std_error=9.949874371066199e-05
+# Done calling fast empirical
+# starting 5
+# starting 6
+
+# real	17m43.876s
+# user	16m0.467s
+# sys	0m12.667s
+
+# Now try with binary counters
