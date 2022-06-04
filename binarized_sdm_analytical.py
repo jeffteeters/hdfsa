@@ -4,6 +4,7 @@
 import numpy as np
 import math
 from scipy.stats import binom
+from scipy.stats import poisson
 import matplotlib.pyplot as plt
 import sys
 
@@ -38,9 +39,19 @@ def p_error_binom (N, D, dp_hit):
 
 
 def binary_sdm_analytical(nrows, ncols, nact, k, d):
-	dp_hit = binarized_delta(nrows, nact, k)
-	print ("dp_hit=%s" % dp_hit)
-	p_err = p_error_binom(ncols, d, dp_hit)
+	# estimate error for binary sdm assuming poission distribution for overlaps
+	mean_overlap = nact * k / nrows
+	# import pdb; pdb.set_trace()
+	possible_overlaps = np.arange(1,(((mean_overlap*3)+1)//2)*2+1)  # 3 std, make sure even number of entries
+	prob_overlap = poisson.pmf(possible_overlaps, mean_overlap)
+	delt_overlap =  0.5 - (0.4 / np.sqrt(possible_overlaps - 0.44))   # delta (normalized hamming distance) per counter
+	delt_overlap[0] = 0
+	odd_delt_overlap = delt_overlap[0::2]  # select only odd number overlaps
+	prob_overlap_odd = prob_overlap[0::2] + prob_overlap[1::2]  # probability of odd number overlaps
+	dp_hit_new = np.dot(odd_delt_overlap, prob_overlap_odd)
+	dp_hit_old = binarized_delta(nrows, nact, k)
+	print ("dp_hit_new=%s, dp_hit_old=%s" % (dp_hit_new, dp_hit_old))
+	p_err = p_error_binom(ncols, d, dp_hit_new)
 	return p_err
 
 
@@ -49,8 +60,7 @@ def main():
 
 	d=100; k=1000; ncols=512
 	nacts = [1,3,5,7]
-	rows_to_test = list(range(50, 101, 20)) # list(range(200, 380, 10))
-
+	rows_to_test = list(range(50, 380, 10))  # list(range(50, 101, 20)) # 
 	p_err=np.empty((len(nacts), len(rows_to_test)), dtype=np.float64);
 
 	for i in range(len(rows_to_test)):
