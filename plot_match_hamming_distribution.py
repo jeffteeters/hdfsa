@@ -16,7 +16,7 @@ def main():
 	nrows = 200
 	nact = 1
 	bits_per_counter = 1
-	epochs = 100
+	epochs = 10
 	fast_emp = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, actions=actions,
 			hl_selection_method="random", roll_address=True,
 			states=states, choices=choices, epochs=epochs, bits_per_counter=bits_per_counter)
@@ -40,6 +40,21 @@ def main():
 	plt.ylabel("fraction present")
 	plt.grid()
 	plt.legend(loc="upper right")
+	plt.show()
+
+	# plot probability and error distributions from binarized and sdm_ae
+	num_vals = 100
+	xvals = np.arange(num_vals)
+	plt.errorbar(xvals, bsm.prob_overlap[0:num_vals], yerr=None, fmt="-o", label="bsm prob_overlap")
+	# import pdb; pdb.set_trace()
+	plt.errorbar(xvals, anl.cop_prb[0:num_vals], yerr=None, fmt="-o", label="sdm_ae cop_prb")
+	plt.title("probability overlaps")
+	plt.legend(loc="lower right")
+	plt.show()
+	plt.errorbar(xvals, bsm.delt_overlap[0:num_vals], yerr=None, fmt="-o", label="bsm delt_overlap")
+	plt.errorbar(xvals, anl.cop_err[0:num_vals], yerr=None, fmt="-o", label="sdm_ae cop_err")
+	plt.title("error with number overlaps")
+	plt.legend(loc="lower right")
 	plt.show()
 
 

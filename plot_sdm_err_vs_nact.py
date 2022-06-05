@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 import math
 
 actions=10; states=100; choices=10; d=100; k=1000; ncols=512
-nacts = [1,3]
+nacts = [3,5,7]
 bits_per_counter=1
-rows_to_test = list(range(145, 160, 1))
+rows_to_test = list(range(200, 380, 10))
 
 emp_mean=np.empty((len(nacts), len(rows_to_test)), dtype=np.float64);
 emp_clm=np.empty((len(nacts), len(rows_to_test)), dtype=np.float64);
@@ -23,14 +23,17 @@ for i in range(len(rows_to_test)):
 	nrows = rows_to_test[i]
 	for j in range(len(nacts)):
 		nact = nacts[j]
-		epochs=500
+		epochs=1000
+		print("nrows=%s, nact=%s, epochs=%s, " % (nrows, nact, epochs), end='')
 		fast_emp = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, actions=actions,
+			hl_selection_method="random",
 			states=states, choices=choices, epochs=epochs, bits_per_counter=bits_per_counter) #100000)
 		emp_mean[j,i] = fast_emp.mean_error
 		# compute 95% confidence interval as described in:
 		# https://blogs.sas.com/content/iml/2019/10/09/statistic-error-bars-mean.html
 		ntrials = epochs * k
 		emp_clm[j,i] = (fast_emp.std_error / math.sqrt(ntrials)) * 1.96  # 95% confidence interval for the mean (CLM)
+		print("perr=%s, std=%s" % (fast_emp.mean_error, fast_emp.std_error))
 
 # plot info
 # make plots

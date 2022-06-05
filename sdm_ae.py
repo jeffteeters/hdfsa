@@ -136,6 +136,7 @@ class Sdm_error_analytical:
 		assert self.cop_key.size == self.cop_prb.size, "after combining like keys, len(cop_key)=%s, len(cop_prb)=%s" % (
 			self.cop_key.size, self.cop_prb.size)
 		# prune terms with probability smaller than threshold
+		return  # don't prune for testing
 		max_prb = self.cop_prb.max()
 		thrsh = max_prb / self.threshold
 		mask = self.cop_prb > thrsh  # keep terms larger than threshold

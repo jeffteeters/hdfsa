@@ -1,12 +1,40 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+from numba import jit
+from numba import int32, float32, uint32, boolean, float64    # import the types
+# from numba.experimental import jitclass
+import sys
 
+spec = [
+    ('nrows', int32),
+    ('ncols', int32),
+    ('nact', int32),
+    ('actions', int32),
+    ('states', int32),
+    ('choices', int32),
+    ('epochs', int32),
+    ('count_multiple_matches_as_error', boolean),
+    ('roll_address', boolean),
+    ('debug', boolean),
+    ('hl_selection_method_hamming', boolean),
+    ('save_error_rate_vs_hamming_distance', boolean),
+    ('truncate_counters', boolean),
+    ('include_zero', boolean),
+    ('magnitude', int32),
+    ('match_hamming_counts', uint32[:]),
+    ('distractor_hamming_counts', uint32[:]),
+    ('ehdist', float64[:]),
+    ('mean_error', float64),
+    ('std_error', float64),
+]
 
+# @jitclass(spec)
 class Fast_sdm_empirical():
 
 	# calculate SDM empirical error using numpy as much as possible
 
+	# @jit
 	def __init__(self, nrows, ncols, nact, actions=10, states=100, choices=10, epochs=10,
 			count_multiple_matches_as_error=True, roll_address=True, debug=False,
 			hl_selection_method="hamming", bits_per_counter=8,
@@ -24,8 +52,8 @@ class Fast_sdm_empirical():
 		# "random" - randomly pick hard locations for each address
 		# bits_per_counter - number of bits counter truncated to before reading. 1 to binarize.  Has 0.5 added to
 		# include zero. e.g. 1.5 means -1, 0, +1;  If greater than 4, zero is always included
-		print("starting Fast_sdm_empirical, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
-			nrows, ncols, nact, actions, states, choices))
+		# print("starting Fast_sdm_empirical, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
+		# 	nrows, ncols, nact, actions, states, choices))
 		self.nrows = nrows
 		self.ncols = ncols
 		self.nact = nact
@@ -47,9 +75,9 @@ class Fast_sdm_empirical():
 			# bpc has a 0.5 fractional part.  if bpc >= 5, always include zero in the range.
 			self.include_zero = bits_per_counter >= 5 or int(bits_per_counter * 10) % 10 == 5
 			self.magnitude = 2**int(bits_per_counter) / 2
-		self.empiricalError()
+		# self.empiricalError()
 
-	def empiricalError(self):
+	# def empiricalError(self):
 		# compute empirical error by storing then recalling finite state automata from SDM
 		fail_counts = np.zeros(self.epochs, dtype=np.uint16)
 		self.match_hamming_counts = np.zeros(self.ncols+1, dtype=np.uint32)
@@ -62,13 +90,18 @@ class Fast_sdm_empirical():
 			if self.hl_selection_method_hamming:
 				# create addresses used for selecting hard locations
 				im_address = rng.integers(0, high=2, size=(self.nrows, self.ncols), dtype=np.int8)
+				# im_address = np.random.randint(0,high=2,size=(self.nrows, self.ncols)).astype(np.int8)
 			im_action = rng.integers(0, high=2, size=(self.actions, self.ncols), dtype=np.int8)
+			# im_action = np.random.randint(0,high=2,size=(self.actions, self.ncols)).astype(np.int8)
 			im_state = rng.integers(0, high=2, size=(self.states, self.ncols), dtype=np.int8)
+			# im_state = np.random.randint(0, high=2, size=(self.states, self.ncols)).astype(np.int8)
 			transition_action = np.empty((self.states, self.choices), dtype=np.uint16)
 			transition_next_state = np.empty((self.states, self.choices), dtype=np.uint16)
 			for i in range(self.states):
 				transition_action[i,:] = rng.choice(self.actions, size=self.choices, replace=False)
+				# transition_action[i,:] = np.random.choice(self.actions, size=self.choices, replace=False)
 				transition_next_state[i,:] = rng.choice(self.states, size=self.choices, replace=False)
+				# transition_next_state[i,:] = np.random.choice(self.states, size=self.choices, replace=False)
 			transition_state = np.repeat(np.arange(self.states), self.choices)
 			transition_action = transition_action.flatten()
 			transition_next_state = transition_next_state.flatten()
@@ -78,6 +111,7 @@ class Fast_sdm_empirical():
 			assert transition_next_state.size == num_transitions
 			transition_hard_locations = np.empty((num_transitions, self.nact), dtype=np.uint16)
 			if self.hl_selection_method_hamming:
+				# assert False, "hamming method not implemented"
 				if self.nrows == 1:
 					# special case of only one row (same as bundle)
 					transition_hard_locations[:] = 0
@@ -89,9 +123,11 @@ class Fast_sdm_empirical():
 				# use randon locations
 				for i in range(num_transitions):
 					transition_hard_locations[i,:] = rng.choice(self.nrows, size=self.nact, replace=False)
+					# transition_hard_locations[i,:] = np.random.choice(self.nrows, size=self.nact, replace=False)
 			contents = np.zeros((self.nrows, self.ncols), dtype=np.int16)
 			# save FSA into SDM contents matrix
 			if self.roll_address:
+				# assert False, "roll_address not supported"
 				# roll each row in address by state number.  This to prevent the mysterious interference
 				# roll done using method in: https://stackoverflow.com/questions/20360675/roll-rows-of-a-matrix-independently
 				rows, column_indices = np.ogrid[:address.shape[0], :address.shape[1]]
@@ -106,6 +142,7 @@ class Fast_sdm_empirical():
 				if not self.include_zero:
 					# replace zero counter values with random +1 or -1
 					random_plus_or_minus_one = rng.integers(0, high=2, size=(self.nrows, self.ncols), dtype=np.int8)*2-1
+					# random_plus_or_minus_one = np.random.randint(0, high=2, size=(self.nrows, self.ncols), dtype=np.int8)*2-1
 					mask = contents == 0
 					contents[mask] = random_plus_or_minus_one[mask]
 			# recall data from contents matrix
@@ -137,8 +174,12 @@ class Fast_sdm_empirical():
 		normalized_fail_counts = fail_counts / num_transitions
 		self.mean_error = np.mean(normalized_fail_counts)
 		self.std_error = np.std(normalized_fail_counts)
+		self.match_hamming_distribution = self.match_hamming_counts / trial_count
+		self.distractor_hamming_distribution = self.distractor_hamming_counts / trial_count
+		assert math.isclose(sum(self.match_hamming_distribution), 1.0), "match_hamming_distribution sum not 1: %s" % (
+			sum(self.match_hamming_distribution))
 		assert math.isclose(self.mean_error, perr)
-		print("fast_sdm_empirical epochs=%s, perr=%s, std_error=%s" % (self.epochs, perr, self.std_error))
+		# print("fast_sdm_empirical epochs=%s, perr=%s, std_error=%s" % (self.epochs, perr, self.std_error))
 
 
 def main():
