@@ -16,30 +16,14 @@ class Binarized_sdm_analytical():
 		# nact is activaction count
 		# k - number of items stored
 		# d - size of item memory
-		# mean_overlap = nact * k / nrows
-		# import pdb; pdb.set_trace()
-		# num_possible_overlaps = (round(5*mean_overlap)//2)*2  # 5 std, make sure even number so len(possible_overlap)
-		# is odd so final delt_overlap (odd) won't need next item
-		num_possible_overlaps = k - 1 # (k // 2) * 2  # if all items happend to activate same address (assuming nact == 1)
-		# make sure even number so len(possible_overlap) is odd so final delt_overlap (odd) won't need next item
+		num_possible_overlaps = k - 1 # number of possible overlaps onto target item (1 row)
 		possible_overlaps = np.arange(0,num_possible_overlaps)
 		prob_one_trial_overlap = 1 / nrows
 		prob_overlap = binom.pmf(possible_overlaps, num_possible_overlaps, prob_one_trial_overlap )
-		# prob_overlap = poisson.pmf(possible_overlaps, mean_overlap)
-		# print("sum_before=%s" % prob_overlap.sum())
-		# prob_overlap = prob_overlap / prob_overlap.sum()  # normalize to take into account 0 overlaps not included
 		# delt_overlap =  0.5 - (0.4 / np.sqrt(possible_overlaps - 0.44))   # delta (normalized hamming distance) per counter
 		oddup = np.floor((possible_overlaps+1)/2)*2  # round odd values up to next even integer, e.g.: [ 0.,  2.,  2.,  4.,  4.,  6.,  6., ...
 		delt_overlap = binom.cdf(oddup/2-1, oddup, 0.5) # normalized hamming distance for each overlap,
-		# should be like: [0., 0.25, 0.25, 0.3125, 0.3125, 0.34375, 0.34375 (if odd overlap on top of tartet 1, add random vector to break ties)
-
-		# even_overlaps = np.arange(0,possible_overlaps,2)
-		# edelta = binom.cdf(even_overlaps/2-1, even_overlaps, 0.5)  # probability of error for even overlaps (on top of target 1)
-		# delt_overlap = np.repeat(edelta,2)  # set full range, 
-		# # import pdb; pdb.set_trace()
-		# delt_overlap = binom.cdf(possible_overlaps/2-1, possible_overlaps, 0.5)
-		# delt_overlap[1:-1:2]=delt_overlap[2::2] # replace even by next odd (if even overlap add random vector to break ties)
-		# delt_overlap[0] = 0  # overlap 1 has 0 hamming distance
+		# like: [0., 0.25, 0.25, 0.3125, 0.3125, 0.34375, 0.34375 (if odd overlap on top of target 1, add random vector to break ties)
 		hdist = np.empty(ncols + 1)  # probability mass function
 		for h in range(len(hdist)):  # hamming distance
 			phk = binom.pmf(h, ncols, delt_overlap)
@@ -49,77 +33,9 @@ class Binarized_sdm_analytical():
 		self.match_hamming_distribution = hdist
 		self.prob_overlap = prob_overlap
 		self.delt_overlap = delt_overlap
-		print("sum match_hamming_distribution=%s" % sum(self.match_hamming_distribution))
+		# print("sum match_hamming_distribution=%s" % sum(self.match_hamming_distribution))
 		p_err = self.compute_overall_perr(self.match_hamming_distribution, d)
-		# self.match_hamming_distribution = match_hamming_distribution
 		self.p_err = p_err
-
-		# # import pdb; pdb.set_trace()
-		# # odd_delt_overlap = delt_overlap[0::2]  # select only odd number overlaps
-		# # prob_overlap_odd = prob_overlap[0::2] + prob_overlap[1::2]  # probability of odd number overlaps
-		# match_hamming_distribution = np.zeros(ncols+1, dtype=np.float64)
-		# for i in range(len(prob_overlap)):
-		# 	overlap = possible_overlaps[i]
-		# 	delta = delt_overlap[i] if overlap % 2 ==1 else delt_overlap[i+1]
-		# 	hamming = round(delta * ncols)
-		# 	match_hamming_distribution[hamming] += prob_overlap[i]
-		# print("sum match_hamming_distribution=%s" % sum(match_hamming_distribution))
-		# p_err = self.compute_overall_perr(match_hamming_distribution, d)
-		# self.match_hamming_distribution = match_hamming_distribution
-		# self.p_err = p_err
-
-	def compute_hamming_dist(self, ncols):
-		# compute distribution of probability of each hamming distance
-		# print("start compute_hamming_dist for ncols=%s" % ncols)
-		hdist = np.empty(ncols + 1)  # probability mass function
-		for h in range(len(hdist)):  # hamming distance
-			phk = binom.pmf(h, ncols, self.cop_err)
-			hdist[h] = np.dot(phk, self.cop_prb)
-		# print("hdist (pmf) sum is %s (should be close to 1)" % np.sum(hdist))
-		# assert math.isclose(np.sum(pmf), 1.0), "hdist sum is not equal to 1, is: %s" % np.sum(pmf)
-		self.hdist = hdist
-		# possible_overlaps = np.arange(1,(((mean_overlap*3)+1)//2)*2+1)  # 3 std, make sure even number of entries
-		# prob_overlap = poisson.pmf(possible_overlaps, mean_overlap)
-		# delt_overlap =  0.5 - (0.4 / np.sqrt(possible_overlaps - 0.44))   # delta (normalized hamming distance) per counter
-		# delt_overlap[0] = 0
-		# odd_delt_overlap = delt_overlap[0::2]  # select only odd number overlaps
-		# prob_overlap_odd = prob_overlap[0::2] + prob_overlap[1::2]  # probability of odd number overlaps
-		# match_hamming_distribution = np.zeros(ncols+1, dtype=np.float64)
-		# for i in range(len(odd_delt_overlap)):
-		# 	match_hamming_distribution[round(odd_delt_overlap[i]*ncols)] += prob_overlap_odd[i]
-		# print("sum match_hamming_distribution=%s" % sum(match_hamming_distribution))
-		# p_err = self.compute_overall_perr(match_hamming_distribution, d)
-		# self.match_hamming_distribution = match_hamming_distribution
-		# self.p_err = p_err
-
-# def binarized_delta(nrows, nact, k):
-# 	# nrows - number rows in sdm
-# 	# activaction count - (number rows selected when writing or reading, must be odd)
-# 	# k - number of items stored in SDM
-# 	# import pdb; pdb.set_trace()
-# 	assert nact % 2 == 1, "nact must be odd"
-# 	ao = k * nact / nrows   # average number of vectors summed in each counter (ao - average overlap)
-# 	cd = 0.5 - (0.4 / math.sqrt(ao - 0.44))   # delta (normalized hamming distance) per counter
-# 	dp_hit = binom.sf(nact-((nact+1)/2), nact, cd)   # probability of getting majority of counters on right side of zero
-# 	print("nact=%s, ao=%s, cd=%s, dp_hit=%s" % (nact, ao, cd, dp_hit))
-# 	return dp_hit
-
-# def p_error_binom (N, D, dp_hit):
-# 	# compute error by summing values given by two binomial distributions
-# 	# N - width of word (number of components)
-# 	# D - number of items in item memory
-# 	# dp_hit - normalized hamming distance of superposition vector to matching vector in item memory
-# 	phds = np.arange(N+1)  # possible hamming distances
-# 	match_hammings = binom.pmf(phds, N+1, dp_hit)
-# 	distractor_hammings = binom.pmf(phds, N+1, 0.5)  # should this be N (not N+1)?
-# 	num_distractors = D - 1
-# 	dhg = 1.0 # fraction distractor hamming greater than match hamming
-# 	p_err = 0.0  # probability error
-# 	for k in phds:
-# 		dhg -= distractor_hammings[k]
-# 		p_err += match_hammings[k] * (1.0 - dhg ** num_distractors)
-# 	return p_err
-
 
 	def compute_overall_perr(self, match_hamming_distribution, d):
 		# compute overall error rate, by integrating over all hamming distances with distractor distribution
@@ -140,29 +56,6 @@ class Binarized_sdm_analytical():
 		p_corr = np.dot(ph_corr, hdist)
 		perr = 1 - p_corr
 		return perr
-
-# def binary_sdm_analytical(nrows, ncols, nact, k, d):
-# 	# estimate error for binary sdm assuming poission distribution for overlaps
-# 	mean_overlap = nact * k / nrows
-# 	# import pdb; pdb.set_trace()
-# 	possible_overlaps = np.arange(1,(((mean_overlap*3)+1)//2)*2+1)  # 3 std, make sure even number of entries
-# 	prob_overlap = poisson.pmf(possible_overlaps, mean_overlap)
-# 	delt_overlap =  0.5 - (0.4 / np.sqrt(possible_overlaps - 0.44))   # delta (normalized hamming distance) per counter
-# 	delt_overlap[0] = 0
-# 	odd_delt_overlap = delt_overlap[0::2]  # select only odd number overlaps
-# 	prob_overlap_odd = prob_overlap[0::2] + prob_overlap[1::2]  # probability of odd number overlaps
-# 	match_hamming_distribution = np.zeros(ncols, dtype=np.float64)
-# 	for i in range(len(odd_delt_overlap)):
-# 		match_hamming_distribution[round(odd_delt_overlap[i]*ncols)] += prob_overlap_odd[i]
-# 	print("sum match_hamming_distribution=%s" % sum(match_hamming_distribution))
-# 	p_err = compute_overall_perr(match_hamming_distribution, d)
-# 	return p_err
-
-	# dp_hit_new = np.dot(odd_delt_overlap, prob_overlap_odd)
-	# dp_hit_old = binarized_delta(nrows, nact, k)
-	# print ("dp_hit_new=%s, dp_hit_old=%s" % (dp_hit_new, dp_hit_old))
-	# p_err = p_error_binom(ncols, d, dp_hit_new)
-	# return p_err
 
 
 def main():
