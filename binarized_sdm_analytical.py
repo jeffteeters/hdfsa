@@ -20,17 +20,25 @@ class Binarized_sdm_analytical():
 		# import pdb; pdb.set_trace()
 		# num_possible_overlaps = (round(5*mean_overlap)//2)*2  # 5 std, make sure even number so len(possible_overlap)
 		# is odd so final delt_overlap (odd) won't need next item
-		num_possible_overlaps = (k // 2) * 2  # if all items happend to activate same address (assuming nact == 1)
+		num_possible_overlaps = k - 1 # (k // 2) * 2  # if all items happend to activate same address (assuming nact == 1)
 		# make sure even number so len(possible_overlap) is odd so final delt_overlap (odd) won't need next item
-		possible_overlaps = np.arange(1,num_possible_overlaps)
+		possible_overlaps = np.arange(0,num_possible_overlaps)
 		prob_one_trial_overlap = 1 / nrows
 		prob_overlap = binom.pmf(possible_overlaps, num_possible_overlaps, prob_one_trial_overlap )
 		# prob_overlap = poisson.pmf(possible_overlaps, mean_overlap)
 		# print("sum_before=%s" % prob_overlap.sum())
 		# prob_overlap = prob_overlap / prob_overlap.sum()  # normalize to take into account 0 overlaps not included
 		# delt_overlap =  0.5 - (0.4 / np.sqrt(possible_overlaps - 0.44))   # delta (normalized hamming distance) per counter
-		delt_overlap = binom.cdf((possible_overlaps-3)/2, possible_overlaps-1, 0.5)
-		delt_overlap[1:-1:2]=delt_overlap[2::2] # replace even by next odd (if even overlap add random vector to break ties)
+		oddup = np.floor((possible_overlaps+1)/2)*2  # round odd values up to next even integer, e.g.: [ 0.,  2.,  2.,  4.,  4.,  6.,  6., ...
+		delt_overlap = binom.cdf(oddup/2-1, oddup, 0.5) # normalized hamming distance for each overlap,
+		# should be like: [0., 0.25, 0.25, 0.3125, 0.3125, 0.34375, 0.34375 (if odd overlap on top of tartet 1, add random vector to break ties)
+
+		# even_overlaps = np.arange(0,possible_overlaps,2)
+		# edelta = binom.cdf(even_overlaps/2-1, even_overlaps, 0.5)  # probability of error for even overlaps (on top of target 1)
+		# delt_overlap = np.repeat(edelta,2)  # set full range, 
+		# # import pdb; pdb.set_trace()
+		# delt_overlap = binom.cdf(possible_overlaps/2-1, possible_overlaps, 0.5)
+		# delt_overlap[1:-1:2]=delt_overlap[2::2] # replace even by next odd (if even overlap add random vector to break ties)
 		# delt_overlap[0] = 0  # overlap 1 has 0 hamming distance
 		hdist = np.empty(ncols + 1)  # probability mass function
 		for h in range(len(hdist)):  # hamming distance
