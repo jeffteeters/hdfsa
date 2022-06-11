@@ -6,6 +6,7 @@ import math
 from scipy.stats import binom
 from scipy.stats import poisson
 import matplotlib.pyplot as plt
+import itertools
 import sys
 
 class Binarized_sdm_analytical():
@@ -74,27 +75,57 @@ class Bsa_sample():
 		# nact is activaction count
 		# k - number of items stored
 		# d - size of item memory
-		assert nact==1, "only implemented for nact==3 now"
+		if nact == 1:
+			# use direct calculation instead of sampling for nact ==1
+			return Binarized_sdm_analytical(nrows, ncols, nact, k, d, epochs)
+		assert nact % 2 == 1, "only implemented for nact odd"
 		num_possible_overlaps = k - 1 # number of possible overlaps onto target item (1 row)
 		possible_overlaps = np.arange(num_possible_overlaps+1)
-		prob_one_trial_overlap = 1 / nrows
+		# prob_one_trial_overlap = 1 / nrows  # for testing with nact == 1
 		# nai = np.arange(nact)
-		# prob_one_trial_overlap = 1-np.prod((nrows-nact-nai)/nrows) # e.g. 1-((nrows-nact)/nrows * (nrows-nact-1)/nrows * (nrows-nact-2)/nrows)
+		# prob_one_trial_overlap = 1-np.prod((nrows-(1+nai))/nrows) # e.g. 1 - (nrows-1)/nrows * (nrows-2)/nrows * (nrows-3)/nrows)
+		prob_one_trial_overlap = nact/nrows  # not sure why this give a lot smaller number than above
+		# prob_one_trial_overlap = 1-np.prod((nrows-nact-nai)/nrows) # WRONG! e.g. 1-((nrows-nact)/nrows * (nrows-nact-1)/nrows * (nrows-nact-2)/nrows)
 		prob_overlap = binom.pmf(possible_overlaps, num_possible_overlaps, prob_one_trial_overlap )
+		print("prob_one_trial_overlap=%s, peak_num_overlaps=%s" % (prob_one_trial_overlap, np.argmax(prob_overlap)))
 		# delt_overlap =  0.5 - (0.4 / np.sqrt(possible_overlaps - 0.44))   # delta (normalized hamming distance) per counter
 		oddup = np.floor((possible_overlaps+1)/2)*2  # round odd values up to next even integer, e.g.: [ 0.,  2.,  2.,  4.,  4.,  6.,  6., ...
 		delt_overlap = binom.cdf(oddup/2-1, oddup, 0.5) # normalized hamming distance for each overlap,
 		# like: [0., 0.25, 0.25, 0.3125, 0.3125, 0.34375, 0.34375 (if odd overlap on top of target 1, add random vector to break ties)
+		# create mpc and mer masks for weights for voting for forming histogram
+		maski = []  # mask index
+		for k in range(int((nact+1)/2),nact+1):  # k - all possible majority counts
+			maski += list(itertools.combinations(range(nact), k))
+		mpc = np.empty((len(maski), nact), dtype=np.int)
+		for i in range(nact):
+			mpc[:,i] = i+nact  # default to point to error term
+		for i in range(len(maski)):
+			mpc[i,maski[i]] = maski[i]  # set to point to correct term
+		pc_er = np.empty(2*nact, dtype=np.float64)  # for holding probability correct then probability error 
 		hdist = np.zeros(ncols + 1)  # probability mass function
 		rng = np.random.default_rng()
 		possible_hammings = np.arange(ncols+1)
 		for i in range(epochs*1000):
 			samples = rng.choice(num_possible_overlaps+1, size=nact, replace=False, p=prob_overlap, shuffle=False)
-			# pc = 1 - delt_overlap[samples] # probability correct
-			# er = delt_overlap[samples]  # probability error
-			# pvote = pc[0]*pc[1]*pc[2] + er[0]*pc[1]*pc[2] + pc[0]*er[1]*pc[2] + pc[0]*pc[1]*er[2]
-			# delta = 1 - pvote
-			delta = delt_overlap[samples][0]
+			er = delt_overlap[samples]  # probability error
+			pc = 1 - er # probability correct
+			pc_er[0:nact] = pc  # copy probability correct
+			pc_er[nact:] = er   # copy probability error
+			pvote = np.sum(np.prod(pc_er[mpc], axis=1))
+			# for testing to match with nact==3
+			pvote2 = pc[0]*pc[1]*pc[2] + er[0]*pc[1]*pc[2] + pc[0]*er[1]*pc[2] + pc[0]*pc[1]*er[2]
+			if not math.isclose(pvote, pvote2):
+				print("pvote=%s, pvote2=%s" % (pvote, pvote2))
+				import pdb; pdb.set_trace()
+
+
+			# if nact == 3:
+			# 	pvote = pc[0]*pc[1]*pc[2] + er[0]*pc[1]*pc[2] + pc[0]*er[1]*pc[2] + pc[0]*pc[1]*er[2]
+			# elif nact == 5:
+			# 	pvote = (pc[0]*pc[1]*pc[2]*pc[3]*pc[4]+pc[5] + er[0]*pc[1]*pc[2]*pc[3]*pc[4]*pc[5] +
+			# 		pc1[0]*pc[1]*pc[2]*pc[3]*pc[4]*pc[5] + pc[0]*er[1]*pc[2] + pc[0]*pc[1]*er[2]
+			delta = 1 - pvote
+			# delta = delt_overlap[samples][0]  # for testing with nact==1
 			hdist += binom.pmf(possible_hammings, ncols, delta)
 		hdist = hdist / hdist.sum()  # normalize
 		# print("hdist (pmf) sum is %s (should be close to 1)" % np.sum(hdist))
