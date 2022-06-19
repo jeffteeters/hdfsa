@@ -23,7 +23,7 @@ class Sdm_store_history:
 		rng = np.random.default_rng()
 		thl = np.empty((self.k, self.nact), dtype=np.uint16)  # transition hard locations
 		selected_rows = np.empty(self.k * self.nact, dtype=np.uint16)
-		checked_found = np.zeros((self.nact - 1, 2), dtype=np.uint16)  #,0 for checked, ,1 for found
+		checked_found = np.zeros(self.nact - 1, dtype=[('checked', np.uint32), ('found', np.uint32)])  #,0 for checked, ,1 for found
 		for epoch_id in range(self.epochs):
 			for i in range(k):
 				thl[i,:] = rng.choice(self.nrows, size=self.nact, replace=False)
@@ -38,6 +38,7 @@ class Sdm_store_history:
 			# now find number of overlaps of different sizes
 			for i in range(k):
 				for nc in range(nact, 1, -1):  # number in overlap from same item
+					assert nc >= 2
 					seli = list(itertools.combinations(range(nact), nc))  # counters to compare
 					for si in range(len(seli)):
 						min_length = 10e6  # larger than number in any counter
@@ -51,13 +52,16 @@ class Sdm_store_history:
 						for hli in seli[si][1:]:  # hard location index
 							cs = cs.intersection(set(sdm_rows[thl[i,hli]]))
 						found_common = len(cs) - 1
-						checked_found[nc-2, 0] += min_length
-						checked_found[nc-2, 1] += found_common
+						assert found_common >= 0
+						assert min_length >= 0
+						assert min_length >= found_common
+						checked_found[nc-2]['checked'] += min_length
+						checked_found[nc-2]['found'] += found_common
 		self.check_found = checked_found
 		print("ovl\tchecked\tfound\tratio")
 		for ovl in range(nact-1):
-			checked = checked_found[ovl, 0]
-			found = checked_found[ovl, 1]
+			checked = checked_found[ovl]['checked']
+			found = checked_found[ovl]['found']
 			ratio = found/checked
 			print("%s\t%s\t%s\t%s" % (ovl+2, checked, found, ratio))
 
@@ -66,7 +70,7 @@ class Sdm_store_history:
 def main():
 	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
 	nrows=50; nact=5; k=1000;
-	ssh = Sdm_store_history(nrows, nact, k)
+	ssh = Sdm_store_history(nrows, nact, k, epochs=1000)
 
 
 if __name__ == "__main__":
