@@ -8,6 +8,7 @@ from scipy.stats import poisson
 import matplotlib.pyplot as plt
 import itertools
 import sys
+import binco
 
 class Binarized_sdm_analytical():
 
@@ -69,15 +70,16 @@ class Bsa_sample():
 	# compute analytical fraction error of binarized sdm using sampling which should work for nact > 1
 	# This is unlike the Binarized_sdm_analytical class (above) which only works when nact is 1.
 
-	def __init__(self, nrows, ncols, nact, k, d, epochs=100):
+	def __init__(self, nrows, ncols, nact, k, d, epochs=100, include_correction_factor=True):
 		# nrows is number of rows (hard locations) in the SDM
 		# ncols is the number of columns
 		# nact is activaction count
 		# k - number of items stored
 		# d - size of item memory
-		if nact == 1:
+		# add_correction_factors set to True to include correction factor in final predicted error
+		assert nact > 1, "must call Binarized_sdm_analytical if nact > 1"
 			# use direct calculation instead of sampling for nact ==1
-			return Binarized_sdm_analytical(nrows, ncols, nact, k, d, epochs)
+			# return Binarized_sdm_analytical(nrows, ncols, nact, k, d)
 		assert nact % 2 == 1, "only implemented for nact odd"
 		num_possible_overlaps = k - 1 # number of possible overlaps onto target item (1 row)
 		possible_overlaps = np.arange(num_possible_overlaps+1)
@@ -87,12 +89,12 @@ class Bsa_sample():
 		prob_one_trial_overlap = nact/nrows  # not sure why this give a lot smaller number than above
 		# prob_one_trial_overlap = 1-np.prod((nrows-nact-nai)/nrows) # WRONG! e.g. 1-((nrows-nact)/nrows * (nrows-nact-1)/nrows * (nrows-nact-2)/nrows)
 		prob_overlap = binom.pmf(possible_overlaps, num_possible_overlaps, prob_one_trial_overlap )
-		print("prob_one_trial_overlap=%s, peak_num_overlaps=%s" % (prob_one_trial_overlap, np.argmax(prob_overlap)))
+		# print("prob_one_trial_overlap=%s, peak_num_overlaps=%s" % (prob_one_trial_overlap, np.argmax(prob_overlap)))
 		# delt_overlap =  0.5 - (0.4 / np.sqrt(possible_overlaps - 0.44))   # delta (normalized hamming distance) per counter
 		oddup = np.floor((possible_overlaps+1)/2)*2  # round odd values up to next even integer, e.g.: [ 0.,  2.,  2.,  4.,  4.,  6.,  6., ...
 		delt_overlap = binom.cdf(oddup/2-1, oddup, 0.5) # normalized hamming distance for each overlap,
 		# like: [0., 0.25, 0.25, 0.3125, 0.3125, 0.34375, 0.34375 (if odd overlap on top of target 1, add random vector to break ties)
-		# create mpc and mer masks for weights for voting for forming histogram
+		# create mpc and masks for weights for voting for forming histogram
 		maski = []  # mask index
 		for k in range(int((nact+1)/2),nact+1):  # k - all possible majority counts
 			maski += list(itertools.combinations(range(nact), k))
@@ -113,12 +115,10 @@ class Bsa_sample():
 			pc_er[nact:] = er   # copy probability error
 			pvote = np.sum(np.prod(pc_er[mpc], axis=1))
 			# for testing to match with nact==3
-			pvote2 = pc[0]*pc[1]*pc[2] + er[0]*pc[1]*pc[2] + pc[0]*er[1]*pc[2] + pc[0]*pc[1]*er[2]
-			if not math.isclose(pvote, pvote2):
-				print("pvote=%s, pvote2=%s" % (pvote, pvote2))
-				import pdb; pdb.set_trace()
-
-
+			# pvote2 = pc[0]*pc[1]*pc[2] + er[0]*pc[1]*pc[2] + pc[0]*er[1]*pc[2] + pc[0]*pc[1]*er[2]
+			# if not math.isclose(pvote, pvote2):
+			# 	print("pvote=%s, pvote2=%s" % (pvote, pvote2))
+			# 	import pdb; pdb.set_trace()
 			# if nact == 3:
 			# 	pvote = pc[0]*pc[1]*pc[2] + er[0]*pc[1]*pc[2] + pc[0]*er[1]*pc[2] + pc[0]*pc[1]*er[2]
 			# elif nact == 5:
@@ -135,6 +135,8 @@ class Bsa_sample():
 		self.delt_overlap = delt_overlap
 		# print("sum match_hamming_distribution=%s" % sum(self.match_hamming_distribution))
 		p_err = self.compute_overall_perr(self.match_hamming_distribution, d)
+		if include_correction_factor:
+			p_err *= self.correction_factor(nact)
 		self.p_err = p_err
 
 	def compute_overall_perr(self, match_hamming_distribution, d):
@@ -156,6 +158,21 @@ class Bsa_sample():
 		p_corr = np.dot(ph_corr, hdist)
 		perr = 1 - p_corr
 		return perr
+
+	def correction_factor(self, nact):
+		# return correction factor to take into accout increase in error caused by coordinated overlaps
+		# these correction factors taken from row 190 output of program "parse_output" which compares
+		# empirical to predicted error
+		if nact == 7:
+			empirical=0.0008225; predicted=0.0002382145957503523
+		elif nact == 5:
+			empirical=0.0004025; predicted=0.00020955847080339485
+		elif nact==3:
+			empirical=0.00021999999999999998; predicted=0.00019047177705489027
+		else:
+			sys.exit("do not have correction factor for nact==%s" % nact)
+		ratio = empirical / predicted
+		return ratio
 
 def main():
 	# test predicted error
