@@ -5,13 +5,14 @@
 
 # import math
 import matplotlib.pyplot as plt
+from matplotlib.text import Text
 # from scipy.optimize import curve_fit
 from scipy.stats import linregress
 import numpy as np
 import sympy as sym
 
 
-bundle_dims = [
+bundle_dims_k1000_d100 = [
 	[1,24002],
 	[2, 40503],
 	[3, 55649],
@@ -30,7 +31,9 @@ sdm_binarized_nact_optimum_dims = [
 	[4, 208, 3,], #  400],
 	[5, 262, 3,], # 3000],
 	[6, 315, 5,], # 10000],
-	[7, 368, 5,]] # 40000]]
+	[7, 368, 5,], # 40000]]
+	[8, 424, 7,],
+	[9, 476, 7]]
 
 #output from sdm_anl.Sdm_error_analytical:
 # SDM sizes, nact:
@@ -49,7 +52,7 @@ class Line_fit():
 	# fit line to size of sdm or bundle
 
 	def __init__(self, mem_type):
-		assert mem_type in ("bundle", "binarized_sdm", "8bit_counter_sdm")  # add other options here
+		assert mem_type in ("bundle_k1000_d100", "binarized_sdm", "8bit_counter_sdm")  # add other options here
 		if mem_type == "bundle":
 			x = np.empty(len(bundle_dims), dtype=np.float64)
 			y = np.empty(len(bundle_dims), dtype=np.float64)
@@ -101,8 +104,10 @@ def plot_sdm_vs_bundle():
 	plt.title("Bundle vs 1-bit sdm vs 8-bit sdm error vs size (bits)")
 	plt.xlabel("bits (bundle width or sdm rows * 512 or sdm rows * 512*8")
 	plt.ylabel("Fraction error")
-	plt.yticks(10.0**-(np.arange(9.0, 0.0, -1.0)))
 	plt.yscale('log')
+	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
+	ylabels = [10.0**(-i) for i in range(9, 0, -1)]
+	plt.yticks(yticks, ylabels)
 	plt.grid()
 	plt.legend(loc='upper right')
 	plt.show()
