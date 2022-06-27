@@ -5,6 +5,7 @@
 
 # import math
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import cm
 from matplotlib.text import Text
 # from scipy.optimize import curve_fit
 from scipy.stats import linregress
@@ -22,6 +23,50 @@ mdims = {
 		[7, 112965],
 		[8, 127134],
 		[9, 141311]],
+	"bun_k750_d100":
+		# Bundle sizes, for k=750, d=100:
+		[[1, 18012],
+		[2, 30389],
+		[3, 41750],
+		[4, 52693],
+		[5, 63443],
+		[6, 74108],
+		[7, 84740],
+		[8, 95367],
+		[9, 106002]],
+	"bun_k500_d100":	
+		# 	Bundle sizes, for k=500, d=100:
+		[[1, 12020],
+		[2, 20273],
+		[3, 27848],
+		[4, 35144],
+		[5, 42313],
+		[6, 49424],
+		[7, 56513],
+		[8, 63599],
+		[9, 70690]],
+	"bun_k250_d100":
+		# 	Bundle sizes, for k=250, d=100:
+		[[1, 6025],
+		[2, 10153],
+		[3, 13942],
+		[4, 17593],
+		[5, 21179],
+		[6, 24736],
+		[7, 28283],
+		[8, 31827],
+		[9, 35374]],
+	"bun_k125_d100":
+		# 	Bundle sizes, for k=125, d=100:
+		[[1, 3000],
+		[2, 5050],
+		[3, 6931],
+		[4, 8743],
+		[5, 10523],
+		[6, 12290],
+		[7, 14051],
+		[8, 15811],
+		[9, 17572]],
 	"sdm_k1000_d100_c1": # sdm_binarized_nact_optimum_dims
 		[[1, 50, 1,], # 200],  # comment out epochs
 		[2, 97, 1,], #  200],
@@ -97,6 +142,30 @@ def plot_sdm_vs_bundle():
 	plt.legend(loc='upper right')
 	plt.show()
 
+def vary_num_items():
+	# plot bundle sizes required for different number of items
+	wanted_dims = ["bun_k125_d100", "bun_k250_d100", "bun_k500_d100", "bun_k750_d100", "bun_k1000_d100"]
+	colors = cm.rainbow(np.linspace(0, 1, len(wanted_dims)))
+	for i in range(len(wanted_dims)):
+		dim = wanted_dims[i]
+		obs = Line_fit(dim)
+		# plt.plot(obs.x, obs.y, 'o', c=colors[i], label="%s data" % dim)
+		plt.plot(obs.x, obs.y, 'o', c=colors[i])
+		plt.plot(obs.x, obs.yreg, c=colors[i], label=dim)
+	finalize_plot("bundle error vs size for different k (num items stored)")
+
+def finalize_plot(title):
+	plt.title(title)
+	plt.xlabel("bits (bundle width or sdm rows * 512 or sdm rows * 512*8")
+	plt.ylabel("Fraction error")
+	plt.yscale('log')
+	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
+	ylabels = [10.0**(-i) for i in range(9, 0, -1)]
+	plt.yticks(yticks, ylabels)
+	plt.grid()
+	plt.legend(loc='upper right')
+	plt.show()
+
 
 def plot_single_fit(mem_type):
 	sys.exit("not implemented")
@@ -111,9 +180,11 @@ def plot_single_fit(mem_type):
 	plt.show()
 
 def main():
-	plot_type = "plot_sdm_vs_bundle"
+	plot_type = "vary_num_items" # "plot_sdm_vs_bundle"
 	if plot_type == "plot_sdm_vs_bundle":
 		plot_sdm_vs_bundle()
+	elif plot_type == "vary_num_items":
+		vary_num_items()
 	else:
 		sys.exit("plot_type %s not implemented" % plot_type)
 
