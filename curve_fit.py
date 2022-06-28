@@ -3,12 +3,13 @@
 # sdm and for bundle
 
 
-# import math
+import math
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 from matplotlib.text import Text
 # from scipy.optimize import curve_fit
 from scipy.stats import linregress
+from scipy import special
 import numpy as np
 import sympy as sym
 
@@ -92,6 +93,43 @@ mdims = {
 		[9, 349, 4]]
 	}
 
+def dplen(mm, per):
+	# calculate vector length requred to store bundle at per accuracy
+	# mm - mean of match distribution (single bit error rate, 0< mm < 0.5)
+	# per - desired probability of error on recall (e.g. 0.000001)
+	# This derived from equations in Pentti's 1997 paper, "Fully Distributed
+	# Representation", page 3, solving per = probability random vector has
+	# smaller hamming distance than hamming to matching vector, (difference
+	# in normal distributions) is less than zero; solve for length (N)
+	# in terms of per and mean distance to match (mm, denoted as delta in the
+	# paper.)
+	n = (-2*(-0.25 - mm + mm**2)*special.erfinv(-1 + 2*per)**2)/(0.5 - mm)**2
+	return round(n) + 1
+
+def bunlen(k, per):
+	# calculated bundle length needed to store k items with accuracy per
+	# This calculates the mean distance to the matching vector using
+	# approximation on page 3 in Pentti's paper (referenced above)
+	# then calls dplen to calculate the vector length.
+	return dplen(0.5 - 0.4 / math.sqrt(k - 0.44), per)
+
+def bunlenf(k, perf, n):
+	# bundle length from final probabability error (perf) taking
+	# into account number of items in bundle (k) and number of other items (n) in item memory?
+	per = perf/(k*n)
+	return bunlen(k, per)
+
+def cdf_dims(k):
+	# calculate width of bundle needed to store k items at different precisions (perr)
+	# assuming only one distractor in item memory
+	dims = []
+	for i in range(1,10):
+		per = 10**(-i)
+		w = bunlen(k, per)  # width of bundle
+		dims.append([i, w])
+	return dims
+
+
 class Line_fit():
 	# fit line to size of sdm or bundle
 
@@ -166,6 +204,19 @@ def finalize_plot(title):
 	plt.legend(loc='upper right')
 	plt.show()
 
+def plot_cdf_dims():
+	kvals = [25, 100, 250, 500, 750, 1000]
+	colors = cm.rainbow(np.linspace(0, 1, len(kvals)))
+	for i in range(len(kvals)):
+		k = kvals[i]
+		dim = "cdf_k%s_d2" % k
+		mdims[dim] = cdf_dims(k)
+		print("%s=\n%s" % (dim, mdims[dim]))
+		obs = Line_fit(dim)
+		# plt.plot(obs.x, obs.y, 'o', c=colors[i], label="%s data" % dim)
+		plt.plot(obs.x, obs.y, 'o', c=colors[i])
+		plt.plot(obs.x, obs.yreg, c=colors[i], label=dim)
+	finalize_plot("cdf error vs size for different k (num items stored)")
 
 def plot_single_fit(mem_type):
 	sys.exit("not implemented")
@@ -180,11 +231,13 @@ def plot_single_fit(mem_type):
 	plt.show()
 
 def main():
-	plot_type = "vary_num_items" # "plot_sdm_vs_bundle"
+	plot_type = "cdf_dims" # "vary_num_items" # "plot_sdm_vs_bundle"
 	if plot_type == "plot_sdm_vs_bundle":
 		plot_sdm_vs_bundle()
 	elif plot_type == "vary_num_items":
 		vary_num_items()
+	elif plot_type == "cdf_dims":
+		plot_cdf_dims()
 	else:
 		sys.exit("plot_type %s not implemented" % plot_type)
 
