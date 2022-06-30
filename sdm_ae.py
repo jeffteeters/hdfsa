@@ -24,8 +24,8 @@ class Sdm_error_analytical:
 	# would contribute either (-2, 0, +2).  Another example, chunk of size 3 contributes -3 or +3.  But three
 	# independent items could contribute: -3, -1, 1, or 3.
 
-	def __init__(self, nrows, nact, k, ncols=None, d=None, threshold=100000000, show_pruning=False, show_items=False,
-		show_progress=False,debug=False):
+	def __init__(self, nrows, nact, k, ncols=None, d=None, threshold=100000, show_pruning=False, show_items=False,
+		show_progress=False, prune=True, debug=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
 		# k - number of items to store in sdm
@@ -41,6 +41,7 @@ class Sdm_error_analytical:
 		self.threshold = threshold
 		self.show_pruning = show_pruning
 		self.show_items = show_items
+		self.prune = prune
 		self.debug = debug
 		self.ov1_pmf = self.compute_one_item_overlap_pmf()
 		if self.show_items:
@@ -74,7 +75,7 @@ class Sdm_error_analytical:
 			self.display_result()
 
 	def compute_one_item_overlap_pmf(self):
-		max_num_first_terms = 6  # limit to first 6 terms.  Assume terms beyond that (6 or more overlaps) probability too small)
+		max_num_first_terms = 3  # limit to first 3 terms.  Assume terms beyond that (6 or more overlaps) probability too small)
 		if self.nrows == 1:
 			assert self.nact == 1, "If nrows is 1, nact must be 1"
 			return np.array([1.0,], dtype=np.float64)  # special case
@@ -136,7 +137,8 @@ class Sdm_error_analytical:
 		assert self.cop_key.size == self.cop_prb.size, "after combining like keys, len(cop_key)=%s, len(cop_prb)=%s" % (
 			self.cop_key.size, self.cop_prb.size)
 		# prune terms with probability smaller than threshold
-		return  # don't prune for testing
+		if not self.prune:
+			return
 		max_prb = self.cop_prb.max()
 		thrsh = max_prb / self.threshold
 		mask = self.cop_prb > thrsh  # keep terms larger than threshold
