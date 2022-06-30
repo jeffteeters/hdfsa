@@ -10,13 +10,19 @@ import binarized_sdm_analytical
 import math
 
 
+def get_dk():
+	# return size of item memory (d) and number of items stored (k)
+	d = 2
+	k = 1000
+	return (d, k)
 
 def bundle_error_vs_width(n, desired_error=1):
 	# n is bundle size (number of components)
 	# desired_error in negative power of 10, e.g. 1 means 0.1 error, 2 means 0.01 error, 3 means 1/10**3 error
 	# return difference between found_error and desired_error squared (to minimize)
-	d=100   # size of item memory
-	k=750  # number of items stored in bundle (number transitions)
+	d, k = get_dk()
+	# d=25  # size of item memory
+	# k=1000  # number of items stored in bundle (number transitions)
 	found_error = bundle_analytical.BundleErrorAnalytical(round(n),d,k)
 	print("n=%s, found_error=%s" % (n, found_error))
 	diff = (desired_error  + math.log10(found_error)) ** 2
@@ -28,12 +34,14 @@ def get_sdm_activaction_count(nrows, k):
 	nact = 7
 	return nact
 
+
 def sdm_error_vs_nrows(nrows, desired_error=1):
 	# nrows is number of rows in the sdm
 	# desired_error in negative power of 10, e.g. 1 means 0.1 error, 2 means 0.01 error, 3 means 1/10**3 error
 	# return difference between found_error and desired_error squared (to minimize)
-	d=100   # size of item memory
-	k=1000  # number of items stored in bundle (number transitions)
+	# d=100   # size of item memory
+	# k=1000  # number of items stored in bundle (number transitions)
+	d, k = get_dk()
 	ncols = 512
 	# found_error = sdm_jaeckel.SdmErrorAnalytical(round(nrows),k,d,nact=None,word_length=512)
 	# nact = sdm_jaeckel.get_sdm_activation_count(round(nrows), k)
@@ -52,7 +60,7 @@ def sdm_error_vs_nrows(nrows, desired_error=1):
 	return diff
 
 def find_bundle_size(desired_error):
-	init_xa, init_xb = 5000, 200000
+	init_xa, init_xb = 200, 200000
 	# xa, xb, xc, fa, fb, fc, funcalls = bracket(bundle_error_vs_width, xa=init_xa, xb=init_xb)
 	fun = bundle_error_vs_width
 	bounds = (init_xa, init_xb)
@@ -75,7 +83,8 @@ def find_sdm_size(desired_error):
 
 def find_bundle_sizes(desired_error):
 	bundle_sizes = [find_bundle_size(x) for x in desired_error]
-	print("Bundle sizes, for k=750, d=100:")
+	d, k = get_dk()
+	print("Bundle sizes, for k=%s, d=%s:" % (k, d))
 	for i in range(len(desired_error)):
 		print("%s - %s" % (desired_error[i], bundle_sizes[i]))
 	# output for bundle sizes:
@@ -89,6 +98,16 @@ def find_bundle_sizes(desired_error):
 	# 7 - 112965
 	# 8 - 127134
 	# 9 - 141311
+	# 	Bundle sizes, for k=750, d=100:
+	# 1 - 18012
+	# 2 - 30389
+	# 3 - 41750
+	# 4 - 52693
+	# 5 - 63443
+	# 6 - 74108
+	# 7 - 84740
+	# 8 - 95367
+	# 9 - 106002
 	# 	Bundle sizes, for k=500, d=100:
 	# 1 - 12020
 	# 2 - 20273
@@ -110,7 +129,7 @@ def find_bundle_sizes(desired_error):
 	# 8 - 31827
 	# 9 - 35374
 	# 	Bundle sizes, for k=125, d=100:
-	# 1 - 5001
+	# 1 - 3000
 	# 2 - 5050
 	# 3 - 6931
 	# 4 - 8743
@@ -119,6 +138,26 @@ def find_bundle_sizes(desired_error):
 	# 7 - 14051
 	# 8 - 15811
 	# 9 - 17572
+	# 	Bundle sizes, for k=1000, d=20:
+	# 1 - 17175
+	# 2 - 32221
+	# 3 - 46592
+	# 4 - 60729
+	# 5 - 74793
+	# 6 - 88851
+	# 7 - 102929
+	# 8 - 117037
+	# 9 - 131176
+	# Bundle sizes, for k=1000, d=25:
+	# 1 - 18147
+	# 2 - 33407
+	# 3 - 47886
+	# 4 - 62084
+	# 5 - 76182
+	# 6 - 90260
+	# 7 - 104351
+	# 8 - 118466
+	# 9 - 132610
 
 def find_sdm_sizes(desired_error):
 	sdm_sizes = [find_sdm_size(x) for x in desired_error]
