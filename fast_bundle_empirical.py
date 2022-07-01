@@ -99,58 +99,73 @@ class Fast_bundle_empirical():
 			contents = np.sum(data, axis=0, dtype=np.int16)
 			if self.binarize_counters:
 				# binerize counters then use xor and hamming distance
+				if num_transitions % 2 == 0:
+					# add random vector
+					random_plus_or_minus_one = rng.integers(0, high=2, size=self.ncols, dtype=np.int8)*2-1
+					contents += random_plus_or_minus_one
 				contents[contents > 0] = 1
 				contents[contents < 0] = 0
-				# random_plus_or_minus_one = rng.integers(0, high=2, size=self.ncols, dtype=np.int8)*2-1
-				# mask = contents == 0
-				# contents[mask] = random_plus_or_minus_one[mask]
-				for i in range(num_transitions):
+			else:
+				# don't binerize counters.  Use product and dot product with item memory to calculate distance
+				address = address*2-1    # convert address to +1 / -1
+				im_state = im_state*2-1  # convert im_state to +1 / -1
+			for i in range(num_transitions):
+				if self.binarize_counters:
 					# recalled_data = np.roll(np.logical_xor(address[i], recalled_vector), -1)
 					recalled_data = np.roll(np.logical_xor(address[i], contents), -1)
-					hamming_distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)
+					distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)  # hamming distance
 					# dot_products = np.sum(im_state[:,] * recalled_data, axis=1)
 					# self.match_hamming_counts[hamming_distances[transition_next_state[i]]] += 1
 					# self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]] += 1 # a random distractor
-					two_smallest = np.argpartition(hamming_distances, 2)[0:2]
-					# two_largest = np.argpartition(dot_products , -2)[-2:]
-					if hamming_distances[two_smallest[0]] < hamming_distances[two_smallest[1]]:
-						if transition_next_state[i] != two_smallest[0]:
-							fail_counts[epoch_id] += 1
-							fail_count += 1
-					elif hamming_distances[two_smallest[1]] < hamming_distances[two_smallest[0]]:
-						if transition_next_state[i] != two_smallest[1]:
-							fail_counts[epoch_id] += 1
-							fail_count += 1
-					elif self.count_multiple_matches_as_error or transition_next_state[i] != two_smallest[0]:
-						fail_counts[epoch_id] += 1
-						fail_count += 1
-					trial_count += 1
-			else:
-				# import pdb; pdb.set_trace()
-				# non-thresholded counter, use dot product
-				address = address*2-1    # convert address to +1 / -1
-				im_state = im_state*2-1  # convert im_state to +1 / -1
-				for i in range(num_transitions):
+				else:
 					# recalled_data = np.roll(np.logical_xor(address[i], recalled_vector), -1)
-					recalled_data = np.roll(-address[i] * contents, -1)  # - included so product has same result as xor
+					recalled_data = np.roll(address[i] * contents, -1) # would need to multiply by -1 for product has same result as xor
 					# hamming_distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)
-					dot_products = np.sum(im_state[:,] * recalled_data, axis=1) # *(-1)  # -1 not needed because of minus above
+					distances = np.sum(im_state[:,] * recalled_data, axis=1) # dot product.  will be more negative for closer match due to difference btwn xor and *
 					# self.match_hamming_counts[hamming_distances[transition_next_state[i]]] += 1
 					# self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]] += 1 # a random distractor
-					# two_smallest = np.argpartition(hamming_distances, 2)[0:2]
-					two_largest = np.argpartition(dot_products , -2)[-2:]
-					if dot_products[two_largest[0]] > dot_products[two_largest[1]]:
-						if transition_next_state[i] != two_largest[0]:
-							fail_counts[epoch_id] += 1
-							fail_count += 1
-					elif dot_products[two_largest[1]] > dot_products[two_largest[0]]:
-						if transition_next_state[i] != two_largest[1]:
-							fail_counts[epoch_id] += 1
-							fail_count += 1
-					elif self.count_multiple_matches_as_error or transition_next_state[i] != two_largest[0]:
+				two_smallest = np.argpartition(distances, 2)[0:2]
+				# two_largest = np.argpartition(dot_products , -2)[-2:]
+				if distances[two_smallest[0]] < distances[two_smallest[1]]:
+					if transition_next_state[i] != two_smallest[0]:
 						fail_counts[epoch_id] += 1
 						fail_count += 1
-					trial_count += 1
+				elif distances[two_smallest[1]] < distances[two_smallest[0]]:
+					if transition_next_state[i] != two_smallest[1]:
+						fail_counts[epoch_id] += 1
+						fail_count += 1
+				elif self.count_multiple_matches_as_error or transition_next_state[i] != two_smallest[0]:
+					fail_counts[epoch_id] += 1
+					fail_count += 1
+				trial_count += 1
+
+			# else:
+			# 	# import pdb; pdb.set_trace()
+			# 	# non-thresholded counter, use dot product
+			# 	address = address*2-1    # convert address to +1 / -1
+			# 	im_state = im_state*2-1  # convert im_state to +1 / -1
+			# 	for i in range(num_transitions):
+			# 		# recalled_data = np.roll(np.logical_xor(address[i], recalled_vector), -1)
+			# 		recalled_data = np.roll(address[i] * contents, -1) # would need to multiply by -1 for product has same result as xor
+			# 		# hamming_distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)
+			# 		distances = np.sum(im_state[:,] * recalled_data, axis=1) # will be more negative for closer match due to difference btwn xor and *
+			# 		# self.match_hamming_counts[hamming_distances[transition_next_state[i]]] += 1
+			# 		# self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]] += 1 # a random distractor
+			# 		# two_smallest = np.argpartition(hamming_distances, 2)[0:2]
+
+			# 		two_largest = np.argpartition(dot_products , -2)[-2:]
+			# 		if dot_products[two_largest[0]] > dot_products[two_largest[1]]:
+			# 			if transition_next_state[i] != two_largest[0]:
+			# 				fail_counts[epoch_id] += 1
+			# 				fail_count += 1
+			# 		elif dot_products[two_largest[1]] > dot_products[two_largest[0]]:
+			# 			if transition_next_state[i] != two_largest[1]:
+			# 				fail_counts[epoch_id] += 1
+			# 				fail_count += 1
+			# 		elif self.count_multiple_matches_as_error or transition_next_state[i] != two_largest[0]:
+			# 			fail_counts[epoch_id] += 1
+			# 			fail_count += 1
+			# 		trial_count += 1
 		# print("fail counts are %s" % fail_counts)
 		assert np.sum(fail_counts) == fail_count
 		assert trial_count == (num_transitions * self.epochs)
