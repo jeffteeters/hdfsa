@@ -12,6 +12,7 @@ import math
 dims = {
 	"bun_k1000_d100_c8":
 		# gallant bundle (8 bit counters), computed using curve_fit.py
+		# must divide by 8 to calculate width of vector
 		[[1, 45129, ],
 		[2, 54000, 200],
 		[3, 62919, 300],
@@ -26,16 +27,31 @@ dims = {
 	"bun_k1000_d100_c1":
 		# output for bundle sizes (from find_sizes.py)
 		# Bundle sizes, k=1000, d=100:
-		[[1, 24002, 5],
-		[2, 40503, 5],
-		[3, 55649, 20],
-		[4, 70239, 100],
-		[5, 84572, 0],
+		[[1, 24002, 50],
+		[2, 40503, 50],
+		[3, 55649, 50],
+		[4, 70239, 400],
+		[5, 84572, 4000],
 		[6, 98790, 0],
 		[7, 112965, 0],
 		# [8, 127134, 0],
 		# [9, 141311, 0],
 		],
+
+# verified above ("bun_k1000_d100_c1") empirically, output is:
+# (base) Jeffs-MacBook:hdfsa jt$ time python bundle_ae_test.py 
+# perr=1, ncols=24002, epochs=50, empirical mean=0.09872, stdev=0.008165880234242969, predicted=0.09999738539779227 
+# perr=2, ncols=40503, epochs=50, empirical mean=0.01088, stdev=0.0030635926622186575, predicted=0.009999615412897213 
+# perr=3, ncols=55649, epochs=50, empirical mean=0.00082, stdev=0.001033247308247159, predicted=0.0010000267689206422 
+# perr=4, ncols=70239, epochs=400, empirical mean=0.00013, stdev=0.00035085609585697663, predicted=9.999498413910984e-05 
+# perr=5, ncols=84572, epochs=4000, empirical mean=8.750000000000001e-06, stdev=9.577806377245264e-05, predicted=9.99944186034052e-06 
+# perr=6, ncols=98790, epochs=0, empirical mean=nan, stdev=None, predicted=1.0000040731419814e-06 
+# perr=7, ncols=112965, epochs=0, empirical mean=nan, stdev=None, predicted=1.0000718433472203e-07 
+# objc[42113]: Class FIFinderSyncExtensionHost is implemented in both /System/Library/PrivateFrameworks/FinderKit.framework/Versions/A/FinderKit (0x7fff8d08e3f0) and /System/Library/PrivateFrameworks/FileProvider.framework/OverrideBundles/FinderSyncCollaborationFileProviderOverride.bundle/Contents/MacOS/FinderSyncCollaborationFileProviderOverride (0x12ebb7f50). One of the two will be used. Which one is undefined.
+
+# real	1277m20.293s
+# user	1094m51.038s
+# sys	113m40.107s
 	}
 
 def bun_ae():
