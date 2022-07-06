@@ -96,7 +96,8 @@ def  p_corr (N, D, dp_hit):
 # S-number of items in bundle, N-number of other items, perf-desired percent error
 cases = [{"label":"Small", "S":20, "N":1000, "perf":1.6},
 	{"label":"Medium", "S":100, "N":100000, "perf":1.8},
-	{"label":"Large", "S":1000, "N":1000000, "perf":1.0}]
+	{"label":"Large", "S":1000, "N":1000000, "perf":1.0},
+	{"label":"k1000_d100_per01", "S":1000, "N":100, "perf":1.0}]
 
 for case in cases:
 	k = case["S"]  # number items stored in bundle
@@ -105,7 +106,8 @@ for case in cases:
 	dgal = gallenf(k, perf, d)
 	dbun = bunlenf(k, perf, d)
 	b_delta = 0.5 - 0.4 / math.sqrt(case["S"] - 0.44)
-	acc = perf / k
+	# acc = perf / k  # error?
+	acc = perf / (d-1)
 	dfra = dplen2(b_delta, acc, d)
 	ndenis = DimensionalityAnalytical(acc,k,d)
 	perr_frady = (1-p_corr(dbun, case["N"], b_delta)) * 100.0  # get error probability from Frady equation
