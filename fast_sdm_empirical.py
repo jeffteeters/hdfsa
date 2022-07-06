@@ -48,8 +48,9 @@ class Fast_sdm_empirical():
 		# count_multiple_matches_as_error = True to count multiple distractor hammings == match as error
 		# save_error_rate_vs_hamming_distance true to save error_count_vs_hamming, used to figure out what
 		# happens to error rate when distractor(s) having same hamming distance as match not always counted as error
-		# hl_selection_method - "hamming" to use hamming distance to address to select hard locations, other option is
-		# "random" - randomly pick hard locations for each address
+		# hl_selection_method - "hamming" to use hamming distance to address to select hard locations, other options:
+		# "random" - randomly pick hard locations for each address, "mod" - evenly distribute hard locations
+		# (using "mod" function)
 		# bits_per_counter - number of bits counter truncated to before reading. 1 to binarize.  Has 0.5 added to
 		# include zero. e.g. 1.5 means -1, 0, +1;  If greater than 4, zero is always included
 		# print("starting Fast_sdm_empirical, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
@@ -65,8 +66,9 @@ class Fast_sdm_empirical():
 		self.count_multiple_matches_as_error = count_multiple_matches_as_error
 		self.roll_address = roll_address
 		self.debug = debug
-		assert hl_selection_method in ("random", "hamming")
+		assert hl_selection_method in ("random", "hamming", "mod")
 		self.hl_selection_method_hamming = hl_selection_method == "hamming"
+		self.hl_selection_method_mod = hl_selection_method == "mod"
 		self.save_error_rate_vs_hamming_distance = save_error_rate_vs_hamming_distance
 		assert bits_per_counter > 0
 		self.truncate_counters = bits_per_counter < 8
@@ -84,6 +86,7 @@ class Fast_sdm_empirical():
 		self.distractor_hamming_counts = np.zeros(self.ncols+1, dtype=np.uint32)
 		rng = np.random.default_rng()
 		num_transitions = self.states * self.choices
+		overlap_counts = np.zeros(self.nrows, dtype=np.uint32)
 		trial_count = 0
 		fail_count = 0
 		for epoch_id in range(self.epochs):
@@ -119,6 +122,10 @@ class Fast_sdm_empirical():
 					for i in range(num_transitions):
 						hl_match = np.count_nonzero(address[i]!=im_address, axis=1)
 						transition_hard_locations[i,:] = np.argpartition(hl_match, self.nact)[0:self.nact]
+			elif self.hl_selection_method_mod:
+				for i in range(num_transitions):
+					# evenly distribute rows
+					transition_hard_locations[i,:] = np.array([(i + j) % self.nrows for j in range(self.nact)])
 			else:
 				# use randon locations
 				for i in range(num_transitions):
@@ -134,8 +141,10 @@ class Fast_sdm_empirical():
 				column_indices = column_indices - transition_state[:, np.newaxis]
 				address = address[rows, column_indices]
 			data = np.logical_xor(address, np.roll(im_state[transition_next_state], 1, axis=1))*2-1
+			# import pdb; pdb.set_trace()
 			for i in range(num_transitions):
 				contents[transition_hard_locations[i,:]] += data[i]
+				overlap_counts[transition_hard_locations[i,:]] += 1
 			if self.truncate_counters:
 				contents[contents > self.magnitude] = self.magnitude
 				contents[contents < -self.magnitude] = -self.magnitude
@@ -176,6 +185,9 @@ class Fast_sdm_empirical():
 		self.std_error = np.std(normalized_fail_counts)
 		self.match_hamming_distribution = self.match_hamming_counts / trial_count
 		self.distractor_hamming_distribution = self.distractor_hamming_counts / trial_count
+		self.overlap_counts = np.around(overlap_counts / epochs).astype(np.uint16)
+		overlap_dist = np.bincount(self.overlap_counts, minlength=100)
+		self.overlap_dist = overlap_dist / np.sum(overlap_dist)
 		assert math.isclose(sum(self.match_hamming_distribution), 1.0), "match_hamming_distribution sum not 1: %s" % (
 			sum(self.match_hamming_distribution))
 		assert math.isclose(self.mean_error, perr)
