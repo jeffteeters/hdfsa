@@ -1,5 +1,7 @@
 # compare one long bundle to multiple smaller bundles and also to
-# binaraized sdm.  Output needs to be cleaned up.
+# binaraized sdm.  Shows multiple smaller bundles a little bit
+# more efficient than a large bundle and binarized sdm with nact==1
+# requires a lot more space.  Output needs to be cleaned up.
 
 
 from scipy import special
