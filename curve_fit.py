@@ -13,6 +13,7 @@ from scipy import special
 import numpy as np
 import sympy as sym
 from scipy.stats import norm
+import bundle_analytical
 
 mdims = {
 	"bun_k1000_d100":
@@ -241,11 +242,22 @@ def cdf_dims(k):
 		dims.append([i, w])
 	return dims
 
+def gal_dims(d, k):
+	# calculate dims (width of bundles) needed to store k items with d items in item memory using Galant model
+	# (8 bit counters)
+	dims = []
+	print("d=%s,k=%s" % (d,k))
+	for i in range(1,10):
+		perf = 10**(-i)
+		w = bundle_analytical.gallenf(d, k, perf)
+		dims.append([i, w])
+	return dims
 
 class Line_fit():
 	# fit line to size of sdm or bundle
 
-	def __init__(self, mem_type):
+	def __init__(self, mem_type, bpx=1):
+		# bpx is bits per x counter (e.g. 1, 8, 512, 512*8)
 		if mem_type not in mdims:
 			print("Invalid mem_type: %s" %(mem_type))
 			sys.exit("options are: %s" % sorted(mem_type.keys()))
@@ -263,26 +275,33 @@ class Line_fit():
 		self.k = np.exp(result.intercept)
 		self.m = -result.slope
 		self.x = x
+		self.xbits = x * bpx
 		self.y = y
 		self.yreg = self.k * np.exp(-self.m *x)
 		print("%s for err=k*exp(-m*x), k=%s, m=%s" % (mem_type, self.k, self.m))
 
 
 def sdm_vs_bundle():
+	k = 1000
+	d = 100
+	mdims["bun_k1000_d100_c8"] = gal_dims(d, k)
+	# print("gal_dims=%s" % mdims["bun_k1000_d100_c8"])
+	gal_bun = Line_fit("bun_k1000_d100_c8", bpx=8)
 	bundle = Line_fit("bun_k1000_d100")
-	bin_sdm = Line_fit("sdm_k1000_d100_c1") #("binarized_sdm")
-	full_sdm = Line_fit("sdm_k1000_d100_c8") # ("8bit_counter_sdm")
-	bin_sdm_bits = bin_sdm.x * 512  # bits per row
-	full_sdm_bits = full_sdm.x * 512 * 8
-
-	plt.plot(bundle.x, bundle.y, 'ro',label="Bundle data")
-	plt.plot(bundle.x, bundle.yreg,label="Bundle Line_fit")
-	plt.plot(bin_sdm_bits, bin_sdm.y, 'go',label="1-bit sdm data")
-	plt.plot(bin_sdm_bits, bin_sdm.yreg,label="1-bit sdm Line_fit")
-	plt.plot(full_sdm_bits, full_sdm.y, 'bo',label="8-bit sdm data")
-	plt.plot(full_sdm_bits, full_sdm.yreg,label="8-bit sdm Line_fit")
-	plt.title("Bundle vs 1-bit sdm vs 8-bit sdm error vs size (bits)")
-	plt.xlabel("bits (bundle width or sdm rows * 512 or sdm rows * 512*8")
+	bin_sdm = Line_fit("sdm_k1000_d100_c1", bpx=512) #("binarized_sdm")
+	full_sdm = Line_fit("sdm_k1000_d100_c8", bpx=512*8) # ("8bit_counter_sdm")
+	num_wanted_dims = 4
+	colors = cm.rainbow(np.linspace(0, 1, num_wanted_dims))
+	plt.plot(bundle.xbits, bundle.yreg, c=colors[0], label="bun_k1000_d100")
+	plt.plot(bundle.xbits, bundle.y, 'o', c=colors[0])
+	plt.plot(bin_sdm.xbits, bin_sdm.yreg, c=colors[1], label="sdm_k1000_d100_c1")
+	plt.plot(bin_sdm.xbits, bin_sdm.y, 'o', c=colors[1])
+	plt.plot(full_sdm.xbits, full_sdm.yreg, c=colors[2], label="sdm_k1000_d100_c8")
+	plt.plot(full_sdm.xbits, full_sdm.y, 'o',c=colors[2])
+	plt.plot(gal_bun.xbits, gal_bun.yreg, c=colors[3], label="bun_k1000_d100_c8")
+	plt.plot(gal_bun.xbits, gal_bun.y, 'o',c=colors[3])
+	plt.title("Bundles and sdm errors vs size (bits)")
+	plt.xlabel("bits (in bundle or sdm")
 	plt.ylabel("Fraction error")
 	plt.yscale('log')
 	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
@@ -388,7 +407,7 @@ def plot_single_fit(mem_type):
 	plt.show()
 
 def main():
-	plot_type = "vary_num_items" # "vary_item_memory" #"sdm_vs_bundle" # "compare_cdf_to_exp_fit" # "cdf_dims" #
+	plot_type = "sdm_vs_bundle" # "vary_num_items" # "vary_item_memory" # "compare_cdf_to_exp_fit" # "cdf_dims" #
 	if plot_type == "sdm_vs_bundle":
 		sdm_vs_bundle()
 	elif plot_type == "vary_num_items":
