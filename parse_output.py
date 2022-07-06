@@ -10,7 +10,9 @@ import math
 import sys
 bits_per_counter=1
 
-file_name = "archive/2022_06_plots/2022_06_10/sdm_bc1_nrows50_to_400-nact_1,3,5,7_vs.txt"
+# file_name = "archive/2022_06_plots/2022_06_10/sdm_bc1_nrows50_to_400-nact_1,3,5,7_vs.txt"
+file_name = "archive/2022_06_plots/2022_06_23/binarized_sdm_etest.txt"
+
 with open(file_name) as f:
 	output = f.read()
 
@@ -43,15 +45,31 @@ for (nrows, nact, epochs, bsm_er, emp_err, std) in re.findall(pat2, output):
 	emp_clm[nact_idx, nrows_idx] = (std / math.sqrt(epochs)) * 1.96
 	bsm_err[nact_idx, nrows_idx] = bsm_er
 
+show_ratios = False
+if show_ratios:
+	# display ratio of predicted to empirical
+	for i in range(len(nacts)):
+		print("nact=%s" % nacts[i])
+		for j in range(len(rows_to_test)):
+			print("rows=%s, empirical=%s, predicted=%s, ratio=%s" % (rows_to_test[j], emp_mean[i,j], bsm_err[i,j],
+				round(bsm_err[i,j]/emp_mean[i,j], 3)))
+	sys.exit("done for now")
 
-# display ratio of predicted to empirical
-for i in range(len(nacts)):
-	print("nact=%s" % nacts[i])
-	for j in range(len(rows_to_test)):
-		print("rows=%s, empirical=%s, predicted=%s, ratio=%s" % (rows_to_test[j], emp_mean[i,j], bsm_err[i,j],
-			round(bsm_err[i,j]/emp_mean[i,j], 3)))
 
-sys.exit("done for now")
+def add_correction_factor(nact, emp_err, bsm_er):
+	global nacts, bsm_err
+	ratio = emp_err/ bsm_er
+	naidx = nacts.index(nact)
+	bsm_err[naidx,:] *= ratio
+
+add_correction_factors = True
+if add_correction_factors:
+	nact=7; empirical_nact7_190=0.0008225; predicted_nact7_190=0.0002382145957503523
+	add_correction_factor(nact, empirical_nact7_190, predicted_nact7_190)
+	nact=5; empirical_nact5_190=0.0004025; predicted_nact5_190=0.00020955847080339485
+	add_correction_factor(nact, empirical_nact5_190, predicted_nact5_190)
+	nact=3; empirical_nact3_190=0.00021999999999999998; predicted_nact3_190=0.00019047177705489027
+	add_correction_factor(nact, empirical_nact3_190, predicted_nact3_190)
 
 # plot info
 # make plots
@@ -59,11 +77,12 @@ plots_info = [
 	{"subplot": 121, "scale":"linear"},
 	{"subplot": 122, "scale":"log"},
 ]
+
 xvals = rows_to_test
 for pi in plots_info:
 	plt.subplot(pi["subplot"])
 	for j in range(len(nacts)):
-		if nacts[j] in (7,):
+		if nacts[j] in (3,): #5, 7,):
 			plt.errorbar(rows_to_test, emp_mean[j], yerr=emp_clm[j], fmt="-o", label="empirical nact=%s" % nacts[j])
 			plt.errorbar(rows_to_test, bsm_err[j], yerr=None, fmt="-o", label="bsm predicted nact=%s" % nacts[j])
 		# plt.errorbar(rows_to_test, anl_err[j], yerr=None, fmt="-o", label="anl predicted nact=%s" % nacts[j])
