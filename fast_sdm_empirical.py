@@ -37,7 +37,7 @@ class Fast_sdm_empirical():
 	# @jit
 	def __init__(self, nrows, ncols, nact, actions=10, states=100, choices=10, epochs=10,
 			count_multiple_matches_as_error=True, roll_address=True, debug=False,
-			hl_selection_method="hamming", bits_per_counter=8,
+			hl_selection_method="hamming", bits_per_counter=8, threshold_sum=True,
 			save_error_rate_vs_hamming_distance=False):
 		# nrows is number of rows (hard locations) in the SDM
 		# ncols is the number of columns
@@ -53,6 +53,8 @@ class Fast_sdm_empirical():
 		# (using "mod" function)
 		# bits_per_counter - number of bits counter truncated to before reading. 1 to binarize.  Has 0.5 added to
 		# include zero. e.g. 1.5 means -1, 0, +1;  If greater than 4, zero is always included
+		# threshold_sum set True to threshold sum to binary number before comparing to item memory (hamming distance)
+		#  this is the normal SDM.  threshold_sum False means match to item memory done via dot product.
 		# print("starting Fast_sdm_empirical, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
 		# 	nrows, ncols, nact, actions, states, choices))
 		self.nrows = nrows
@@ -77,15 +79,33 @@ class Fast_sdm_empirical():
 			# bpc has a 0.5 fractional part.  if bpc >= 5, always include zero in the range.
 			self.include_zero = bits_per_counter >= 5 or int(bits_per_counter * 10) % 10 == 5
 			self.magnitude = 2**int(bits_per_counter) / 2
+		self.threshold_sum = threshold_sum
 		# self.empiricalError()
 
 	# def empiricalError(self):
 		# compute empirical error by storing then recalling finite state automata from SDM
 		fail_counts = np.zeros(self.epochs, dtype=np.uint16)
-		self.match_hamming_counts = np.zeros(self.ncols+1, dtype=np.uint32)
-		self.distractor_hamming_counts = np.zeros(self.ncols+1, dtype=np.uint32)
+		if threshold_sum:
+			distance_counts_len = self.ncols+1
+			distance_counts_offset = 0
+		else:
+			# save counts of dot product match and distractor
+			distance_counts_len = 4*(self.ncols * self.nact)  # should be enough range
+			distance_counts_offset = int(distance_counts_len / 2)
+		self.match_hamming_counts = np.zeros(distance_counts_len, dtype=np.uint32)
+		self.distractor_hamming_counts = np.zeros(distance_counts_len, dtype=np.uint32)
 		rng = np.random.default_rng()
 		num_transitions = self.states * self.choices
+		# match and distractor distances used for finding mean and variance of distances to match and distractor
+		match_distances = np.empty(self.epochs * num_transitions, dtype=np.int16)
+		distractor_distances = np.empty(self.epochs * num_transitions, dtype=np.int16)
+		counter_sums = np.empty(self.epochs * num_transitions, dtype=np.int16)
+		flag_value = 32000
+		counter_sums[-1] = flag_value # to make sure fill all
+		match_distances[-1] = flag_value 
+		counter_counts_len = int(20 * ((num_transitions * self.nact) / self.nrows))
+		counter_counts_offset = int(counter_counts_len / 2)
+		counter_counts = np.zeros(counter_counts_len, dtype=np.uint32)  # for distribution of counter sums
 		overlap_counts = np.zeros(self.nrows, dtype=np.uint32)
 		trial_count = 0
 		fail_count = 0
@@ -156,12 +176,34 @@ class Fast_sdm_empirical():
 					contents[mask] = random_plus_or_minus_one[mask]
 			# recall data from contents matrix
 			# recalled_data = np.empty((num_transitions, self.ncols), dtype=np.int8)
+			if not threshold_sum:
+				# not thresholding sum.  Use +1/-1 product and dot product with item memory to calculate distance
+				address = address*2-1    # convert address to +1/-1
+				im_state = im_state*2-1  # convert im_state to +1/-1
 			for i in range(num_transitions):
-				recalled_vector = (contents[transition_hard_locations[i,:]].sum(axis=0) > 0)
-				recalled_data = np.roll(np.logical_xor(address[i], recalled_vector), -1)
-				hamming_distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)
-				self.match_hamming_counts[hamming_distances[transition_next_state[i]]] += 1
-				self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]] += 1 # a random distractor
+				recalled_vector = contents[transition_hard_locations[i,:]].sum(axis=0)
+				data_1_index = np.where(data[i] == 1)[0][0]
+				one_counter_sum = recalled_vector[data_1_index]  # pick a random sum for storing, when target is 1
+				# if trial_count < 10:
+				# 	print("one_counter_sum=%s" % one_counter_sum)
+				counter_sums[trial_count] = one_counter_sum
+				counter_counts[one_counter_sum+counter_counts_offset] += 1  # save counts of counters
+				if threshold_sum:
+					# convert to binary
+					# perhaps should deterministically add random +/- 1 before thresholding recalled vector
+					recalled_vector = recalled_vector > 0
+					recalled_data = np.roll(np.logical_xor(address[i], recalled_vector), -1)
+					hamming_distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)
+				else:
+					# don't convert sum to binary.  Use dot product to find best match to item memory
+					recalled_data = np.roll(address[i] * recalled_vector, -1)
+					hamming_distances = np.sum(im_state[:,] * recalled_data, axis=1) # actually dot product distance
+				# if trial_count < 10:
+				# 	print("hamming_distances=%s" % hamming_distances[0:20])  # shows often either even or odd if ncols even
+				self.match_hamming_counts[hamming_distances[transition_next_state[i]]+distance_counts_offset] += 1
+				self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]+distance_counts_offset] += 1 # a random distractor
+				match_distances[trial_count] = hamming_distances[transition_next_state[i]]
+				distractor_distances[trial_count] = hamming_distances[(transition_next_state[i]+1) % self.states]
 				two_smallest = np.argpartition(hamming_distances, 2)[0:2]
 				if hamming_distances[two_smallest[0]] < hamming_distances[two_smallest[1]]:
 					if transition_next_state[i] != two_smallest[0]:
@@ -185,27 +227,69 @@ class Fast_sdm_empirical():
 		self.std_error = np.std(normalized_fail_counts)
 		self.match_hamming_distribution = self.match_hamming_counts / trial_count
 		self.distractor_hamming_distribution = self.distractor_hamming_counts / trial_count
+		assert math.isclose(sum(self.match_hamming_distribution), 1.0), "match_hamming_distribution sum not 1: %s" % (
+			sum(self.match_hamming_distribution))
+		assert match_distances[-1] != flag_value
+		self.match_distance_mean = np.mean(match_distances)
+		self.match_distance_std = np.std(match_distances)
+		self.distractor_distance_mean = np.mean(distractor_distances)
+		self.distractor_distance_std = np.std(distractor_distances)
+		self.counter_sum_mean = np.mean(counter_sums)
+		self.counter_sum_std = np.std(counter_sums)
+		self.counter_counts = counter_counts / np.sum(counter_counts)
+		self.counter_counts_offset = counter_counts_offset
 		self.overlap_counts = np.around(overlap_counts / epochs).astype(np.uint16)
 		overlap_dist = np.bincount(self.overlap_counts, minlength=100)
 		self.overlap_dist = overlap_dist / np.sum(overlap_dist)
-		assert math.isclose(sum(self.match_hamming_distribution), 1.0), "match_hamming_distribution sum not 1: %s" % (
-			sum(self.match_hamming_distribution))
 		assert math.isclose(self.mean_error, perr)
 		# print("fast_sdm_empirical epochs=%s, perr=%s, std_error=%s" % (self.epochs, perr, self.std_error))
 
 
 def main():
 	ncols = 512; actions=10; choices=10; states=100
+	# ncols = 31; actions=3; choices=3; states=10
 	# nrows=239; nact=3  # should give error rate of 10e-6
 	# nrows=86; nact=2  # should be error rate of 10e-2
-	nrows=125; nact=2 # should give error rate 10e-3
+	# nrows=125; nact=2 # should give error rate 10e-3
+	nrows = 75; nact=1  # for dot-product match, should give 10e-3
+	nrows = 51; nact=1  # for dot-product match, should give 10e-2
+	nrows = 39; nact=1  # for dot-product match, should give 10e-1
+	nrows = 93; nact=1  # for dot-product match, should give 10e-4
+	nrows = 126; nact=2; threshold_sum = True  # for hamming match, should give 10e-3
+	# nrows=31; nact=2
 	# nrows = 51; nact=1  # should give error 10e-1
 	# nrows = 1; ncols=20; nact=1; actions=2; states=3; choices=2
 	# fse = Fast_sdm_empirical(nrows, ncols, nact)
 	# nrows = 24; ncols=20; nact=2; actions=2; states=7; choices=2
-	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices)
-	print("With nrows=%s, ncols=%s, nact=%s, mean_error=%s, std_error=%s" % (nrows, ncols, nact, fse.mean_error,
-		fse.std_error))
+	# threshold_sum = False  # True for normal sdm, False for dot product matching
+	epochs=100
+	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices,
+		threshold_sum=threshold_sum, epochs=epochs)
+	print("With nrows=%s, ncols=%s, nact=%s, threshold_sum=%s epochs=%s, mean_error=%s, std_error=%s" % (nrows, ncols,
+		nact, threshold_sum, epochs, fse.mean_error, fse.std_error))
+	print("match_distance mean=%s, std=%s; distractor_distance mean=%s, std=%s" % (fse.match_distance_mean,
+		fse.match_distance_std, fse.distractor_distance_mean, fse.distractor_distance_std))
+	print("counter_sum_mean=%s, counter_sum_std=%s" % (fse.counter_sum_mean, fse.counter_sum_std))
+
+	# plot match and distractor hamming distributions
+	plt.plot(fse.match_hamming_distribution, label="match")
+	plt.plot(fse.distractor_hamming_distribution, label="distractor")
+	plt.xlabel("Hamming distance")
+	plt.title("match vs distractor hamming distance")
+	plt.ylabel("relative frequency")
+	plt.legend(loc='upper right')
+	plt.grid()
+	plt.show()
+
+	# plot counter sums distribution
+	xvals = np.arange(fse.counter_counts.size) - fse.counter_counts_offset
+	plt.plot(xvals, fse.counter_counts)
+	plt.xlabel("counter sum")
+	plt.title("distribution of counter sums")
+	plt.ylabel("relative frequency")
+	# plt.legend(loc='upper right')
+	plt.grid()
+	plt.show()
 
 if __name__ == "__main__":
 	main()

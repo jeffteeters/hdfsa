@@ -76,12 +76,15 @@ def sdm_nrows(perf, nact=1, k=1000, d=100, ncols=512, binarized=True):
 		c = (k-1)*nact**4
 	else:
 		pp2 = pp**2
-		# a = pp2*nact-nact**2*ncols
+		a = (ncols*nact/pp2 - 1)/(2*k-1)
+		b = -nact
+		c = -nact**3
+		# pp2*nact-nact**2*ncols
 		# b = pp2*nact**2
 		# c = pp2*nact**4
-		a = nact - (nact**2 * ncols/pp**2)
-		b = nact**2
-		c = nact**4
+		# a = nact - (nact**2 * ncols/pp**2)
+		# b = nact**2
+		# c = nact**4
 	b2ac = b**2 - 4*a*c
 	if b2ac < 0:
 		print("b2ac=%s" % b2ac)
@@ -93,8 +96,10 @@ def sdm_nrows(perf, nact=1, k=1000, d=100, ncols=512, binarized=True):
 	# 	if m2 > 0:
 	# 		return round(m2)
 	if not binarized:
-		print("m1=%s, m2=%s" % (m1, m2))
-	return round(m2)
+		# print("m1=%s, m2=%s" % (m1, m2))
+		return round(m1)
+	else:
+		return round(m2)
 	
 def sdm_optimum_size(perf, k=1000, d=100, ncols=512, binarized=True):
 	# find nact giving minimum number of rows
