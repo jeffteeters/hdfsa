@@ -251,18 +251,45 @@ def main():
 	# nrows=239; nact=3  # should give error rate of 10e-6
 	# nrows=86; nact=2  # should be error rate of 10e-2
 	# nrows=125; nact=2 # should give error rate 10e-3
-	nrows = 75; nact=1  # for dot-product match, should give 10e-3
-	nrows = 51; nact=1  # for dot-product match, should give 10e-2
-	nrows = 39; nact=1  # for dot-product match, should give 10e-1
-	nrows = 93; nact=1  # for dot-product match, should give 10e-4
-	nrows = 126; nact=2; threshold_sum = True  # for hamming match, should give 10e-3
+	# nrows = 75; nact=1; threshold_sum= False  # for dot-product match, should give 10e-3
+	#  Result: 
+	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=50, mean_error=0.002300, std_error=0.0013152946
+	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.002315, std_error=0.0016173
+	# try with nrows=76, nact=2, should give similar error 10e-3 predicted:
+	# nrows = 76; nact=2; threshold_sum= False  # for dot-product match, should give 10e-3
+	# With nrows=76, ncols=512, nact=2, threshold_sum=False epochs=200, mean_error=0.0010350, std_error=0.0010
+	# Above matches perfectly
+	# Try 56/1, should match 10-2
+	# nrows=56; ncols=512; nact=1; threshold_sum=False
+	# nrows=56, ncols=512, nact=1, threshold_sum=False epochs=50, mean_error=0.01026, std_error=0.0031988122795812823
+	# 39/1, should match 10-1
+	# nrows=39; ncols=512; nact=1; threshold_sum=False
+	# With nrows=39, ncols=512, nact=1, threshold_sum=False epochs=50, mean_error=0.04678, std_error=0.00655527
+	# nrows=44; ncols=512; nact=1; threshold_sum=False
+	# Gives:  nrows=44, ncols=512, nact=1, threshold_sum=False epochs=50, mean_error=0.02916, std_error=0.004704
+	# try nact=2, nrows==41
+	# nrows=41; ncols=512; nact=2; threshold_sum=False
+	# gives: With nrows=41, ncols=512, nact=2, threshold_sum=False epochs=50, mean_error=0.035600
+	# nrows = 51; nact=1; threshold_sum=False  # for dot-product match, should give 10e-2
+	# nrows = 39; nact=1 threshold_sum=False  # for dot-product match, should give 10e-1
+	# nrows = 93; nact=1; threshold_sum=False  # for dot-product match, should give 10e-4
+	# With nrows=93, ncols=512, nact=1, threshold_sum=False epochs=100, mean_error=0.0006100000000000001
+	# nrows = 94; nact=2; threshold_sum=False
+	# With nrows=94, ncols=512, nact=2, threshold_sum=False epochs=100, mean_error=7.000000000000001e-05
+	nrows = 93; nact=2; threshold_sum=False
+	# With nrows=93, ncols=512, nact=2, threshold_sum=False epochs=100, mean_error=0.00017, std_error=0.000375
+	# With nrows=93, ncols=512, nact=2, threshold_sum=False epochs=200, mean_error=0.00015, std_error=0.0003570
+	# nrows = 92; nact=2; threshold_sum=False
+	# With nrows=92, ncols=512, nact=2, threshold_sum=False epochs=100, mean_error=0.00023000000000000003,
+	# nrows = 126; nact=2; threshold_sum = True  # for hamming match, should give 10e-3
+	# nrows = 128; nact=2; threshold_sum = True  # for hamming match, should give 10e-3
 	# nrows=31; nact=2
 	# nrows = 51; nact=1  # should give error 10e-1
 	# nrows = 1; ncols=20; nact=1; actions=2; states=3; choices=2
 	# fse = Fast_sdm_empirical(nrows, ncols, nact)
 	# nrows = 24; ncols=20; nact=2; actions=2; states=7; choices=2
 	# threshold_sum = False  # True for normal sdm, False for dot product matching
-	epochs=100
+	epochs=200
 	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices,
 		threshold_sum=threshold_sum, epochs=epochs)
 	print("With nrows=%s, ncols=%s, nact=%s, threshold_sum=%s epochs=%s, mean_error=%s, std_error=%s" % (nrows, ncols,
