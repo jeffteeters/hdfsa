@@ -69,11 +69,11 @@ def sdm_nrows(perf, nact=1, k=1000, d=100, ncols=512, binarized=True):
 	per = perf / (d - 1)
 	pp = norm.ppf(per)
 	if binarized:
-		delta = 0.5 - pp / math.sqrt(2 * (ncols - pp))
+		delta = 0.5 - pp / math.sqrt(2 * (ncols + pp))
 		fp = norm.ppf(delta)
-		a = nact-(nact/fp)**2
-		b = (k-1)*nact**2
-		c = (k-1)*nact**4
+		a = 1-(nact/fp**2) # tried with 0-, works better for larger perf when 1-
+		b = (k-1)*nact
+		c = (k-1)*nact**3
 	else:
 		pp2 = pp**2
 		a = (ncols*nact/pp2 - 1)/(2*k-1)
@@ -105,19 +105,30 @@ def sdm_optimum_size(perf, k=1000, d=100, ncols=512, binarized=True):
 	# find nact giving minimum number of rows
 	max_nact = 11
 	nrows = np.empty(max_nact, dtype=np.int16)
+	print("optimum nacts found for binarized=%s:" % binarized)
 	for i in range(max_nact):
 		nact = i+1
 		nrows[i] = sdm_nrows(perf,nact,k,d,ncols, binarized)
+		opt_nact = optimum_nact(k, nrows[i])
+		if opt_nact == nact:
+			print("%s/%s" %(nrows[i], nact))
+		# else:
+		# 	print("%s/%s opt %s" %(nrows[i], nact, opt_nact))
 	mini = np.argmin(nrows)
-	optSize = "%s/%s" % (nrows[mini], mini+1)
+	optSize = (nrows[mini], mini+1, "%s/%s" % (nrows[mini], mini+1))  # return ints and string, eg (134, 7, "134/7")
 	return optSize
 
-
+def optimum_nact(k, m):
+	# return optimum nact given number items stored (k) and number of rows (m)
+	# from formula given in Pentti paper
+	fraction_rows_activated =  1.0 / ((2*m*k)**(1/3))
+	nact = round(m * fraction_rows_activated)
+	return nact
 
 def main():
 	k = 1000
 	d = 100
-	print("i\tbinLen\tgalLen\tratio\tfoundBinLen\tratio2\tsdmOptSize\tsdm_anl_size\tsdm_jaeckel_size\tsdm_dot")
+	print("i\tpr_binL\tre_galL\tratio\tfndBinL\tratio2\tsdm_ham\tsdm_anl\tsdm_jkl\tsdm_dot\tdot/ham")
 	for i in range(1, 10):
 		perf = 10**(-i)
 		binLen = bundle_length(k, perf, d, binarized=True)
@@ -126,13 +137,28 @@ def main():
 		found_binLen = found_binarized_bundle_sizes[i-1][1]
 		ratio2 = binLen / found_binLen
 		# sdmLen = sdm_nrows(k, perf, d)
-		sdmOptSize = sdm_optimum_size(perf, k=k, d=d, ncols=512, binarized=True)
-		sdmOptSize_dot = sdm_optimum_size(perf, k=k, d=d, ncols=512, binarized=False)
+		sdm_hamming = sdm_optimum_size(perf, k=k, d=d, ncols=512, binarized=True)
+		sdm_dot = sdm_optimum_size(perf, k=k, d=d, ncols=512, binarized=False)
+		dot_over_ham = round(sdm_dot[0] / int(sdm_hamming[0]), 4)
 		sdm_anl_size = "%s/%s" % (found_sdm_8_bit_counter_threshold_sizes[i-1][1],
 			found_sdm_8_bit_counter_threshold_sizes[i-1][2])
 		sdm_jaeckel_size = "%s/%s" % (found_sdm_jaeckel_sizes[i-1][1], found_sdm_jaeckel_sizes[i-1][2])
-		print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (i, binLen, galLen, ratio, found_binLen, ratio2, sdmOptSize,
-			sdm_anl_size, sdm_jaeckel_size, sdmOptSize_dot))
+		print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (i, binLen, galLen, round(ratio,4), found_binLen,
+			round(ratio2, 4), sdm_hamming[2], sdm_anl_size, sdm_jaeckel_size, sdm_dot[2], dot_over_ham))
+
+
+def compare_sdm_ham_dot():
+	print("nact\tper\thamL\tdotL\tdot/ham")
+	for nact in range(1,5):
+		for i in range(1, 10):
+			perf = 10**(-i)
+			ham_len = sdm_nrows(perf, nact=nact, k=1000, d=100, ncols=512, binarized=True)
+			dot_len = sdm_nrows(perf, nact=nact, k=1000, d=100, ncols=512, binarized=False)
+			dot_over_ham = dot_len / ham_len
+			print("%s\t%s\t%s\t%s\t%s" % (nact, i, ham_len, dot_len, dot_over_ham))
+
+
 
 if __name__ == "__main__":
+	# compare_sdm_ham_dot()
 	main()
