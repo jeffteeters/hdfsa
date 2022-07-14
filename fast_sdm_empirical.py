@@ -161,10 +161,10 @@ class Fast_sdm_empirical():
 				column_indices = column_indices - transition_state[:, np.newaxis]
 				address = address[rows, column_indices]
 			data = np.logical_xor(address, np.roll(im_state[transition_next_state], 1, axis=1))*2-1
-			# import pdb; pdb.set_trace()
 			for i in range(num_transitions):
 				contents[transition_hard_locations[i,:]] += data[i]
 				overlap_counts[transition_hard_locations[i,:]] += 1
+			# import pdb; pdb.set_trace()
 			if self.truncate_counters:
 				contents[contents > self.magnitude] = self.magnitude
 				contents[contents < -self.magnitude] = -self.magnitude
@@ -255,6 +255,29 @@ def main():
 	# nrows=125; nact=2 # should give error rate 10e-3
 	# nrows = 75; nact=1; threshold_sum= False  # for dot-product match, should give 10e-3
 	#  Result: 
+
+# Seleted dims for 8-bit counter, non-thresholded sum (dot product match)
+
+# predicted sdm_dims for different perr powers of 10 is:
+# [[1, 25, 1], [2, 37, 1], [3, 50, 1], [4, 62, 1], [5, 75, 1], [6, 87, 2], [7, 100, 2], [8, 113, 2], [9, 125, 2]]
+# output from empirical_size for nact==1:
+# [1, 31, 1], [2, 57, 1]
+#
+	# try 1
+	# nrows = 31; nact=1; threshold_sum= False; bits_per_counter=8  # should be 10e-1
+	# With nrows=31, ncols=512, nact=1, threshold_sum=False epochs=100, mean_error=0.09766, std_error=0.00919
+	# try 2
+	# nrows = 56; nact=1; threshold_sum= False; bits_per_counter=8  # should be 10e-2
+	# With nrows=56, ncols=512, nact=1, threshold_sum=False epochs=100, mean_error=0.010649999999999995, std_error=0.0034
+
+	# summary, selected dims are:
+	[[1, 31, 1],
+    [2, 56, 1],
+	[3, 76, 2],
+	[4, 98, 2]],
+
+
+
 	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=50, mean_error=0.002300, std_error=0.0013152946
 	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.002315, std_error=0.0016173
 	# try with nrows=76, nact=2, should give similar error 10e-3 predicted:
@@ -344,12 +367,45 @@ def main():
 	# nrows = 98; nact=2; threshold_sum=False; bits_per_counter=8
 	# With nrows=98, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=0.0001080, std_error=0.00032
 	# Assume nrows=98, nact=2 the best match
-
-
-
-
-
-	epochs=1000
+	#
+	# Now test 1-bit counters, non-thresholded, using output from empirical_size.py
+	# linregress for err=k*exp(-m*x), k=2.9845311889491377, m=-0.027443416394529244
+	# predicted sdm_dims for different perr powers of 10 is:
+	# [[1, 54, 1], [2, 90, 2], [3, 127, 2], [4, 163, 2], [5, 199, 3], [6, 236, 3], [7, 272, 3], [8, 309, 4], [9, 345, 4]]
+	# Why is 1 different than 8 bit counter thresholded?
+	# nrows = 54; nact=1; threshold_sum=False; bits_per_counter=1
+	# result: With nrows=54, ncols=512, nact=1, threshold_sum=False epochs=100, mean_error=0.08679999, std_error=0.008690224392
+	# nrows = 51; nact=1; threshold_sum=False; bits_per_counter=1
+	# With nrows=51, ncols=512, nact=1, threshold_sum=False epochs=100, mean_error=0.1003, std_error=0.00933970
+	# 51 is much better than 54
+	# see if full size counter and thresholded give same result
+	# nrows = 51; nact=1; threshold_sum=True; bits_per_counter=8
+	# With nrows=51, ncols=512, nact=1, threshold_sum=True epochs=100, mean_error=0.10105, std_error=0.008927
+	# Yes, it works
+	# try 2
+	# first try 8 bit counter thresholded
+	# nrows = 86; nact=2; threshold_sum=True; bits_per_counter=8
+	# With nrows=86, ncols=512, nact=2, threshold_sum=True epochs=100, mean_error=0.01060, std_error=0.00346
+	# try with 1 bit counter, not thresholded
+	# nrows = 86; nact=2; threshold_sum=False; bits_per_counter=1
+	# With nrows=86, ncols=512, nact=2, threshold_sum=False epochs=100, mean_error=0.010879999999999994, std_error=0.0
+	# what about 90?
+	# nrows = 90; nact=2; threshold_sum=False; bits_per_counter=1
+	# Is too low
+	# With nrows=90, ncols=512, nact=2, threshold_sum=False epochs=100, mean_error=0.008560000000000002, std_error=0.002984
+	# Try 3,
+	# nrows = 127; nact=2; threshold_sum=False; bits_per_counter=1
+	# With nrows=127, ncols=512, nact=2, threshold_sum=False epochs=500, mean_error=0.0009440000000000002, std_error=0.000996
+	# try 4:
+	# nrows = 163; nact=2; threshold_sum=False; bits_per_counter=1
+	# With nrows=163, ncols=512, nact=2, threshold_sum=False epochs=500, mean_error=0.000122, std_error=0.000350
+	# works, but counters not symmetrical, frequencies are: -2 -> 0.151, 0 ->0.4723, 2 -> 0.3747, -1, 1, 3 all zero - Why?
+	#  Answer: - because only adding sums when target is one.  nact ==2, means can never be + or - 1.
+	# try 5:
+	# nrows = 199; nact=3; threshold_sum=False; bits_per_counter=1
+	# With nrows=199, ncols=512, nact=3, threshold_sum=False epochs=4000, mean_error=8e-06, std_error=8.908422980528039e-05
+	# is somewhat close
+	epochs=100
 	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices,
 		threshold_sum=threshold_sum, bits_per_counter=bits_per_counter, epochs=epochs)
 	print("With nrows=%s, ncols=%s, nact=%s, threshold_sum=%s epochs=%s, mean_error=%s, std_error=%s" % (nrows, ncols,
