@@ -203,8 +203,31 @@ mdims = {
 		[6, 239, 3],
 		[7, 285, 3],
 		[8, 312, 4],
-		[9, 349, 4]]
+		[9, 349, 4]],
+	"sdm_k1000_d100_c1_dot":
+	# from empirical_size, non-thresholded sum, binarized counters
+		[[1, 51, 1],
+		[2, 86, 2],
+		[3, 127, 2],
+		[4, 163, 2],
+		[5, 199, 3],
+		[6, 236, 3],
+		[7, 272, 3],
+		[8, 309, 4],
+		[9, 345, 4]],
+	"sdm_k1000_d100_c8_dot":
+	# from empirical_size and fast_sdm_empirical
+		[[1, 31, 1],
+    	[2, 56, 1],
+		[3, 76, 2],
+		[4, 98, 2],
+		[5, 120, 2], # this and following estimated by multiplying above by 0.6
+		[6, 142, 2],
+		[7, 163, 2],
+		[8, 185, 3],
+		[9, 207, 3]]
 	}
+
 
 def dplen(mm, per):
 	# calculate vector length requred to store bundle at per accuracy
@@ -290,16 +313,22 @@ def sdm_vs_bundle():
 	bundle = Line_fit("bun_k1000_d100")
 	bin_sdm = Line_fit("sdm_k1000_d100_c1", bpx=512) #("binarized_sdm")
 	full_sdm = Line_fit("sdm_k1000_d100_c8", bpx=512*8) # ("8bit_counter_sdm")
-	num_wanted_dims = 4
+	sdm_c8_dot = Line_fit("sdm_k1000_d100_c8_dot", bpx=512*8)
+	sdm_c1_dot = Line_fit("sdm_k1000_d100_c1_dot", bpx=512)
+	num_wanted_dims = 6
 	colors = cm.rainbow(np.linspace(0, 1, num_wanted_dims))
-	plt.plot(bundle.xbits, bundle.yreg, c=colors[0], label="bun_k1000_d100")
+	plt.plot(bundle.xbits, bundle.yreg, c=colors[0], label="bun_ham")
 	plt.plot(bundle.xbits, bundle.y, 'o', c=colors[0])
-	plt.plot(bin_sdm.xbits, bin_sdm.yreg, c=colors[1], label="sdm_k1000_d100_c1")
-	plt.plot(bin_sdm.xbits, bin_sdm.y, 'o', c=colors[1])
-	plt.plot(full_sdm.xbits, full_sdm.yreg, c=colors[2], label="sdm_k1000_d100_c8")
-	plt.plot(full_sdm.xbits, full_sdm.y, 'o',c=colors[2])
-	plt.plot(gal_bun.xbits, gal_bun.yreg, c=colors[3], label="bun_k1000_d100_c8")
-	plt.plot(gal_bun.xbits, gal_bun.y, 'o',c=colors[3])
+	plt.plot(gal_bun.xbits, gal_bun.yreg, c=colors[1], label="bun_c8_dot")
+	plt.plot(gal_bun.xbits, gal_bun.y, 'o',c=colors[1])
+	plt.plot(bin_sdm.xbits, bin_sdm.yreg, c=colors[2], label="sdm_c1_ham")
+	plt.plot(bin_sdm.xbits, bin_sdm.y, 'o', c=colors[2])
+	plt.plot(full_sdm.xbits, full_sdm.yreg, c=colors[3], label="sdm_c8_ham")
+	plt.plot(full_sdm.xbits, full_sdm.y, 'o',c=colors[3])
+	plt.plot(sdm_c8_dot.xbits, sdm_c8_dot.yreg, c=colors[4], label="sdm_c8_dot")
+	plt.plot(sdm_c8_dot.xbits, sdm_c8_dot.y, 'o',c=colors[4])
+	plt.plot(sdm_c1_dot.xbits, sdm_c1_dot.yreg, c=colors[5], label="sdm_c1_dot")
+	plt.plot(sdm_c1_dot.xbits, sdm_c1_dot.y, 'o',c=colors[5])
 	plt.title("Bundles and sdm errors vs size (bits)")
 	plt.xlabel("bits (in bundle or sdm")
 	plt.ylabel("Fraction error")
