@@ -220,6 +220,8 @@ class Fast_sdm_empirical():
 		# print("fail counts are %s" % fail_counts)
 		assert np.sum(fail_counts) == fail_count
 		assert trial_count == (num_transitions * self.epochs)
+		self.fail_count = fail_count
+		self.trial_count = trial_count
 		perr = fail_count / trial_count
 		self.ehdist = self.match_hamming_counts / (num_transitions * self.epochs)
 		normalized_fail_counts = fail_counts / num_transitions
@@ -276,7 +278,7 @@ def main():
 	# With nrows=93, ncols=512, nact=1, threshold_sum=False epochs=100, mean_error=0.0006100000000000001
 	# nrows = 94; nact=2; threshold_sum=False
 	# With nrows=94, ncols=512, nact=2, threshold_sum=False epochs=100, mean_error=7.000000000000001e-05
-	nrows = 93; nact=2; threshold_sum=False
+	# nrows = 93; nact=2; threshold_sum=False
 	# With nrows=93, ncols=512, nact=2, threshold_sum=False epochs=100, mean_error=0.00017, std_error=0.000375
 	# With nrows=93, ncols=512, nact=2, threshold_sum=False epochs=200, mean_error=0.00015, std_error=0.0003570
 	# nrows = 92; nact=2; threshold_sum=False
@@ -289,9 +291,67 @@ def main():
 	# fse = Fast_sdm_empirical(nrows, ncols, nact)
 	# nrows = 24; ncols=20; nact=2; actions=2; states=7; choices=2
 	# threshold_sum = False  # True for normal sdm, False for dot product matching
-	epochs=200
+	#
+	# tests based on empirical_size output:
+	# should give 10-1 error rate:
+	# nrows=29; nact=1; threshold_sum=False; bits_per_counter=8
+	# result: With nrows=29, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.115755, std_error=0.009573
+	# try nrows=30
+	# nrows=30; nact=1; threshold_sum=False; bits_per_counter=8
+	# result: With nrows=30, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.1058350, std_error=0.0095758
+	# try nrows=31
+	# nrows=31; nact=1; threshold_sum=False; bits_per_counter=8
+	# With nrows=31, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.096359, std_error=0.0091608
+	# good match.  Now try, 10-2 error:
+	# nrows=57; nact=1; threshold_sum=False; bits_per_counter=8
+	# result: With nrows=57, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.00978, std_error=0.003228250
+	# good match.
+	# Now try 10-3 error:
+	# nrows=75; nact=1; threshold_sum=False; bits_per_counter=8
+	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.002195, std_error=0.00147545
+	# -- not a good match
+	# try nrows=76, nact=2:
+	# nrows = 76; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=76, ncols=512, nact=2, threshold_sum=False epochs=200, mean_error=0.000995, std_error=0.0009617
+	# Good match
+	# Now try 10-4 error:
+	# nrows = 94; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=94, ncols=512, nact=2, threshold_sum=False epochs=200, mean_error=0.00017, std_error=0.000375632
+	# close, try with rows 95
+	# nrows = 95; nact=2; threshold_sum=False; bits_per_counter=8
+	# result: With nrows=95, ncols=512, nact=2, threshold_sum=False epochs=200, mean_error=0.00013, std_error=0.00033630
+	# closer, try with rows 96
+	# nrows = 96; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=96, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=0.0001460, std_error=0.0003803
+	# Does not seem closer, try nrows=97
+	# nrows = 97; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=97, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=0.000124, std_error=0.000353
+	# Is closer, try nrows=98
+	# nrows = 98; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=98, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=0.000118, std_error=0.000352
+	# Is closer, try nrows=100
+	# nrows = 100; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=100, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=0.000118, std_error=0.0003
+	# no change
+	# nrows = 103; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=103, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=8.6e-05, std_error=0.000301
+	# too small, try 101
+	# nrows = 101; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=101, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=7.8e-05, std_error=0.0002
+	# too small, try 100 again.
+	# nrows = 100; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=100, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=8.3e-05, std_error=0.000290
+	# nrows = 98; nact=2; threshold_sum=False; bits_per_counter=8
+	# With nrows=98, ncols=512, nact=2, threshold_sum=False epochs=1000, mean_error=0.0001080, std_error=0.00032
+	# Assume nrows=98, nact=2 the best match
+
+
+
+
+
+	epochs=1000
 	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices,
-		threshold_sum=threshold_sum, epochs=epochs)
+		threshold_sum=threshold_sum, bits_per_counter=bits_per_counter, epochs=epochs)
 	print("With nrows=%s, ncols=%s, nact=%s, threshold_sum=%s epochs=%s, mean_error=%s, std_error=%s" % (nrows, ncols,
 		nact, threshold_sum, epochs, fse.mean_error, fse.std_error))
 	print("match_distance mean=%s, std=%s; distractor_distance mean=%s, std=%s" % (fse.match_distance_mean,
