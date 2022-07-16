@@ -105,15 +105,13 @@ def sdm_optimum_size(perf, k=1000, d=100, ncols=512, binarized=True):
 	# find nact giving minimum number of rows
 	max_nact = 11
 	nrows = np.empty(max_nact, dtype=np.int16)
-	print("optimum nacts found for binarized=%s:" % binarized)
+	# print("optimum nacts found for binarized=%s:" % binarized)
 	for i in range(max_nact):
 		nact = i+1
 		nrows[i] = sdm_nrows(perf,nact,k,d,ncols, binarized)
 		opt_nact = optimum_nact(k, nrows[i])
-		if opt_nact == nact:
-			print("%s/%s" %(nrows[i], nact))
-		# else:
-		# 	print("%s/%s opt %s" %(nrows[i], nact, opt_nact))
+		# if opt_nact == nact:
+		# 	print("%s/%s" %(nrows[i], nact))
 	mini = np.argmin(nrows)
 	optSize = (nrows[mini], mini+1, "%s/%s" % (nrows[mini], mini+1))  # return ints and string, eg (134, 7, "134/7")
 	return optSize
@@ -128,7 +126,18 @@ def optimum_nact(k, m):
 def main():
 	k = 1000
 	d = 100
-	print("i\tpr_binL\tre_galL\tratio\tfndBinL\tratio2\tsdm_ham\tsdm_anl\tsdm_jkl\tsdm_dot\tdot/ham")
+	print("Legend:")
+	print("p_bun1 - predicted bundle length, binarized=True (hamming used for match to item memory)")
+	print("p_bun8 - predicted bundle length, binarized=False (dot product used for match to item memory)")
+	print("pb8/pb1 - p_bun8 / p_bun1")
+	print("f_bun1 - Found bundle length, binarized=True")
+	print("pb1/fb1 - predicted bundle length / found bundle length (binarized=True")
+	print("pSDMham - predicted sdm 8 bit counter, sum thresholded (hamming match)")
+	print("sdm_anl - sdm dimensions 8 bit counter, sum thresholded found numerically using sdm_ae script")
+	print("sdm_jkl - prediced sdm size using jaeckel simple size prediction")
+	print("sdm_dot - predicted sdm size using dot product for match (8 bit counter, non-thresholded sums)")
+	print("ham/dot - pSDMham/sdm_dot\n")
+	print("i\tp_bun1\tp_bun8\tpb8/pb1\tf_bun1\tpb1/fb1\tpSDMham\tsdm_anl\tsdm_jkl\tsdm_dot\tham/dot")
 	for i in range(1, 10):
 		perf = 10**(-i)
 		binLen = bundle_length(k, perf, d, binarized=True)
@@ -139,12 +148,12 @@ def main():
 		# sdmLen = sdm_nrows(k, perf, d)
 		sdm_hamming = sdm_optimum_size(perf, k=k, d=d, ncols=512, binarized=True)
 		sdm_dot = sdm_optimum_size(perf, k=k, d=d, ncols=512, binarized=False)
-		dot_over_ham = round(sdm_dot[0] / int(sdm_hamming[0]), 4)
+		dot_over_ham = sdm_dot[0] / int(sdm_hamming[0])
 		sdm_anl_size = "%s/%s" % (found_sdm_8_bit_counter_threshold_sizes[i-1][1],
 			found_sdm_8_bit_counter_threshold_sizes[i-1][2])
 		sdm_jaeckel_size = "%s/%s" % (found_sdm_jaeckel_sizes[i-1][1], found_sdm_jaeckel_sizes[i-1][2])
-		print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (i, binLen, galLen, round(ratio,4), found_binLen,
-			round(ratio2, 4), sdm_hamming[2], sdm_anl_size, sdm_jaeckel_size, sdm_dot[2], dot_over_ham))
+		print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (i, binLen, galLen, round(1.0/ratio,4), found_binLen,
+			round(ratio2, 4), sdm_hamming[2], sdm_anl_size, sdm_jaeckel_size, sdm_dot[2], round(dot_over_ham, 4)))
 
 
 def compare_sdm_ham_dot():
