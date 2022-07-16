@@ -36,11 +36,11 @@ def main():
 	epochs=50
 	threshold_sum = False
 	bits_per_counter=8
-	row_start = 40
+	row_start = 20
 	row_step = 10
 	epochs_start = 40
 	minimum_fail_count = 40
-	epochs_max = 500
+	epochs_max = 1000
 	# wanted_rows = range(40, 121, 20)
 	max_num_steps = 100
 	perr = np.empty(max_num_steps, dtype=np.float64)
