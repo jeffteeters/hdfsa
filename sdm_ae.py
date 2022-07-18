@@ -24,7 +24,7 @@ class Sdm_error_analytical:
 	# would contribute either (-2, 0, +2).  Another example, chunk of size 3 contributes -3 or +3.  But three
 	# independent items could contribute: -3, -1, 1, or 3.
 
-	def __init__(self, nrows, nact, k, ncols=None, d=None, threshold=100000, show_pruning=False, show_items=False,
+	def __init__(self, nrows, nact, k, ncols=None, d=None, threshold=10000000, show_pruning=False, show_items=False,
 		show_progress=False, prune=True, debug=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
@@ -335,7 +335,15 @@ class Sdm_error_analytical:
 
 def main():
 	# nrows = 6; nact = 2; k = 5; d = 27; ncols = 33  # original test case
-	nrows=80; nact=3; k=50; d=27; ncols=33  # gives 0.0178865
+	# nrows=80; nact=3; k=50; d=27; ncols=33  # gives 0.0178865?
+	# ---
+	# test with d==2:
+	# nrows=65; nact=1; k=1000; d=2; ncols=512  # compare to predicted from simple_predict_sizes.py
+	# for k=1000, d=2, sdm size=(65, 512, 1), predicted analytical error=0.001263169
+	# matches:
+	# python fast_sdm_empirical.py
+	# With nrows=65, ncols=512, nact=1, threshold_sum=True, only_one_distractor=True, epochs=100, mean_error=0.00127, std_error=0.00111
+	# ---
 	# nrows = 80; nact = 6; k = 1000; d = 27; ncols = 51  # near full size
 	# nrows = 1; nact = 1; k = 3; d = 3; ncols = 3  # test for understand match hamming
 	# test new cop class
