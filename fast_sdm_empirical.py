@@ -37,7 +37,7 @@ class Fast_sdm_empirical():
 	# @jit
 	def __init__(self, nrows, ncols, nact, actions=10, states=100, choices=10, epochs=10,
 			count_multiple_matches_as_error=True, roll_address=True, debug=False,
-			hl_selection_method="hamming", bits_per_counter=8, threshold_sum=True,
+			hl_selection_method="hamming", bits_per_counter=8, threshold_sum=True, only_one_distractor = False,
 			save_error_rate_vs_hamming_distance=False):
 		# nrows is number of rows (hard locations) in the SDM
 		# ncols is the number of columns
@@ -55,6 +55,8 @@ class Fast_sdm_empirical():
 		# include zero. e.g. 1.5 means -1, 0, +1;  If greater than 4, zero is always included
 		# threshold_sum set True to threshold sum to binary number before comparing to item memory (hamming distance)
 		#  this is the normal SDM.  threshold_sum False means match to item memory done via dot product.
+		# only_one_distractor - True if should do match with only one distractor (used to test analytical
+		#  equations for match - distractor distribution).
 		# print("starting Fast_sdm_empirical, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
 		# 	nrows, ncols, nact, actions, states, choices))
 		self.nrows = nrows
@@ -90,7 +92,7 @@ class Fast_sdm_empirical():
 			distance_counts_offset = 0
 		else:
 			# save counts of dot product match and distractor
-			distance_counts_len = 4*(self.ncols * self.nact)  # should be enough range
+			distance_counts_len = 5*(self.ncols * self.nact)  # should be enough range
 			distance_counts_offset = int(distance_counts_len / 2)
 		self.match_hamming_counts = np.zeros(distance_counts_len, dtype=np.uint32)
 		self.distractor_hamming_counts = np.zeros(distance_counts_len, dtype=np.uint32)
@@ -204,18 +206,27 @@ class Fast_sdm_empirical():
 				self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]+distance_counts_offset] += 1 # a random distractor
 				match_distances[trial_count] = hamming_distances[transition_next_state[i]]
 				distractor_distances[trial_count] = hamming_distances[(transition_next_state[i]+1) % self.states]
-				two_smallest = np.argpartition(hamming_distances, 2)[0:2]
-				if hamming_distances[two_smallest[0]] < hamming_distances[two_smallest[1]]:
-					if transition_next_state[i] != two_smallest[0]:
+				if only_one_distractor:
+					# special case, compare with only one distractor to test analytical solutions that use one distractor
+					match_distance = hamming_distances[transition_next_state[i]]
+					distractor_distance = hamming_distances[(transition_next_state[i]+1) % self.states]
+					if match_distance >= distractor_distance:
 						fail_counts[epoch_id] += 1
 						fail_count += 1
-				elif hamming_distances[two_smallest[1]] < hamming_distances[two_smallest[0]]:
-					if transition_next_state[i] != two_smallest[1]:
+				else:
+					# normal processing, are multiple distractors
+					two_smallest = np.argpartition(hamming_distances, 2)[0:2]
+					if hamming_distances[two_smallest[0]] < hamming_distances[two_smallest[1]]:
+						if transition_next_state[i] != two_smallest[0]:
+							fail_counts[epoch_id] += 1
+							fail_count += 1
+					elif hamming_distances[two_smallest[1]] < hamming_distances[two_smallest[0]]:
+						if transition_next_state[i] != two_smallest[1]:
+							fail_counts[epoch_id] += 1
+							fail_count += 1
+					elif self.count_multiple_matches_as_error or transition_next_state[i] != two_smallest[0]:
 						fail_counts[epoch_id] += 1
 						fail_count += 1
-				elif self.count_multiple_matches_as_error or transition_next_state[i] != two_smallest[0]:
-					fail_counts[epoch_id] += 1
-					fail_count += 1
 				trial_count += 1
 		# print("fail counts are %s" % fail_counts)
 		assert np.sum(fail_counts) == fail_count
@@ -262,6 +273,8 @@ def main():
 # [[1, 25, 1], [2, 37, 1], [3, 50, 1], [4, 62, 1], [5, 75, 1], [6, 87, 2], [7, 100, 2], [8, 113, 2], [9, 125, 2]]
 # output from empirical_size for nact==1:
 # [1, 31, 1], [2, 57, 1]
+# output from simple_predict_size is:
+# [[1, 39, 1], [2, 56, 1], [3, 75, 1], [4, 93, 1], [5, 112, 1], [6, 131,2], [7,149,2], [8,168,2], [9,187,2]]
 #
 	# try 1
 	# nrows = 31; nact=1; threshold_sum= False; bits_per_counter=8  # should be 10e-1
@@ -271,10 +284,11 @@ def main():
 	# With nrows=56, ncols=512, nact=1, threshold_sum=False epochs=100, mean_error=0.010649999999999995, std_error=0.0034
 
 	# summary, selected dims are:
-	[[1, 31, 1],
-    [2, 56, 1],
-	[3, 76, 2],
-	[4, 98, 2]],
+	# [[1, 31, 1],
+	# [2, 56, 1],
+	# [3, 76, 2],
+	# [4, 98, 2],
+	# [5, 120, 2],
 
 
 
@@ -405,11 +419,35 @@ def main():
 	# nrows = 199; nact=3; threshold_sum=False; bits_per_counter=1
 	# With nrows=199, ncols=512, nact=3, threshold_sum=False epochs=4000, mean_error=8e-06, std_error=8.908422980528039e-05
 	# is somewhat close
-	epochs=100
+	#
+	# test analytical solutions that use only one distractor
+	# sdm_dot (8 bit counters, not thresholded): should give 10^-3: 39/1
+	# nrows=39; nact=1; threshold_sum=False; bits_per_counter=8; only_one_distractor = True # gives: 0.00127
+	# With nrows=39, ncols=512, nact=1, threshold_sum=False, only_one_distractor=True, epochs=100, mean_error=0.00127, std_error=0.00104
+	#  mean_error=0.00123, std_error=0.001103
+	#  mean_error=0.0010600000000000002, std_error=0.001093
+	# sdm_dot , should give 10^-2 error
+	# nrows=22; nact=1; threshold_sum=False; bits_per_counter=8; only_one_distractor = True
+	# nrows=22, ncols=512, nact=1, threshold_sum=False, only_one_distractor=True, epochs=100, mean_error=0.00954, std_error=0.003269
+	# nrows=22, ncols=512, nact=1, threshold_sum=False, only_one_distractor=True, epochs=100, mean_error=0.00956, std_error=0.00302430
+	# nrows=22, ncols=512, nact=1, threshold_sum=False, only_one_distractor=True, epochs=100, mean_error=0.00949, std_error=0.003281
+	# try 10^-1, sdm_dot
+	# nrows=7; nact=1; threshold_sum=False; bits_per_counter=8; only_one_distractor = True
+	# With nrows=7, ncols=512, nact=1, threshold_sum=False, only_one_distractor=True, epochs=100, mean_error=0.091239, std_error=0.00933
+	# somewhat close, but not an exact match
+	#
+	# Try thresholded sdm, with d=2, compare to prediction
+	# following should have 10e-3, 0.00087050 as predicted analytically by subtracting distributions
+	nrows=65; nact=1; threshold_sum=True; bits_per_counter=8; only_one_distractor = True
+	# With nrows=65, ncols=512, nact=1, threshold_sum=True, only_one_distractor=True, epochs=100, mean_error=0.00152, std_error=0.00119
+
+	epochs=1000
 	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices,
-		threshold_sum=threshold_sum, bits_per_counter=bits_per_counter, epochs=epochs)
-	print("With nrows=%s, ncols=%s, nact=%s, threshold_sum=%s epochs=%s, mean_error=%s, std_error=%s" % (nrows, ncols,
-		nact, threshold_sum, epochs, fse.mean_error, fse.std_error))
+		threshold_sum=threshold_sum, bits_per_counter=bits_per_counter, only_one_distractor=only_one_distractor,
+		epochs=epochs)
+	print("With nrows=%s, ncols=%s, nact=%s, threshold_sum=%s, only_one_distractor=%s,"
+		" epochs=%s, mean_error=%s, std_error=%s" % (nrows, ncols,
+		nact, threshold_sum, only_one_distractor, epochs, fse.mean_error, fse.std_error))
 	print("match_distance mean=%s, std=%s; distractor_distance mean=%s, std=%s" % (fse.match_distance_mean,
 		fse.match_distance_std, fse.distractor_distance_mean, fse.distractor_distance_std))
 	print("counter_sum_mean=%s, counter_sum_std=%s" % (fse.counter_sum_mean, fse.counter_sum_std))
