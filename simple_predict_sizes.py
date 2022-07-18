@@ -100,6 +100,27 @@ def sdm_nrows(perf, nact=1, k=1000, d=100, ncols=512, binarized=True):
 		return round(m1)
 	else:
 		return round(m2)
+
+def sdm_perr(nrows, nact, k, d, ncols, binarized):
+	# return predicted error rate using formula derived from difference of match and distractor distributions
+	if binarized:
+		# first calculate single bit error rate using Poisson distribution, p. 13-14 or Pentti's book chapter
+		mean = nact
+		la = nact**2 / nrows  # lambda
+		var = (k - 1)*(la + la**2) + mean  # variance
+		delta = norm.cdf(-mean/math.sqrt(var))  # single bit error rate
+		# now create combined distribution, subtracting this distribution (for match) from distractor
+		cm = 0.5 - delta  # combined mean
+		cv = (delta*(1-delta) + 0.5*(1 - 0.5)) / ncols
+		perr = norm.cdf(-cm/math.sqrt(cv))
+	else:
+		# using dot product to compute distances
+		cm = ncols * nact  # combined distribution mean
+		la = nact**2 / nrows
+		cv = ncols * (2*k-1)*(la + la**2) + nact  # combined distribution variance
+		perr = norm.cdf(-cm / math.sqrt(cv))
+	return perr
+
 	
 def sdm_optimum_size(perf, k=1000, d=100, ncols=512, binarized=True):
 	# find nact giving minimum number of rows
@@ -125,19 +146,23 @@ def optimum_nact(k, m):
 
 def main():
 	k = 1000
-	d = 100
+	d = 2
+	ncols = 512
 	print("Legend:")
 	print("p_bun1 - predicted bundle length, binarized=True (hamming used for match to item memory)")
 	print("p_bun8 - predicted bundle length, binarized=False (dot product used for match to item memory)")
 	print("pb8/pb1 - p_bun8 / p_bun1")
 	print("f_bun1 - Found bundle length, binarized=True")
 	print("pb1/fb1 - predicted bundle length / found bundle length (binarized=True")
-	print("pSDMham - predicted sdm 8 bit counter, sum thresholded (hamming match)")
+	print("sdm_ham - predicted sdm 8 bit counter, sum thresholded (hamming match)")
+	print("sdham_pe - predicted error of sdm_ham")
 	print("sdm_anl - sdm dimensions 8 bit counter, sum thresholded found numerically using sdm_ae script")
 	print("sdm_jkl - prediced sdm size using jaeckel simple size prediction")
 	print("sdm_dot - predicted sdm size using dot product for match (8 bit counter, non-thresholded sums)")
-	print("ham/dot - pSDMham/sdm_dot\n")
-	print("i\tp_bun1\tp_bun8\tpb8/pb1\tf_bun1\tpb1/fb1\tpSDMham\tsdm_anl\tsdm_jkl\tsdm_dot\tham/dot")
+	print("sdot_pe - perdicted error using sdm_dot")
+	print("ham/dot - pSDMham/sdm_dot")
+	print(" OUTPUT FOR d=%s, k=%s" % (d, k))
+	print("i\tp_bun1\tp_bun8\tpb8/pb1\tf_bun1\tpb1/fb1\tpSDMham\tsdham_pe\tsdm_anl\tsdm_jkl\tsdm_dot\tham/dot\tsdot_pe")
 	for i in range(1, 10):
 		perf = 10**(-i)
 		binLen = bundle_length(k, perf, d, binarized=True)
@@ -146,14 +171,17 @@ def main():
 		found_binLen = found_binarized_bundle_sizes[i-1][1]
 		ratio2 = binLen / found_binLen
 		# sdmLen = sdm_nrows(k, perf, d)
-		sdm_hamming = sdm_optimum_size(perf, k=k, d=d, ncols=512, binarized=True)
-		sdm_dot = sdm_optimum_size(perf, k=k, d=d, ncols=512, binarized=False)
+		sdm_hamming = sdm_optimum_size(perf, k=k, d=d, ncols=ncols, binarized=True)
+		sdham_pe = sdm_perr(sdm_hamming[0], sdm_hamming[1], k, d, ncols=ncols, binarized=True)
+		sdm_dot = sdm_optimum_size(perf, k=k, d=d, ncols=ncols, binarized=False)
+		sdot_pe = sdm_perr(sdm_dot[0], sdm_dot[1], k, d, ncols=ncols, binarized=False)
 		dot_over_ham = sdm_dot[0] / int(sdm_hamming[0])
 		sdm_anl_size = "%s/%s" % (found_sdm_8_bit_counter_threshold_sizes[i-1][1],
 			found_sdm_8_bit_counter_threshold_sizes[i-1][2])
 		sdm_jaeckel_size = "%s/%s" % (found_sdm_jaeckel_sizes[i-1][1], found_sdm_jaeckel_sizes[i-1][2])
-		print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (i, binLen, galLen, round(1.0/ratio,4), found_binLen,
-			round(ratio2, 4), sdm_hamming[2], sdm_anl_size, sdm_jaeckel_size, sdm_dot[2], round(dot_over_ham, 4)))
+		print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (i, binLen, galLen, round(1.0/ratio,4), found_binLen,
+			round(ratio2, 4), sdm_hamming[2], sdham_pe, sdm_anl_size, sdm_jaeckel_size, sdm_dot[2], round(dot_over_ham, 4),
+			sdot_pe))
 
 
 def compare_sdm_ham_dot():
