@@ -26,7 +26,7 @@ class Sdm_error_analytical:
 
 	def __init__(self, nrows, nact, k, ncols=None, d=None, match_method="both",
 		threshold=10000000, show_pruning=False, show_items=False,
-		show_progress=False, prune=True, debug=False):
+		show_progress=False, prune=False, debug=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
 		# k - number of items to store in sdm
@@ -217,7 +217,10 @@ class Sdm_error_analytical:
 		nact = self.nact
 		dkey = int(key / 1000)  # strip off no overlap count
 		if dkey == 0:
-			return None # no overlap, so empty weights and probabilities
+			# no overlap, so weight of overlap is zero with probability 1
+			chunk_weights = np.array([0],dtype=int)
+			chunk_probabilities = np.array([1.0],dtype=np.float64)
+			return (chunk_weights, chunk_probabilities)
 		cfreq=[]
 		while dkey > 0:
 			cfreq.append(dkey % 1000)
@@ -246,31 +249,33 @@ class Sdm_error_analytical:
 		# returned array used for computing error rate with dot product
 		# ncols - width of vector, included so can call with different widths 
 		assert self.cop_key.size == self.cop_prb.size
-		max_dotp = self.nact * ncols  # assume this is maximum value of dot product (might not be true, try it)
+		print("k=%s" % self.k)
+		print("cop_key=%s" % self.cop_key)
+		print("cop_prb=%s" % self.cop_prb)
+		print("sum cop_prb=%s" % self.cop_prb.sum())
+		max_dotp = self.nact * ncols +10 # assume this is maximum value of dot product (might not be true, try it)
 		sump_dist_len = 2 * max_dotp + 1   # zero value is at index max_dotp
 		sump_dist = np.zeros(sump_dist_len, dtype=np.float64)
 		cop_prob_sum = 0.0;
 		term_count = 0
+		# import pdb; pdb.set_trace()
 		for i in range(self.cop_key.size):
-			cwcp = self.compute_chunk_weights_and_probabilities(self.cop_key[i])
-			if cwcp is not None:
-				cw, cp = cwcp
-				term_count += len(cp)
-				assert math.isclose(cp.sum(), 1.0), "cp sum is not one (is %s) for i=%s, key=%s" % (
-					cp.sum(), i, self.cop_key[i])
-				# compute sum then product with target bit (+1 or -1)
-				positive_target_sump = cw + self.nact  # same as (cs + nact) * 1
-				negative_target_sump = self.nact - cw  # same as (cw - nact) * -1
-				cop_prob_sum += self.cop_prb[i]
-				half_cp = self.cop_prb[i] * cp / 2   # weight probability by half for positive target and half for negative target
-				sump_dist[positive_target_sump + max_dotp] += half_cp
-				sump_dist[negative_target_sump + max_dotp] += half_cp
+			cw, cp = self.compute_chunk_weights_and_probabilities(self.cop_key[i])
+			term_count += len(cp)
+			assert math.isclose(cp.sum(), 1.0), "cp sum is not one (is %s) for i=%s, key=%s" % (
+				cp.sum(), i, self.cop_key[i])
+			# compute sum then product with target bit (+1 or -1)
+			positive_target_sump = cw + self.nact  # same as (cs + nact) * 1
+			negative_target_sump = self.nact - cw  # same as (cw - nact) * -1
+			cop_prob_sum += self.cop_prb[i]
+			half_cp = self.cop_prb[i] * cp / 2   # weight probability by half for positive target and half for negative target
+			sump_dist[positive_target_sump + max_dotp] += half_cp
+			sump_dist[negative_target_sump + max_dotp] += half_cp
 		plt.plot(sump_dist)
 		plt.show()
 		print("cop_prob_sum=%s, term_count=%s" % (cop_prob_sum, term_count))
 		assert math.isclose(np.sum(sump_dist), 1.0), "sump_dist is not equal to 1, is: %s" % np.sum(sump_dist)
 		self.sump_dist = sump_dist
-		plt.plt(sump_dist)
 
 
 	def cop_err_empirical(self, nact, key, trials=100000):
@@ -424,7 +429,7 @@ def main():
 	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
 	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size
 	# nrows=39; nact=1; k=1000; d=100; ncols=512;  # should give 10^-1 error if using dot product match
-	nrows=76; nact=2; k=1000; d=100; ncols=512;  # should give 10^-3 error if using dot product match
+	nrows=76; nact=1; k=1000; d=100; ncols=512;  # should give 10^-3 error if using dot product match
 	ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
 	print("for k=%s, d=%s, sdm size=(%s, %s, %s), predicted analytical error=%s" % (k, d, nrows, ncols, nact, ae))
 
