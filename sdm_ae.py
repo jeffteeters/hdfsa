@@ -25,8 +25,8 @@ class Sdm_error_analytical:
 	# independent items could contribute: -3, -1, 1, or 3.
 
 	def __init__(self, nrows, nact, k, ncols=None, d=None, match_method="both",
-		threshold=10000000, show_pruning=False, show_items=False,
-		show_progress=False, prune=False, debug=False):
+		threshold=10000000, show_pruning=True, show_items=True,
+		show_progress=False, prune=False, prune_zeros=True, debug=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
 		# k - number of items to store in sdm
@@ -37,7 +37,9 @@ class Sdm_error_analytical:
 		#   "both" - compute using both hamming and dot product 
 		#    - False if match using hamming distance (threshold counters and use hamming match)
 		# threshold - maximum ratio of largest to smallest probability.  Drop patterns that have smaller probability
-		#  This done to limit number of patterns to only those that are contributing the most to the result
+		#  This done if prune=True, to limit number of patterns to only those that are contributing the most to the result
+		# prune - True if should drop patterns that have smaller probability than maximum probability / threshold
+		# prune_zeros - True if should drop patterns that have probability == 0.0 (due to underflow)
 		self.nrows = nrows
 		self.nact = nact
 		self.k = k
@@ -50,6 +52,7 @@ class Sdm_error_analytical:
 		self.show_pruning = show_pruning
 		self.show_items = show_items
 		self.prune = prune
+		self.prune_zeros = prune_zeros
 		self.debug = debug
 		self.ov1_pmf = self.compute_one_item_overlap_pmf()
 		if self.show_items:
@@ -147,6 +150,14 @@ class Sdm_error_analytical:
 			print("cop_prb=%s" % self.cop_prb)
 		assert self.cop_key.size == self.cop_prb.size, "after combining like keys, len(cop_key)=%s, len(cop_prb)=%s" % (
 			self.cop_key.size, self.cop_prb.size)
+		if self.prune_zeros:
+			mask = self.cop_prb > 0.0  # keep terms larger than zero
+			self.cop_key = self.cop_key[mask]
+			self.cop_prb = self.cop_prb[mask]
+			if self.show_pruning:
+				number_pruned = mask.size - self.cop_key.size
+				if number_pruned > 0:
+					print("Pruned_zeros: %s before, %s after, %s pruned" % (mask.size, self.cop_key.size, number_pruned))
 		# prune terms with probability smaller than threshold
 		if not self.prune:
 			return
