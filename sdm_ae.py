@@ -7,7 +7,7 @@ from scipy.stats import binom
 # from scipy.stats import norm
 import numpy as np
 from fractions import Fraction
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 # import copy
 
 # import pprint
@@ -24,13 +24,18 @@ class Sdm_error_analytical:
 	# would contribute either (-2, 0, +2).  Another example, chunk of size 3 contributes -3 or +3.  But three
 	# independent items could contribute: -3, -1, 1, or 3.
 
-	def __init__(self, nrows, nact, k, ncols=None, d=None, threshold=10000000, show_pruning=False, show_items=False,
+	def __init__(self, nrows, nact, k, ncols=None, d=None, match_method="both",
+		threshold=10000000, show_pruning=False, show_items=False,
 		show_progress=False, prune=True, debug=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
 		# k - number of items to store in sdm
 		# ncols - number of columns in each row of sdm
 		# d - size of item memory (d-1 are distractors)
+		# match_method - "hamming" - match using hamming distance (threshold counters and use hamming match)
+		#   "dot" - use dot product of counter sums for matching with item memory (non-thresholded sums)
+		#   "both" - compute using both hamming and dot product 
+		#    - False if match using hamming distance (threshold counters and use hamming match)
 		# threshold - maximum ratio of largest to smallest probability.  Drop patterns that have smaller probability
 		#  This done to limit number of patterns to only those that are contributing the most to the result
 		self.nrows = nrows
@@ -38,6 +43,9 @@ class Sdm_error_analytical:
 		self.k = k
 		self.ncols = ncols
 		self.d = d
+		assert match_method in ("hamming", "dot", "both")
+		self.hamm_match = match_method in ("hamming", "both")
+		self.dotp_match = match_method in ("dot", "both")
 		self.threshold = threshold
 		self.show_pruning = show_pruning
 		self.show_items = show_items
@@ -57,6 +65,9 @@ class Sdm_error_analytical:
 		if show_progress:
 			print("\nNumber keys=%s.  Computing error_rates..." % len(self.cop_key))
 		self.cop_err = np.array([self.cop_error_rate(self.nact, key) for key in self.cop_key])
+		if self.dotp_match:
+			assert self.ncols is not None, "if using dotp_match, must specify ncols"
+			self.compute_sump_distribution(self.ncols)
 		if ncols is not None:
 			self.compute_hamming_dist()
 			if d is not None:
@@ -200,6 +211,66 @@ class Sdm_error_analytical:
 		prob_sum = np.sum(chunk_probabilities)
 		cop_error_rate = (perror_sum + nerror_sum) / (2* prob_sum)  # divide by 2 because positive and negative errors summed
 		return cop_error_rate
+
+	def compute_chunk_weights_and_probabilities(self, key):
+		# determine weights and probabilities given chunk overlap pattern specified in key
+		nact = self.nact
+		dkey = int(key / 1000)  # strip off no overlap count
+		if dkey == 0:
+			return None # no overlap, so empty weights and probabilities
+		cfreq=[]
+		while dkey > 0:
+			cfreq.append(dkey % 1000)
+			dkey = int(dkey / 1000)
+		assert len(cfreq) <= nact
+		cw = []  # chunk weights, will store all possible weights for each chunk size, weights are multiples of nact
+		cp = []  # chunk probabilities, stores probability of each weight, from binomonial distribution
+		for i in range(len(cfreq)):
+			weight = i+1
+			nchunks = cfreq[i]   # number of chunks of size i+1
+			x = np.arange(nchunks+1)
+			chunk_weights = x * weight - (nchunks - x) * weight  # positive weights - negative weights
+			chunk_probabilities = binom.pmf(x, nchunks, 0.5)  # binomonial coefficients, give number of possible ways to select x items
+			cw.append(chunk_weights)
+			cp.append(chunk_probabilities)
+		chunk_weights = cw[0]
+		chunk_probabilities = cp[0]
+		for i in range(1, len(cfreq)):
+			chunk_weights = np.add.outer(cw[i],chunk_weights).flatten()
+			chunk_probabilities = np.outer(cp[i],chunk_probabilities).flatten()
+		return (chunk_weights, chunk_probabilities)
+
+
+	def compute_sump_distribution(self, ncols):
+		# compute matching dot product distribution (from sums of counters multiplied by target value in item memory)
+		# returned array used for computing error rate with dot product
+		# ncols - width of vector, included so can call with different widths 
+		assert self.cop_key.size == self.cop_prb.size
+		max_dotp = self.nact * ncols  # assume this is maximum value of dot product (might not be true, try it)
+		sump_dist_len = 2 * max_dotp + 1   # zero value is at index max_dotp
+		sump_dist = np.zeros(sump_dist_len, dtype=np.float64)
+		cop_prob_sum = 0.0;
+		term_count = 0
+		for i in range(self.cop_key.size):
+			cwcp = self.compute_chunk_weights_and_probabilities(self.cop_key[i])
+			if cwcp is not None:
+				cw, cp = cwcp
+				term_count += len(cp)
+				assert math.isclose(cp.sum(), 1.0), "cp sum is not one (is %s) for i=%s, key=%s" % (
+					cp.sum(), i, self.cop_key[i])
+				# compute sum then product with target bit (+1 or -1)
+				positive_target_sump = cw + self.nact  # same as (cs + nact) * 1
+				negative_target_sump = self.nact - cw  # same as (cw - nact) * -1
+				cop_prob_sum += self.cop_prb[i]
+				half_cp = self.cop_prb[i] * cp / 2   # weight probability by half for positive target and half for negative target
+				sump_dist[positive_target_sump + max_dotp] += half_cp
+				sump_dist[negative_target_sump + max_dotp] += half_cp
+		plt.plot(sump_dist)
+		plt.show()
+		print("cop_prob_sum=%s, term_count=%s" % (cop_prob_sum, term_count))
+		assert math.isclose(np.sum(sump_dist), 1.0), "sump_dist is not equal to 1, is: %s" % np.sum(sump_dist)
+		self.sump_dist = sump_dist
+		plt.plt(sump_dist)
 
 
 	def cop_err_empirical(self, nact, key, trials=100000):
@@ -352,6 +423,8 @@ def main():
 
 	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
 	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size
+	# nrows=39; nact=1; k=1000; d=100; ncols=512;  # should give 10^-1 error if using dot product match
+	nrows=76; nact=2; k=1000; d=100; ncols=512;  # should give 10^-3 error if using dot product match
 	ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
 	print("for k=%s, d=%s, sdm size=(%s, %s, %s), predicted analytical error=%s" % (k, d, nrows, ncols, nact, ae))
 
