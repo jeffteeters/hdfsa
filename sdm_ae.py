@@ -3,6 +3,7 @@
 import math
 from scipy.stats import hypergeom
 from scipy.stats import binom
+from scipy.stats import norm
 # from scipy.special import binom as binom_coef
 # from scipy.stats import norm
 import numpy as np
@@ -25,7 +26,7 @@ class Sdm_error_analytical:
 	# independent items could contribute: -3, -1, 1, or 3.
 
 	def __init__(self, nrows, nact, k, ncols=None, d=None, match_method="both",
-		threshold=10000000, show_pruning=True, show_items=True,
+		threshold=10000000, show_pruning=False, show_items=False,
 		show_progress=False, prune=False, prune_zeros=True, debug=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
@@ -260,11 +261,11 @@ class Sdm_error_analytical:
 		# returned array used for computing error rate with dot product
 		# ncols - width of vector, included so can call with different widths 
 		assert self.cop_key.size == self.cop_prb.size
-		print("k=%s" % self.k)
-		print("cop_key=%s" % self.cop_key)
-		print("cop_prb=%s" % self.cop_prb)
-		print("sum cop_prb=%s" % self.cop_prb.sum())
-		max_dotp = self.nact * ncols +10 # assume this is maximum value of dot product (might not be true, try it)
+		# print("k=%s" % self.k)
+		# print("cop_key=%s" % self.cop_key)
+		# print("cop_prb=%s" % self.cop_prb)
+		# print("sum cop_prb=%s" % self.cop_prb.sum())
+		max_dotp = self.nact * ncols # assume this is maximum value of dot product (might not be true, try it)
 		sump_dist_len = 2 * max_dotp + 1   # zero value is at index max_dotp
 		sump_dist = np.zeros(sump_dist_len, dtype=np.float64)
 		cop_prob_sum = 0.0;
@@ -282,11 +283,23 @@ class Sdm_error_analytical:
 			half_cp = self.cop_prb[i] * cp / 2   # weight probability by half for positive target and half for negative target
 			sump_dist[positive_target_sump + max_dotp] += half_cp
 			sump_dist[negative_target_sump + max_dotp] += half_cp
-		plt.plot(sump_dist)
-		plt.show()
 		print("cop_prob_sum=%s, term_count=%s" % (cop_prob_sum, term_count))
 		assert math.isclose(np.sum(sump_dist), 1.0), "sump_dist is not equal to 1, is: %s" % np.sum(sump_dist)
+		# trim sump_dist to only have non-zero values
+		sdnz = sump_dist.nonzero()
+		first_non_zero = sdnz[0][0]
+		last_non_zero = sdnz[0][-1]
+		left_side_len = max_dotp - first_non_zero
+		right_side_len = last_non_zero - max_dotp
+		new_side_len = max(left_side_len, right_side_len)
+		sump_dist = sump_dist[max_dotp - new_side_len: max_dotp + new_side_len + 1]
 		self.sump_dist = sump_dist
+		print("after trimming sump_dist, len before=%s, len after=%s" % (sump_dist_len, sump_dist.size))
+		plt.plot(sump_dist, label="match distribution")
+		self.compute_overall_perr_dot()
+		plt.legend(loc='upper left')
+		plt.show()
+
 
 
 	def cop_err_empirical(self, nact, key, trials=100000):
@@ -377,6 +390,34 @@ class Sdm_error_analytical:
 		self.perr = 1 - p_corr
 		return self.perr
 
+	def compute_overall_perr_dot(self, d=None):
+		# for dot product match to item memory
+		# compute overall error rate, by integrating over all hamming distances with distractor distribution
+		# ncols is the number of columns in each row of the sdm
+		# d is number of item in item memory
+		if d is None:
+			assert self.d is not None, "Must specify d to compute_overall_perr_dot"
+			d = self.d
+		else:
+			self.d = d  # save passed in d
+		n = self.ncols
+		hdist = self.sump_dist
+		h = np.arange(len(hdist))
+		zero_index = (hdist.size - 1) / 2
+		dstd = math.sqrt(self.ncols)  # distractor standard deviation 
+		distractor_pdf = norm.pdf(h, loc=zero_index, scale=math.sqrt(self.ncols))    #  binom.pmf(h, n, 0.5)
+		plt.plot(distractor_pdf, label="distractor pdf")
+		ph_corr = norm.sf(h, loc=zero_index, scale=dstd) ** (d-1)  # binom.sf(h, n, 0.5) ** (d-1)
+		# ph_corr = binom.sf(h, n, 0.5) ** (d-1)
+		# ph_corr = (binom.sf(h, n, 0.5) + match_hammings_area) ** (d-1)
+		# self.plot(ph_corr, "probability correct", "hamming distance", "fraction correct")
+		# self.plot(ph_corr * hdist, "p_corr weighted by hdist", "hamming distance", "weighted p_corr")
+		hdist = hdist / np.sum(hdist)  # renormalize to increase due to loss of terms
+		p_corr = np.dot(ph_corr, hdist)
+		self.perr_dot = 1 - p_corr
+		# print("perr_dot=%s" % self.perr_dot)
+		return self.perr_dot
+
 	def compute_overall_perr_fraction(self, d=None):
 		# computer overall probability error using python Fraction module to prevent floating point underflow
 		if d is None:
@@ -441,8 +482,10 @@ def main():
 	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size
 	# nrows=39; nact=1; k=1000; d=100; ncols=512;  # should give 10^-1 error if using dot product match
 	nrows=76; nact=1; k=1000; d=100; ncols=512;  # should give 10^-3 error if using dot product match
-	ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
-	print("for k=%s, d=%s, sdm size=(%s, %s, %s), predicted analytical error=%s" % (k, d, nrows, ncols, nact, ae))
+	sea = Sdm_error_analytical(nrows, nact, k, ncols=ncols, d=d)
+	# ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
+	print("for k=%s, d=%s, sdm size=(%s, %s, %s), perr=%s, perr_dot=%s" % (k, d, nrows, ncols, nact, sea.perr,
+		sea.perr_dot))
 
 	# ae = Sdm_error_analytical(nrows, nact, k)
 	# ae.error_rate
