@@ -71,7 +71,9 @@ class Sdm_error_analytical:
 		self.cop_err = np.array([self.cop_error_rate(self.nact, key) for key in self.cop_key])
 		if self.dotp_match:
 			assert self.ncols is not None, "if using dotp_match, must specify ncols"
-			self.compute_sump_distribution(self.ncols)
+			assert self.d is not None
+			# self.compute_sump_distribution(self.ncols)
+			self.compute_dot_product_perror(self.ncols, self.d)
 		if ncols is not None:
 			self.compute_hamming_dist()
 			if d is not None:
@@ -254,6 +256,74 @@ class Sdm_error_analytical:
 			chunk_weights = np.add.outer(cw[i],chunk_weights).flatten()
 			chunk_probabilities = np.outer(cp[i],chunk_probabilities).flatten()
 		return (chunk_weights, chunk_probabilities)
+
+	def pv_union(self, p1, v1, p2, v2):
+		# combine array pairs (p1, v1) with (p2, v2)
+		# p1 and p2 are arrys of probabilities
+		# v1 and v2 are arrays of the corresponding values (integers)
+		# find values that are common between v1 and v2, and add the probabilities
+		assert len(p1) == len(v1)
+		assert len(p2) == len(v2)
+		assert len(np.unique(v1)) == len(v1), "duplicate values in v1"
+		assert len(np.unique(v2)) == len(v2), "duplicate values in v2"
+		cv, cv1, cv2 = np.intersect1d(v1, v2, assume_unique=True, return_indices=True)
+		new_len = len(v1) + len(v2) - len(cv)
+		new_p = np.empty(new_len, dtype=np.float64)
+		new_v = np.empty(new_len, dtype=np.int32)
+		new_p[0:len(p1)] = p1
+		new_v[0:len(v1)] = v1
+		new_p[cv1] += p2[cv2]  # add in probabilities for common values
+		v2add = np.setdiff1d(np.arange(len(v2)), cv2)  # get indicies of values to add (not common)
+		assert len(v2add) + len(v1) == new_len, "lengths are not as expected"
+		new_p[len(p1):] = p2[v2add]
+		new_v[len(v1):] = v2[v2add]
+		return (new_p, new_v)
+
+	def pv_stats(self, p1, v1):
+		# return mean and variance of discrete distribution with probabilities given in p1 and values given in p2
+		# from equations under "Discrete random variable" at: https://en.wikipedia.org/wiki/Variance
+		assert math.isclose(p1.sum(), 1.0)
+		assert len(p1) == len(v1)
+		mean = np.dot(p1, v1)
+		variance = np.dot(p1, (v1-mean)**2)
+		return (mean, variance)
+
+	def dot_product_stats(self, mean1, var1, ncols):
+		# compute new mean and variance (var) found by central limit theorm, summing values ncols times
+		# this done to form mean and variance for dot product with vectors length ncols
+		mean_sum = mean1 * ncols
+		var_sum = var1 * ncols
+		return (mean_sum, var_sum)
+
+	def compute_dot_product_perror(self, ncols, d):
+		# compute overall perror assuming counter sums are not thresholded and match to item
+		# memory made using dot product.
+		# ncols - width of vector, included so can call with different widths
+		# d- number of items in item memory, so there are d-1 distractors 
+		assert self.cop_key.size == self.cop_prb.size
+		for i in range(self.cop_key.size):
+			cw, cp = self.compute_chunk_weights_and_probabilities(self.cop_key[i])
+			assert math.isclose(cp.sum(), 1.0), "cp sum is not one (is %s) for i=%s, key=%s" % (
+				cp.sum(), i, self.cop_key[i])
+			# compute sum then product with target bit (+1 or -1) for match
+			positive_target_sump = cw + self.nact  # same as (cs + nact) * 1
+			negative_target_sump = self.nact - cw  # same as (cw - nact) * -1
+			half_cp = cp / 2   # weight probability by half for positive target and half for negative target
+			match_p, match_w = self.pv_union(half_cp, positive_target_sump, half_cp, negative_target_sump)
+			match_mean1, match_var1 = self.pv_stats(match_p, match_w)
+			match_mean_dot, match_var_dot = self.dot_product_stats(match_mean1, match_var1, ncols)
+			# compute for distractor
+			qtr_cp = cp / 4
+			positive_target_sump_no_match = -positive_target_sump
+			negative_target_sump_no_match = -negative_target_sump
+			no_match_p, no_match_w = self.pv_union(qtr_cp, positive_target_sump_no_match, qtr_cp, negative_target_sump_no_match)
+			# add in probability and match for match (via chance, one half)
+			distactor_p, distractor_w = self.pv_union(match_p / 2.0, match_w, no_match_p, no_match_w)
+			distractor_mean1, distractor_var1 = self.pv_stats(distactor_p, distractor_w)
+			distractor_mean_dot, distractor_var_dot = self.dot_product_stats(distractor_mean1, distractor_var1, ncols)
+			print("match mean = %s, var=%s; distractor mean=%s, var=%s" % (match_mean_dot, match_var_dot,
+				distractor_mean_dot, distractor_var_dot))
+			import pdb; pdb.set_trace()
 
 
 	def compute_sump_distribution(self, ncols):
