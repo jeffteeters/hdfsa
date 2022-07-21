@@ -333,8 +333,8 @@ class Sdm_error_analytical:
 	def compute_dot_product_perror_from_distributions(self, match_mean, match_var,
 				distractor_mean, distractor_var, d):
 		# d-1 is number of distractors
-		sfactor = 7.0  # number of standard deviations from mean
-		lin_steps = 1000
+		sfactor = 6.0  # number of standard deviations from mean
+		lin_steps = 10000
 		match_std = math.sqrt(match_var)
 		distractor_std = math.sqrt(distractor_var)
 		if match_std == 0.0:
@@ -345,8 +345,8 @@ class Sdm_error_analytical:
 		high_limit = max(match_mean + sfactor * match_std, distractor_mean + sfactor * distractor_std)
 		x = np.linspace(low_limit, high_limit, lin_steps)
 		match_pdf = norm.pdf(x, loc=match_mean, scale=match_std)
-		distractor_sfd = norm.sf(x, loc=distractor_mean, scale=distractor_std)**(d-1)
-		p_corr = np.dot(match_pdf, distractor_sfd)
+		distractor_cdfd = norm.cdf(x, loc=distractor_mean, scale=distractor_std)**(d-1)
+		p_corr = np.dot(match_pdf, distractor_cdfd)
 		perr = 1 - p_corr
 		return perr
 
