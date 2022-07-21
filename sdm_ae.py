@@ -176,6 +176,34 @@ class Sdm_error_analytical:
 		assert self.cop_key.size == self.cop_prb.size, "after pruning, len(cop_key)=%s, len(cop_prb)=%s" % (
 			self.cop_key.size, self.cop_prb.size)
 
+
+	def combine_vals(self, p_in, v_in):
+		# combine probabilities in p_in that have the same value in v_in.  Return (p_out, v_out)
+		# p_in - array of input probabilities
+		# v_in - array or values (keys) corresponding to each p_in
+		# Implemented via:
+		# make array of bin numbers for using bincount to combine probabilities that have the same key
+		# from: https://stackoverflow.com/questions/3403973/fast-replacement-of-values-in-a-numpy-array
+		# Method method_searchsort(), in post by Jean Lescut
+		assert len(p_in) == len(v_in)
+		if self.debug:
+			print("before combine: len(v_in)=%s" % len(v_in))
+			print("v_in=%s" % v_in)
+			print("p_in=%s" % p_in)
+		keys = np.unique(v_in)
+		bins = np.arange(keys.size)
+		sort_idx = np.argsort(keys)
+		idx = np.searchsorted(keys, v_in, sorter=sort_idx)
+		out = bins[sort_idx][idx]
+		p_out = np.bincount(out, weights=p_in, minlength=len(bins))
+		v_out = keys[bins]
+		if self.debug:
+			print("after combine: len(v_out)=%s" % len(v_out))
+			print("v_out=%s" % v_out)
+			print("p_out=%s" % p_out)
+		return (p_out, v_out)
+
+
 	def display_result(self):
 		num_items = len(self.cop_key)
 		total_prob = sum(self.cop_prb)
@@ -226,6 +254,7 @@ class Sdm_error_analytical:
 		cop_error_rate = (perror_sum + nerror_sum) / (2* prob_sum)  # divide by 2 because positive and negative errors summed
 		return cop_error_rate
 
+
 	def compute_chunk_weights_and_probabilities(self, key):
 		# determine weights and probabilities given chunk overlap pattern specified in key
 		nact = self.nact
@@ -255,6 +284,7 @@ class Sdm_error_analytical:
 		for i in range(1, len(cfreq)):
 			chunk_weights = np.add.outer(cw[i],chunk_weights).flatten()
 			chunk_probabilities = np.outer(cp[i],chunk_probabilities).flatten()
+			chunk_probabilities, chunk_weights = self.combine_vals(chunk_probabilities, chunk_weights)
 		return (chunk_weights, chunk_probabilities)
 
 	def pv_union(self, p1, v1, p2, v2):
@@ -264,8 +294,8 @@ class Sdm_error_analytical:
 		# find values that are common between v1 and v2, and add the probabilities
 		assert len(p1) == len(v1)
 		assert len(p2) == len(v2)
-		assert len(np.unique(v1)) == len(v1), "duplicate values in v1"
-		assert len(np.unique(v2)) == len(v2), "duplicate values in v2"
+		assert len(np.unique(v1)) == len(v1), "duplicate values in v1: %s" % v1
+		assert len(np.unique(v2)) == len(v2), "duplicate values in v2: %s" % v2
 		cv, cv1, cv2 = np.intersect1d(v1, v2, assume_unique=True, return_indices=True)
 		new_len = len(v1) + len(v2) - len(cv)
 		new_p = np.empty(new_len, dtype=np.float64)
@@ -277,6 +307,8 @@ class Sdm_error_analytical:
 		assert len(v2add) + len(v1) == new_len, "lengths are not as expected"
 		new_p[len(p1):] = p2[v2add]
 		new_v[len(v1):] = v2[v2add]
+		assert len(new_p) == len(new_v)
+		assert len(new_v) == len(np.unique(new_v)), "duplicate values in new_v: %s" % new_v
 		return (new_p, new_v)
 
 	def pv_stats(self, p1, v1):
@@ -304,6 +336,7 @@ class Sdm_error_analytical:
 		perr = 0.0
 		for i in range(self.cop_key.size):
 			cw, cp = self.compute_chunk_weights_and_probabilities(self.cop_key[i])
+			assert len(cw) == len(np.unique(cw))
 			assert math.isclose(cp.sum(), 1.0), "cp sum is not one (is %s) for i=%s, key=%s" % (
 				cp.sum(), i, self.cop_key[i])
 			# compute sum then product with target bit (+1 or -1) for match
@@ -322,10 +355,14 @@ class Sdm_error_analytical:
 			distactor_p, distractor_w = self.pv_union(match_p / 2.0, match_w, no_match_p, no_match_w)
 			distractor_mean1, distractor_var1 = self.pv_stats(distactor_p, distractor_w)
 			distractor_mean_dot, distractor_var_dot = self.dot_product_stats(distractor_mean1, distractor_var1, ncols)
-			# print("match mean = %s, var=%s; distractor mean=%s, var=%s" % (match_mean_dot, match_var_dot,
-			# 	distractor_mean_dot, distractor_var_dot))
+			# if i == 1:
+			# 	import pdb; pdb.set_trace()
 			perr_part = self.compute_dot_product_perror_from_distributions(match_mean_dot, match_var_dot,
 				distractor_mean_dot, distractor_var_dot, d)
+			# if i < 20:
+			# 	print("i=%s, match mean = %s, var=%s; distractor mean=%s, var=%s, perr_part=%s, cop_prb=%s" % (i,
+			# 		match_mean_dot, match_var_dot,
+			# 		distractor_mean_dot, distractor_var_dot, perr_part, self.cop_prb[i]))
 			perr += perr_part * self.cop_prb[i]
 		self.perr_dot = perr
 
@@ -333,20 +370,20 @@ class Sdm_error_analytical:
 	def compute_dot_product_perror_from_distributions(self, match_mean, match_var,
 				distractor_mean, distractor_var, d):
 		# d-1 is number of distractors
-		sfactor = 6.0  # number of standard deviations from mean
-		lin_steps = 10000
-		match_std = math.sqrt(match_var)
 		distractor_std = math.sqrt(distractor_var)
-		if match_std == 0.0:
-			match_std = 10.0  # have at least some variance.  Should maybe have another why to fix this
-		# assert match_std > 0
-		assert distractor_std > 0
-		low_limit = min(match_mean - sfactor * match_std, distractor_mean - sfactor * distractor_std)
-		high_limit = max(match_mean + sfactor * match_std, distractor_mean + sfactor * distractor_std)
-		x = np.linspace(low_limit, high_limit, lin_steps)
-		match_pdf = norm.pdf(x, loc=match_mean, scale=match_std)
-		distractor_cdfd = norm.cdf(x, loc=distractor_mean, scale=distractor_std)**(d-1)
-		p_corr = np.dot(match_pdf, distractor_cdfd)
+		if match_var == 0.0:
+			p_corr = norm.cdf(match_mean, loc=distractor_mean, scale=distractor_std)**(d-1)
+		else:
+			match_std = math.sqrt(match_var)
+			sfactor = 6.0  # number of standard deviations from mean
+			lin_steps = 10000
+			low_limit = min(match_mean - sfactor * match_std, distractor_mean - sfactor * distractor_std)
+			high_limit = max(match_mean + sfactor * match_std, distractor_mean + sfactor * distractor_std)
+			x = np.linspace(low_limit, high_limit, lin_steps)
+			distractor_cdfd = norm.cdf(x, loc=distractor_mean, scale=distractor_std)**(d-1)
+			match_pdf = norm.pdf(x, loc=match_mean, scale=match_std)
+			match_pdf = match_pdf / match_pdf.sum()  # normalize
+			p_corr = np.dot(match_pdf, distractor_cdfd)
 		perr = 1 - p_corr
 		return perr
 
@@ -575,7 +612,15 @@ def main():
 	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
 	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size
 	# nrows=39; nact=1; k=1000; d=100; ncols=512;  # should give 10^-1 error if using dot product match
-	nrows=76; nact=1; k=1000; d=100; ncols=512;  # should give 10^-3 error if using dot product match
+	# nrows=76; nact=2; k=1000; d=100; ncols=512;  # should give 10^-3 error if using dot product match
+	# for k=1000, d=100, sdm size=(76, 512, 2), perr=0.019137013617960386, perr_dot=0.0010863834734835909
+	# works!
+	# try 10^-1 error with dot product, from fast_sdm_empirical:
+	# try nrows=31
+	# nrows=31; nact=1; threshold_sum=False; bits_per_counter=8
+	# With nrows=31, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.096359, std_error=0.0091608
+	nrows=30; nact=1; k=1000; d=100; ncols=512;  # from fast_sdm_empirical, should give 10^-3 error for dot product match
+
 	sea = Sdm_error_analytical(nrows, nact, k, ncols=ncols, d=d)
 	# ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
 	print("for k=%s, d=%s, sdm size=(%s, %s, %s), perr=%s, perr_dot=%s" % (k, d, nrows, ncols, nact, sea.perr,
