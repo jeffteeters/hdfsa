@@ -301,6 +301,7 @@ class Sdm_error_analytical:
 		# ncols - width of vector, included so can call with different widths
 		# d- number of items in item memory, so there are d-1 distractors 
 		assert self.cop_key.size == self.cop_prb.size
+		perr = 0.0
 		for i in range(self.cop_key.size):
 			cw, cp = self.compute_chunk_weights_and_probabilities(self.cop_key[i])
 			assert math.isclose(cp.sum(), 1.0), "cp sum is not one (is %s) for i=%s, key=%s" % (
@@ -321,10 +322,33 @@ class Sdm_error_analytical:
 			distactor_p, distractor_w = self.pv_union(match_p / 2.0, match_w, no_match_p, no_match_w)
 			distractor_mean1, distractor_var1 = self.pv_stats(distactor_p, distractor_w)
 			distractor_mean_dot, distractor_var_dot = self.dot_product_stats(distractor_mean1, distractor_var1, ncols)
-			print("match mean = %s, var=%s; distractor mean=%s, var=%s" % (match_mean_dot, match_var_dot,
-				distractor_mean_dot, distractor_var_dot))
-			import pdb; pdb.set_trace()
+			# print("match mean = %s, var=%s; distractor mean=%s, var=%s" % (match_mean_dot, match_var_dot,
+			# 	distractor_mean_dot, distractor_var_dot))
+			perr_part = self.compute_dot_product_perror_from_distributions(match_mean_dot, match_var_dot,
+				distractor_mean_dot, distractor_var_dot, d)
+			perr += perr_part * self.cop_prb[i]
+		self.perr_dot = perr
 
+
+	def compute_dot_product_perror_from_distributions(self, match_mean, match_var,
+				distractor_mean, distractor_var, d):
+		# d-1 is number of distractors
+		sfactor = 7.0  # number of standard deviations from mean
+		lin_steps = 1000
+		match_std = math.sqrt(match_var)
+		distractor_std = math.sqrt(distractor_var)
+		if match_std == 0.0:
+			match_std = 10.0  # have at least some variance.  Should maybe have another why to fix this
+		# assert match_std > 0
+		assert distractor_std > 0
+		low_limit = min(match_mean - sfactor * match_std, distractor_mean - sfactor * distractor_std)
+		high_limit = max(match_mean + sfactor * match_std, distractor_mean + sfactor * distractor_std)
+		x = np.linspace(low_limit, high_limit, lin_steps)
+		match_pdf = norm.pdf(x, loc=match_mean, scale=match_std)
+		distractor_sfd = norm.sf(x, loc=distractor_mean, scale=distractor_std)**(d-1)
+		p_corr = np.dot(match_pdf, distractor_sfd)
+		perr = 1 - p_corr
+		return perr
 
 	def compute_sump_distribution(self, ncols):
 		# compute matching dot product distribution (from sums of counters multiplied by target value in item memory)
