@@ -228,6 +228,31 @@ mdims = {
 		[9, 207, 3]]
 	}
 
+# from find_sizes, using dot match:
+	SDM sizes for k=1000, d=100, ncols=512 (dot match)
+SDM size, nact
+1 - 31, 1
+2 - 56, 1
+3 - 80, 1
+4 - 102, 2
+5 - 129, 2
+6 - 160, 2
+7 - 178, 3
+8 - 205, 3
+9 - 238, 3
+
+desired_error=9, res.x=268.6283015804925, res.success=True, res.message=Solution found.
+SDM sizes for k=1000, d=100, ncols=512 (dot match)
+SDM size, nact
+1 - 31, 2
+2 - 54, 2
+3 - 77, 2
+4 - 102, 2
+5 - 129, 2
+6 - 160, 2
+7 - 196, 2
+8 - 236, 2
+9 - 269, 2
 
 def dplen(mm, per):
 	# calculate vector length requred to store bundle at per accuracy
