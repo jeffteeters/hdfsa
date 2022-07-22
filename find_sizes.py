@@ -31,12 +31,12 @@ def bundle_error_vs_width(n, desired_error=1):
 def get_sdm_activaction_count(nrows, k):
 	# made separate function so can replace by constant for testing
 	nact = sdm_jaeckel.get_sdm_activation_count(round(nrows), k)
-	# nact = 7
+	nact = 2
 	return nact
 
 def get_sdm_ncols():
 	# return number of columns used in sdm memory
-	ncols = 256 # 512
+	ncols = 512
 	return ncols
 
 
@@ -52,7 +52,8 @@ def sdm_error_vs_nrows(nrows, desired_error=1):
 	# nact = sdm_jaeckel.get_sdm_activation_count(round(nrows), k)
 	nact = get_sdm_activaction_count(nrows, k)
 	anl = sdm_anl.Sdm_error_analytical(round(nrows), nact, k, ncols=ncols, d=d)
-	found_error = anl.perr
+	# found_error = anl.perr
+	found_error = anl.perr_dot
 	# if nact ==1:
 	# 	bsm = binarized_sdm_analytical.Binarized_sdm_analytical(nrows, ncols, nact, k, d)
 	# else:
@@ -76,7 +77,7 @@ def find_bundle_size(desired_error):
 	return round(res.x)
 
 def find_sdm_size(desired_error):
-	init_xa, init_xb = 25, 650
+	init_xa, init_xb = 25, 270
 	# xa, xb, xc, fa, fb, fc, funcalls = bracket(bundle_error_vs_width, xa=init_xa, xb=init_xb)
 	fun = sdm_error_vs_nrows
 	bounds = (init_xa, init_xb)
@@ -168,7 +169,7 @@ def find_sdm_sizes(desired_error):
 	sdm_sizes = [find_sdm_size(x) for x in desired_error]
 	d, k = get_dk()
 	ncols = get_sdm_ncols()
-	print("SDM sizes for k=%s, d=%s, ncols=%s" %(k, d, ncols))
+	print("SDM sizes for k=%s, d=%s, ncols=%s (dot match)" %(k, d, ncols))
 	print("SDM size, nact")
 	k = 1000
 	ncols = get_sdm_ncols()
