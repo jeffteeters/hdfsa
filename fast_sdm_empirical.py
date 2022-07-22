@@ -337,7 +337,7 @@ def main():
 	# nrows=30; nact=1; threshold_sum=False; bits_per_counter=8
 	# result: With nrows=30, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.1058350, std_error=0.0095758
 	# try nrows=31
-	# nrows=31; nact=1; threshold_sum=False; bits_per_counter=8
+	nrows=31; nact=2; threshold_sum=False; bits_per_counter=8; only_one_distractor = False
 	# With nrows=31, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.096359, std_error=0.0091608
 	# good match.  Now try, 10-2 error:
 	# nrows=57; nact=1; threshold_sum=False; bits_per_counter=8
@@ -438,7 +438,7 @@ def main():
 	#
 	# Try thresholded sdm, with d=2, compare to prediction
 	# following should have 10e-3, 0.00087050 as predicted analytically by subtracting distributions
-	nrows=65; nact=1; threshold_sum=True; bits_per_counter=8; only_one_distractor = True
+	# nrows=65; nact=1; threshold_sum=True; bits_per_counter=8; only_one_distractor = True
 	# With nrows=65, ncols=512, nact=1, threshold_sum=True, only_one_distractor=True, epochs=100, mean_error=0.00152, std_error=0.00119
 
 	epochs=1000
