@@ -27,7 +27,7 @@ class Sdm_error_analytical:
 
 	def __init__(self, nrows, nact, k, ncols=None, d=None, match_method="both",
 		threshold=10000000, show_pruning=False, show_items=False,
-		show_progress=False, prune=False, prune_zeros=True, debug=False):
+		show_progress=False, prune=True, prune_zeros=True, debug=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
 		# k - number of items to store in sdm
@@ -74,6 +74,8 @@ class Sdm_error_analytical:
 			assert self.d is not None
 			# self.compute_sump_distribution(self.ncols)
 			self.compute_dot_product_perror(self.ncols, self.d)
+		else:
+			self.perr_dot = None
 		if ncols is not None:
 			self.compute_hamming_dist()
 			if d is not None:
@@ -376,7 +378,7 @@ class Sdm_error_analytical:
 		else:
 			match_std = math.sqrt(match_var)
 			sfactor = 6.0  # number of standard deviations from mean
-			lin_steps = 10000
+			lin_steps = 500
 			low_limit = min(match_mean - sfactor * match_std, distractor_mean - sfactor * distractor_std)
 			high_limit = max(match_mean + sfactor * match_std, distractor_mean + sfactor * distractor_std)
 			x = np.linspace(low_limit, high_limit, lin_steps)
@@ -608,7 +610,7 @@ def main():
 	# test new cop class
 	# cop = Cop(nrows, nact, k)
 	# return
-
+	k=1000; d=100; ncols=512;
 	# nrows = 2; nact = 2; k = 2; d = 27; ncols = 33 	# test smaller with overlap all the time
 	# nrows = 80; nact = 3; k = 300; d = 27; ncols = 51  # near full size
 	# nrows=39; nact=1; k=1000; d=100; ncols=512;  # should give 10^-1 error if using dot product match
@@ -617,11 +619,11 @@ def main():
 	# works!
 	# try 10^-1 error with dot product, from fast_sdm_empirical:
 	# try nrows=31
-	# nrows=31; nact=1; threshold_sum=False; bits_per_counter=8
+	nrows=31; nact=2; threshold_sum=False; bits_per_counter=8
 	# With nrows=31, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.096359, std_error=0.0091608
-	nrows=30; nact=1; k=1000; d=100; ncols=512;  # from fast_sdm_empirical, should give 10^-3 error for dot product match
+	# nrows=30; nact=1; k=1000; d=100; ncols=512;  # from fast_sdm_empirical, should give 10^-1 error for dot product match
 
-	sea = Sdm_error_analytical(nrows, nact, k, ncols=ncols, d=d)
+	sea = Sdm_error_analytical(nrows, nact, k, ncols=ncols, d=d, match_method="both")
 	# ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
 	print("for k=%s, d=%s, sdm size=(%s, %s, %s), perr=%s, perr_dot=%s" % (k, d, nrows, ncols, nact, sea.perr,
 		sea.perr_dot))
