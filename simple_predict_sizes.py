@@ -146,7 +146,7 @@ def optimum_nact(k, m):
 
 def main():
 	k = 1000
-	d = 2
+	d = 100
 	ncols = 512
 	print("Legend:")
 	print("p_bun1 - predicted bundle length, binarized=True (hamming used for match to item memory)")
