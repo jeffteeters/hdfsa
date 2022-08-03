@@ -26,6 +26,18 @@ mdims = {
 		[7, 112965],
 		[8, 127134],
 		[9, 141311]],
+
+	"bun_k1000_d100_c8":
+	[[1, 15221],
+	[2, 25717],
+	[3, 35352],
+	[4, 44632],
+	[5, 53750],
+	[6, 62794],
+	[7, 71812],
+	[8, 80824],
+	[9, 89843]],
+
 	"bun_k750_d100":
 		# Bundle sizes, for k=750, d=100:
 		[[1, 18012],
@@ -216,43 +228,54 @@ mdims = {
 		[8, 309, 4],
 		[9, 345, 4]],
 	"sdm_k1000_d100_c8_dot":
+	[[1, 31, 2],
+	[2, 54, 2],
+	[3, 77, 2],
+	[4, 102, 2],
+	[5, 129, 2],
+	[6, 160, 2],
+	[7, 178, 3],
+	[8, 205, 3],
+	[9, 238, 3]],
+
 	# from empirical_size and fast_sdm_empirical
-		[[1, 31, 1],
-    	[2, 56, 1],
-		[3, 76, 2],
-		[4, 98, 2],
-		[5, 120, 2], # this and following estimated by multiplying above by 0.6
-		[6, 142, 2],
-		[7, 163, 2],
-		[8, 185, 3],
-		[9, 207, 3]]
+	# Estimated for 5-9.
+		# [[1, 31, 1],
+  		# [2, 56, 1],
+		# [3, 76, 2],
+		# [4, 98, 2],
+		# [5, 120, 2], # this and following estimated by multiplying above by 0.6
+		# [6, 142, 2],
+		# [7, 163, 2],
+		# [8, 185, 3],
+		# [9, 207, 3]]
 	}
 
 # from find_sizes, using dot match:
-	SDM sizes for k=1000, d=100, ncols=512 (dot match)
-SDM size, nact
-1 - 31, 1
-2 - 56, 1
-3 - 80, 1
-4 - 102, 2
-5 - 129, 2
-6 - 160, 2
-7 - 178, 3
-8 - 205, 3
-9 - 238, 3
+# 	SDM sizes for k=1000, d=100, ncols=512 (dot match)
+# SDM size, nact
+# 1 - 31, 1
+# 2 - 56, 1
+# 3 - 80, 1
+# 4 - 102, 2
+# 5 - 129, 2
+# 6 - 160, 2
+# 7 - 178, 3
+# 8 - 205, 3
+# 9 - 238, 3
 
-desired_error=9, res.x=268.6283015804925, res.success=True, res.message=Solution found.
-SDM sizes for k=1000, d=100, ncols=512 (dot match)
-SDM size, nact
-1 - 31, 2
-2 - 54, 2
-3 - 77, 2
-4 - 102, 2
-5 - 129, 2
-6 - 160, 2
-7 - 196, 2
-8 - 236, 2
-9 - 269, 2
+# desired_error=9, res.x=268.6283015804925, res.success=True, res.message=Solution found.
+# SDM sizes for k=1000, d=100, ncols=512 (dot match)
+# SDM size, nact
+# 1 - 31, 2
+# 2 - 54, 2
+# 3 - 77, 2
+# 4 - 102, 2
+# 5 - 129, 2
+# 6 - 160, 2
+# 7 - 196, 2
+# 8 - 236, 2
+# 9 - 269, 2
 
 def dplen(mm, per):
 	# calculate vector length requred to store bundle at per accuracy
@@ -332,7 +355,7 @@ class Line_fit():
 def sdm_vs_bundle():
 	k = 1000
 	d = 100
-	mdims["bun_k1000_d100_c8"] = gal_dims(d, k)
+	#  mdims["bun_k1000_d100_c8"] = gal_dims(d, k)  # estimate, replaced by analytical calculation
 	# print("gal_dims=%s" % mdims["bun_k1000_d100_c8"])
 	gal_bun = Line_fit("bun_k1000_d100_c8", bpx=8)
 	bundle = Line_fit("bun_k1000_d100")
@@ -358,12 +381,50 @@ def sdm_vs_bundle():
 	plt.xlabel("bits (in bundle or sdm")
 	plt.ylabel("Fraction error")
 	plt.yscale('log')
+	# plt.xscale('log')
 	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
 	ylabels = [10.0**(-i) for i in range(9, 0, -1)]
 	plt.yticks(yticks, ylabels)
 	plt.grid()
 	plt.legend(loc='upper right')
 	plt.show()
+
+# def sdm_and_bundle_rows():
+# 	# display line fit to bundle length and SDM number of rows
+# 	# k = 1000
+# 	# d = 100
+# 	#  mdims["bun_k1000_d100_c8"] = gal_dims(d, k)  # estimate, replaced by analytical calculation
+# 	# print("gal_dims=%s" % mdims["bun_k1000_d100_c8"])
+# 	gal_bun = Line_fit("bun_k1000_d100_c8") #, bpx=8)
+# 	bundle = Line_fit("bun_k1000_d100")
+# 	bin_sdm = Line_fit("sdm_k1000_d100_c1") #, bpx=512) #("binarized_sdm")
+# 	full_sdm = Line_fit("sdm_k1000_d100_c8") #, bpx=512*8) # ("8bit_counter_sdm")
+# 	sdm_c8_dot = Line_fit("sdm_k1000_d100_c8_dot") #, bpx=512*8)
+# 	sdm_c1_dot = Line_fit("sdm_k1000_d100_c1_dot") #, bpx=512)
+# 	num_wanted_dims = 6
+# 	colors = cm.rainbow(np.linspace(0, 1, num_wanted_dims))
+# 	plt.plot(bundle.xbits, bundle.yreg, c=colors[0], label="bun_ham")
+# 	plt.plot(bundle.xbits, bundle.y, 'o', c=colors[0])
+# 	plt.plot(gal_bun.xbits, gal_bun.yreg, c=colors[1], label="bun_c8_dot")
+# 	plt.plot(gal_bun.xbits, gal_bun.y, 'o',c=colors[1])
+# 	plt.plot(bin_sdm.xbits, bin_sdm.yreg, c=colors[2], label="sdm_c1_ham")
+# 	plt.plot(bin_sdm.xbits, bin_sdm.y, 'o', c=colors[2])
+# 	plt.plot(full_sdm.xbits, full_sdm.yreg, c=colors[3], label="sdm_c8_ham")
+# 	plt.plot(full_sdm.xbits, full_sdm.y, 'o',c=colors[3])
+# 	plt.plot(sdm_c8_dot.xbits, sdm_c8_dot.yreg, c=colors[4], label="sdm_c8_dot")
+# 	plt.plot(sdm_c8_dot.xbits, sdm_c8_dot.y, 'o',c=colors[4])
+# 	plt.plot(sdm_c1_dot.xbits, sdm_c1_dot.yreg, c=colors[5], label="sdm_c1_dot")
+# 	plt.plot(sdm_c1_dot.xbits, sdm_c1_dot.y, 'o',c=colors[5])
+# 	plt.title("Bundles and sdm errors vs size (bits)")
+# 	plt.xlabel("bits (in bundle or sdm")
+# 	plt.ylabel("Fraction error")
+# 	plt.yscale('log')
+# 	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
+# 	ylabels = [10.0**(-i) for i in range(9, 0, -1)]
+# 	plt.yticks(yticks, ylabels)
+# 	plt.grid()
+# 	plt.legend(loc='upper right')
+# 	plt.show()
 
 def vary_num_items():
 	# plot bundle sizes required for different number of items
@@ -461,7 +522,7 @@ def plot_single_fit(mem_type):
 	plt.show()
 
 def main():
-	plot_type = "sdm_vs_bundle" # "vary_num_items" # "vary_item_memory" # "compare_cdf_to_exp_fit" # "cdf_dims" #
+	plot_type = "sdm_vs_bundle" # "vary_item_memory"; #"vary_num_items" # "vary_num_items" # "vary_item_memory" # "compare_cdf_to_exp_fit" # "cdf_dims" #
 	if plot_type == "sdm_vs_bundle":
 		sdm_vs_bundle()
 	elif plot_type == "vary_num_items":

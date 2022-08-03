@@ -16,14 +16,21 @@ def get_dk():
 	k = 1000
 	return (d, k)
 
+def get_binarized():
+	# used to set binarized option (currently for bundle, possibly for sdm in future)
+	# if false, uses dot product for superposition vector
+	binarized = False
+	return binarized
+
 def bundle_error_vs_width(n, desired_error=1):
 	# n is bundle size (number of components)
 	# desired_error in negative power of 10, e.g. 1 means 0.1 error, 2 means 0.01 error, 3 means 1/10**3 error
 	# return difference between found_error and desired_error squared (to minimize)
 	d, k = get_dk()
+	binarized = get_binarized()
 	# d=25  # size of item memory
 	# k=1000  # number of items stored in bundle (number transitions)
-	found_error = bundle_analytical.BundleErrorAnalytical(round(n),d,k)
+	found_error = bundle_analytical.BundleErrorAnalytical(round(n),d,k,binarized=binarized)
 	print("n=%s, found_error=%s" % (n, found_error))
 	diff = (desired_error  + math.log10(found_error)) ** 2
 	return diff
@@ -90,7 +97,8 @@ def find_sdm_size(desired_error):
 def find_bundle_sizes(desired_error):
 	bundle_sizes = [find_bundle_size(x) for x in desired_error]
 	d, k = get_dk()
-	print("Bundle sizes, for k=%s, d=%s:" % (k, d))
+	binarized = get_binarized()
+	print("Bundle sizes, for k=%s, d=%s, binarized=%s:" % (k, d, binarized))
 	for i in range(len(desired_error)):
 		print("%s - %s" % (desired_error[i], bundle_sizes[i]))
 	# output for bundle sizes:
@@ -370,7 +378,7 @@ def find_sdm_sizes(desired_error):
 
 def main():
 	desired_error = range(1,10)
-	# find_bundle_sizes(desired_error)
-	find_sdm_sizes(desired_error)
+	find_bundle_sizes(desired_error)
+	# find_sdm_sizes(desired_error)
 
 main()

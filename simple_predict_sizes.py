@@ -19,6 +19,18 @@ found_binarized_bundle_sizes = [
 	[9, 141311]
 ]
 
+found_dot_bundle_sizes = [
+	[1, 15221],
+	[2, 25717],
+	[3, 35352],
+	[4, 44632],
+	[5, 53750],
+	[6, 62794],
+	[7, 71812],
+	[8, 80824],
+	[9, 89843]
+]
+
 found_sdm_8_bit_counter_threshold_sizes = [
 	# sdm_anl.Sdm_error_analytical
 	# SDM sizes, nact:
@@ -151,8 +163,10 @@ def main():
 	print("Legend:")
 	print("p_bun1 - predicted bundle length, binarized=True (hamming used for match to item memory)")
 	print("p_bun8 - predicted bundle length, binarized=False (dot product used for match to item memory)")
+	print("bun8   - found bundle length, binarized=False")
 	print("pb8/pb1 - p_bun8 / p_bun1")
-	print("f_bun1 - Found bundle length, binarized=True")
+	print("bun1 - Found bundle length, binarized=True")
+	print("bun8ov1 - bun8/f_bun1  (found bun8 / found bun_1")
 	print("pb1/fb1 - predicted bundle length / found bundle length (binarized=True")
 	print("sdm_ham - predicted sdm 8 bit counter, sum thresholded (hamming match)")
 	print("sdham_pe - predicted error of sdm_ham")
@@ -162,14 +176,16 @@ def main():
 	print("sdot_pe - perdicted error using sdm_dot")
 	print("ham/dot - pSDMham/sdm_dot")
 	print(" OUTPUT FOR d=%s, k=%s" % (d, k))
-	print("i\tp_bun1\tp_bun8\tpb8/pb1\tf_bun1\tpb1/fb1\tpSDMham\tsdham_pe\tsdm_anl\tsdm_jkl\tsdm_dot\tham/dot\tsdot_pe")
+	print("i\tp_bun1\tp_bun8\tbun8\tpb8/pb1\tbun1\tbun8ov1\tpb1/fb1\tpSDMham\tsdham_pe\tsdm_anl\tsdm_jkl\tsdm_dot\tham/dot\tsdot_pe")
 	for i in range(1, 10):
 		perf = 10**(-i)
 		binLen = bundle_length(k, perf, d, binarized=True)
 		galLen = bundle_length(k, perf, d, binarized=False)
 		ratio = binLen / galLen
-		found_binLen = found_binarized_bundle_sizes[i-1][1]
-		ratio2 = binLen / found_binLen
+		bun1 = found_binarized_bundle_sizes[i-1][1]
+		bun8 = found_dot_bundle_sizes[i-1][1]
+		bun8ov1 = bun8/bun1
+		ratio2 = binLen / bun1
 		# sdmLen = sdm_nrows(k, perf, d)
 		sdm_hamming = sdm_optimum_size(perf, k=k, d=d, ncols=ncols, binarized=True)
 		sdham_pe = sdm_perr(sdm_hamming[0], sdm_hamming[1], k, d, ncols=ncols, binarized=True)
@@ -179,7 +195,9 @@ def main():
 		sdm_anl_size = "%s/%s" % (found_sdm_8_bit_counter_threshold_sizes[i-1][1],
 			found_sdm_8_bit_counter_threshold_sizes[i-1][2])
 		sdm_jaeckel_size = "%s/%s" % (found_sdm_jaeckel_sizes[i-1][1], found_sdm_jaeckel_sizes[i-1][2])
-		print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (i, binLen, galLen, round(1.0/ratio,4), found_binLen,
+		print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (i, binLen, galLen, bun8,
+			round(1.0/ratio,4), bun1,
+			round(bun8ov1,4),
 			round(ratio2, 4), sdm_hamming[2], sdham_pe, sdm_anl_size, sdm_jaeckel_size, sdm_dot[2], round(dot_over_ham, 4),
 			sdot_pe))
 
