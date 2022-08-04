@@ -16,7 +16,7 @@ from scipy.stats import norm
 import bundle_analytical
 
 mdims = {
-	"bun_k1000_d100":
+	"bun_k1000_d100_c1#S1":
 		[[1,24002],
 		[2, 40503],
 		[3, 55649],
@@ -27,7 +27,7 @@ mdims = {
 		[8, 127134],
 		[9, 141311]],
 
-	"bun_k1000_d100_c8":
+	"bun_k1000_d100_c8#S2":
 	[[1, 15221],
 	[2, 25717],
 	[3, 35352],
@@ -193,7 +193,7 @@ mdims = {
 		[7, 117201],
 		[8, 131401],
 		[9, 145598]],
-	"sdm_k1000_d100_c1": # sdm_binarized_nact_optimum_dims
+	"sdm_k1000_d100_c1_ham#A2": # sdm_binarized_nact_optimum_dims
 		[[1, 50, 1,], # 200],  # comment out epochs
 		[2, 97, 1,], #  200],
 		[3, 158, 3,], #  300],
@@ -203,20 +203,31 @@ mdims = {
 		[7, 368, 5,], # 40000]]
 		[8, 424, 7,],
 		[9, 476, 7]],
-	"sdm_k1000_d100_c8":
+	"sdm_k1000_d100_c8_ham#A1":
 		#output from sdm_anl.Sdm_error_analytical:
 		# SDM sizes, nact:
-		# sdm_8bit_counter_dims = [
-		[[1, 51, 1],
+		# sdm_8bit_counter_dims = 
+		# from file: sdm_c8_ham_thres1m.txt
+		[[1, 50, 2], # 51, 1],
 		[2, 86, 2],
-		[3, 125, 2],
-		[4, 168, 2],
-		[5, 196, 3],
-		[6, 239, 3],
-		[7, 285, 3],
-		[8, 312, 4],
-		[9, 349, 4]],
-	"sdm_k1000_d100_c1_dot":
+		[3, 121, 3], # 125, 2],
+		[4, 157, 3], # 168, 2],
+		[5, 192, 4], # #196, 3],
+		[6, 228, 5], #239, 3],
+		[7, 265, 5], # 285, 3],
+		[8, 303, 5], # 312, 4],
+		[9, 340, 6]], # 349, 4]],
+		# original
+		# [[1, 51, 1],
+		# [2, 86, 2],
+		# [3, 125, 2],
+		# [4, 168, 2],
+		# [5, 196, 3],
+		# [6, 239, 3],
+		# [7, 285, 3],
+		# [8, 312, 4],
+		# [9, 349, 4]],
+	"sdm_k1000_d100_c1_dot#A3":
 	# from empirical_size, non-thresholded sum, binarized counters
 		[[1, 51, 1],
 		[2, 86, 2],
@@ -227,16 +238,29 @@ mdims = {
 		[7, 272, 3],
 		[8, 309, 4],
 		[9, 345, 4]],
-	"sdm_k1000_d100_c8_dot":
-	[[1, 31, 2],
-	[2, 54, 2],
-	[3, 77, 2],
-	[4, 102, 2],
-	[5, 129, 2],
-	[6, 160, 2],
-	[7, 178, 3],
-	[8, 205, 3],
-	[9, 238, 3]],
+	"sdm_k1000_d100_c8_dot#A4":
+		# updatted
+		[[1, 30, 1],  # was 1, 31, 2
+		[2, 54, 2],
+		[3, 77, 2],
+		[4, 100, 3],  # was 102, 2]
+		[5, 123, 3],  # 129, 2],  # was 129, 2
+		[6, 147, 4], # was 160, 2], # try with nact=4?
+		[7, 172, 4], # was 178, 3],
+		[8, 198, 5], # was 205, 3],
+		[9, 224, 5]], # was 238, 3]],
+
+	# original
+	# "sdm_k1000_d100_c8_dot#A4":
+	# 	[[1, 31, 2],
+	# 	[2, 54, 2],
+	# 	[3, 77, 2],
+	# 	[4, 102, 2],
+	# 	[5, 129, 2],
+	# 	[6, 160, 2], # try with nact=4?
+	# 	[7, 178, 3],
+	# 	[8, 205, 3],
+	# 	[9, 238, 3]],
 
 	# from empirical_size and fast_sdm_empirical
 	# Estimated for 5-9.
@@ -254,6 +278,7 @@ mdims = {
 # from find_sizes, using dot match:
 # 	SDM sizes for k=1000, d=100, ncols=512 (dot match)
 # SDM size, nact
+# original verson
 # 1 - 31, 1
 # 2 - 56, 1
 # 3 - 80, 1
@@ -264,18 +289,73 @@ mdims = {
 # 8 - 205, 3
 # 9 - 238, 3
 
+# SDM sizes for k=1000, d=100, ncols=512 (dot match)
+# SDM size, nact
+# # Not sure why this different than above.  This uses threshold 10,000,000 same as others below.  May be more accurate
+# 1 - 30, 1 *
+# 2 - 57, 1
+# 3 - 87, 1
+# 4 - 127, 1
+# 5 - 178, 1
+# 6 - 248, 1
+# 7 - 269, 1
+# 8 - 269, 1
+# 9 - 269, 1
+
+
 # desired_error=9, res.x=268.6283015804925, res.success=True, res.message=Solution found.
 # SDM sizes for k=1000, d=100, ncols=512 (dot match)
 # SDM size, nact
 # 1 - 31, 2
-# 2 - 54, 2
-# 3 - 77, 2
+# 2 - 54, 2 *
+# 3 - 77, 2 *
 # 4 - 102, 2
 # 5 - 129, 2
 # 6 - 160, 2
 # 7 - 196, 2
 # 8 - 236, 2
 # 9 - 269, 2
+
+
+# desired_error=9, res.x=238.20347314440252, res.success=True, res.message=Solution found.
+# SDM sizes for k=1000, d=100, ncols=512 (dot match)
+# SDM size, nact
+# 1 - 32, 3
+# 2 - 56, 3
+# 3 - 78, 3
+# 4 - 100, 3  **
+# 5 - 123, 3  **
+# 6 - 150, 3
+# 7 - 176, 3  # why 178 in other?  probably threshold for pruning.  this threshold 10,000,000
+# 8 - 205, 3
+# 9 - 238, 3
+
+# desired_error=9, res.x=225.85647584035365, res.success=True, res.message=Solution found.
+# SDM sizes for k=1000, d=100, ncols=512 (dot match)
+# SDM size, nact
+# 1 - 42, 4
+# 2 - 53, 4
+# 3 - 79, 4
+# 4 - 101, 4
+# 5 - 124, 4
+# 6 - 147, 4 **
+# 7 - 172, 4 **
+# 8 - 198, 4
+# 9 - 226, 4
+
+# desired_error=9, res.x=223.7670095015759, res.success=True, res.message=Solution found.
+# SDM sizes for k=1000, d=100, ncols=512 (dot match)
+# SDM size, nact
+# 1 - 64, 5
+# 2 - 65, 5
+# 3 - 65, 5
+# 4 - 99, 5
+# 5 - 125, 5
+# 6 - 148, 5
+# 7 - 173, 5
+# 8 - 198, 5 **
+# 9 - 224, 5 **
+
 
 def dplen(mm, per):
 	# calculate vector length requred to store bundle at per accuracy
@@ -324,6 +404,48 @@ def gal_dims(d, k):
 		dims.append([i, w])
 	return dims
 
+
+def compute_bundle_size(ncols, bits_per_counter, item_memory_len, fip=1.0):
+	# return size for bundle storage in bits
+	# item_memory_len - number of items in item memory
+	# fip - fraction of item memory that is realized physically
+	counter_memory_size = ncols * bits_per_counter
+	item_memory_size = item_memory_len*ncols * fip
+	total_size = math.ceil(counter_memory_size + item_memory_size)
+	return total_size
+
+def compute_sdm_size(nrows, ncols, bits_per_counter, item_memory_len, fip=1.0):
+	# return size of sdm storage in bits
+	# item_memory_len - number of items in item memory
+	# fip - fraction of item memory that is realized physically
+	counter_memory_size = nrows * ncols * bits_per_counter
+	address_memory_size = nrows * ncols * fip
+	item_memory_size = item_memory_len*ncols * fip
+	total_size = math.ceil(counter_memory_size + address_memory_size + item_memory_size)
+	return total_size	
+	# mem_type, either "bundle" or "sdm"
+
+def compute_bundle_ops(ncols, bits_per_counter, item_memory_len, fimp=1.0, parallel=False):
+	# return number of byte operations for recall from bundle
+	# item_memory_len - number of items in item memory
+	# fip - fraction of item memory that is realized physically
+	# parallel - True if operations operate in parallel
+	ops_for_one_match = None
+	counter_memory_size = ncols * bits_per_counter
+	item_memory_size = item_memory_len*ncols * fip
+	total_size = math.ceil(counter_memory_size + item_memory_size)
+	return total_size
+
+def compute_sdm_ops(nrows, ncols, bits_per_counter, item_memory_len, fip=1.0):
+	# return size of sdm storage in bits
+	counter_memory_size = nrows * ncols * bits_per_counter
+	address_memory_size = nrows * ncols * fip
+	item_memory_size = item_memory_len*ncols * fip
+	total_size = math.ceil(counter_memory_size + address_memory_size + item_memory_size)
+	return total_size	
+	# mem_type, either "bundle" or "sdm"
+
+
 class Line_fit():
 	# fit line to size of sdm or bundle
 
@@ -357,12 +479,12 @@ def sdm_vs_bundle():
 	d = 100
 	#  mdims["bun_k1000_d100_c8"] = gal_dims(d, k)  # estimate, replaced by analytical calculation
 	# print("gal_dims=%s" % mdims["bun_k1000_d100_c8"])
-	gal_bun = Line_fit("bun_k1000_d100_c8", bpx=8)
-	bundle = Line_fit("bun_k1000_d100")
-	bin_sdm = Line_fit("sdm_k1000_d100_c1", bpx=512) #("binarized_sdm")
-	full_sdm = Line_fit("sdm_k1000_d100_c8", bpx=512*8) # ("8bit_counter_sdm")
-	sdm_c8_dot = Line_fit("sdm_k1000_d100_c8_dot", bpx=512*8)
-	sdm_c1_dot = Line_fit("sdm_k1000_d100_c1_dot", bpx=512)
+	gal_bun = Line_fit("bun_k1000_d100_c8#S2", bpx=8)
+	bundle = Line_fit("bun_k1000_d100_c1#S1")
+	bin_sdm = Line_fit("sdm_k1000_d100_c1_ham#A2", bpx=512) #("binarized_sdm")
+	full_sdm = Line_fit("sdm_k1000_d100_c8_ham#A1", bpx=512*8) # ("8bit_counter_sdm")
+	sdm_c8_dot = Line_fit("sdm_k1000_d100_c8_dot#A4", bpx=512*8)
+	sdm_c1_dot = Line_fit("sdm_k1000_d100_c1_dot#A3", bpx=512)
 	num_wanted_dims = 6
 	colors = cm.rainbow(np.linspace(0, 1, num_wanted_dims))
 	plt.plot(bundle.xbits, bundle.yreg, c=colors[0], label="bun_ham")
