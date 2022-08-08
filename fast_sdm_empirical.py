@@ -290,7 +290,19 @@ def main():
 	# [4, 98, 2],
 	# [5, 120, 2],
 
-
+	# Aug 3, 2022 - test dot product c8
+	# 5 - 123, 3 * should give 10^-5
+	# nrows = 123; nact=3; threshold_sum= False; bits_per_counter=8 # should give 10^-5
+	# With nrows=123, ncols=512, nact=3, threshold_sum=False, only_one_distractor=False, epochs=1000, mean_error=4e-06, std_error=6.3118935352238e-05
+	# With nrows=123, ncols=512, nact=3, threshold_sum=False, only_one_distractor=False, epochs=1000, mean_error=5e-06, std_error=7.053367989832943e-05
+	# nrows = 100; nact=3; threshold_sum= False; bits_per_counter=8 # should give 10e-4
+	# With nrows=100, ncols=512, nact=3, threshold_sum=False, only_one_distractor=False, epochs=1000, mean_error=6.500e-05, std_error=0.00024652586071242103
+	# nrows = 77; nact=2; threshold_sum= False; bits_per_counter=8 # should give 10^-3
+	# With nrows=77, ncols=512, nact=2, threshold_sum=False, only_one_distractor=False, epochs=100, mean_error=0.0007900000000000001, std_error=0.000863
+	# nrows = 76; nact=2; threshold_sum= False; bits_per_counter=8 # should give 10^-3
+	# With nrows=76, ncols=512, nact=2, threshold_sum=False, only_one_distractor=False, epochs=100, mean_error=0.00099, std_error=0.0009746281342132495
+	# nrows = 80; nact=1; threshold_sum= False; bits_per_counter=8 # should give 10^-3
+	nrows = 80; nact=1; threshold_sum= False; bits_per_counter=8 
 
 	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=50, mean_error=0.002300, std_error=0.0013152946
 	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.002315, std_error=0.0016173
@@ -337,7 +349,7 @@ def main():
 	# nrows=30; nact=1; threshold_sum=False; bits_per_counter=8
 	# result: With nrows=30, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.1058350, std_error=0.0095758
 	# try nrows=31
-	nrows=31; nact=2; threshold_sum=False; bits_per_counter=8; only_one_distractor = False
+	# nrows=31; nact=2; threshold_sum=False; bits_per_counter=8; only_one_distractor = False
 	# With nrows=31, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.096359, std_error=0.0091608
 	# good match.  Now try, 10-2 error:
 	# nrows=57; nact=1; threshold_sum=False; bits_per_counter=8
@@ -441,7 +453,8 @@ def main():
 	# nrows=65; nact=1; threshold_sum=True; bits_per_counter=8; only_one_distractor = True
 	# With nrows=65, ncols=512, nact=1, threshold_sum=True, only_one_distractor=True, epochs=100, mean_error=0.00152, std_error=0.00119
 
-	epochs=1000
+	epochs=100
+	only_one_distractor = False
 	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices,
 		threshold_sum=threshold_sum, bits_per_counter=bits_per_counter, only_one_distractor=only_one_distractor,
 		epochs=epochs)
