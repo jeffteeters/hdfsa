@@ -9,6 +9,7 @@ from scipy.stats import norm
 import numpy as np
 from fractions import Fraction
 import matplotlib.pyplot as plt
+import scipy.integrate as integrate
 # import copy
 
 # import pprint
@@ -368,8 +369,29 @@ class Sdm_error_analytical:
 			perr += perr_part * self.cop_prb[i]
 		self.perr_dot = perr
 
-
 	def compute_dot_product_perror_from_distributions(self, match_mean, match_var,
+				distractor_mean, distractor_var, d):
+		# d-1 is number of distractors
+		distractor_std = math.sqrt(distractor_var)
+		if match_var == 0.0:
+			p_corr = norm.cdf(match_mean, loc=distractor_mean, scale=distractor_std)**(d-1)
+		else:
+			match_std = math.sqrt(match_var)
+			match_distribution = norm(loc=match_mean, scale=match_std)
+			# mean and variance of distribution of dot product with random vector (a distractor)
+			distractor_distribution = norm(loc=distractor_mean, scale=distractor_std)
+			number_distractors = d - 1
+			# function to integrate to find p_corr
+			fun = lambda u: match_distribution.pdf(u) * (distractor_distribution.cdf(u)**number_distractors)
+			range_var = 7  # number standard deviations from mean
+			range_start = distractor_mean - range_var * distractor_std
+			range_end = match_mean + range_var * match_std
+			acc = integrate.quad(fun, range_start, range_end) # integrate over a range of possible values
+			p_corr = acc[0]
+		p_err = 1 - p_corr
+		return p_err
+
+	def compute_dot_product_perror_from_distributions_old(self, match_mean, match_var,
 				distractor_mean, distractor_var, d):
 		# d-1 is number of distractors
 		distractor_std = math.sqrt(distractor_var)
@@ -619,9 +641,10 @@ def main():
 	# works!
 	# try 10^-1 error with dot product, from fast_sdm_empirical:
 	# try nrows=31
-	nrows=31; nact=2; threshold_sum=False; bits_per_counter=8
+	# nrows=31; nact=2; threshold_sum=False; bits_per_counter=8
 	# With nrows=31, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.096359, std_error=0.0091608
 	# nrows=30; nact=1; k=1000; d=100; ncols=512;  # from fast_sdm_empirical, should give 10^-1 error for dot product match
+	nrows=80; nact=1; threshold_sum=False; bits_per_counter=8
 
 	sea = Sdm_error_analytical(nrows, nact, k, ncols=ncols, d=d, match_method="both")
 	# ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
