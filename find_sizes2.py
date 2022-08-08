@@ -54,7 +54,7 @@ def bundle_error(ncols, k, d, binarize_counters):
 	# k - number of items stored
 	# d - number items in item memory (are d-1 distractors)
 	# binarize_counters - True if are binarizing counters (hamming match), False if dot product match
-	error = bundle_analytical.BundleErrorAnalytical(ncols,d,k,binarized=binarized)
+	error = bundle_analytical.BundleErrorAnalytical(ncols,d,k,binarized=binarize_counters)
 	return error
 
 def sdm_error(nrows, k, d, nact, ncols, match_method="hamming", bits_per_counter=8):
@@ -81,7 +81,13 @@ def get_sdm_ncols():
 	return ncols
 
 def get_sdm_nact(nrows, k):
-	nact = sdm_jaeckel.get_sdm_activation_count(nrows, k)
+	# nact = sdm_jaeckel.get_sdm_activation_count(nrows, k)
+	# nact = 3
+	# return closest odd number for model "sdm_k1000_d100_c1_ham#A2"
+	fnact = sdm_jaeckel.fraction_rows_activated(nrows, k)*nrows
+	# round to closest odd integer
+	nact = 2 * int(fnact/2) + 1
+	# print("nrows=%s, k=%s, fnact=%s, nact=%s" % (nrows, k, fnact, nact))
 	return nact
 
 def get_number_items_stored():
@@ -121,16 +127,16 @@ def get_cache_error(size, mi, sizes_tested):
 		sizes_tested[size] = error
 	return error
 
-def find_sizes(mi):
+def find_sizes(mi, ie_start=1, ie_end=10):
 	# find sizes for memory with properties in dictionary mi
 	mtype = mi["mtype"]
 	assert mtype in ("sdm", "bundle")
 	# following stores size => error; size is ncols (bundle) or nrows (sdm)
 	sizes_tested = {}
 	sizes = []
-	for ie in range(1,10):  # ie is error in powers of 10
+	for ie in range(ie_start, ie_end):  # ie is error in powers of 10
 		desired_error = 10**(-ie)
-		low, hi = (1000, 200000) if mtype == "bundle" else (20, 500)
+		low, hi = (1000, 200000) if mtype == "bundle" else (20, 600)
 		# find new low and hi if there were tests already
 		for size, error in sizes_tested.items():
 			if size > low and error > desired_error:
@@ -160,9 +166,22 @@ def find_sizes(mi):
 			hi_error = get_cache_error(hi, mi, sizes_tested)
 			low_diff = abs(low_error - desired_error)
 			hi_diff = abs(hi_error - desired_error)
-			size = low if low_diff < hi_diff else hi
-		error =  get_cache_error(size, mi, sizes_tested)
-		print("Selected %s, size=%s, error=%s" % (ie, size, error))
+			if low_diff < hi_diff:
+				error = low_error
+				size = low
+				diff = low_diff
+				other = hi
+				other_diff = hi_diff
+				other_error = hi_error
+			else:
+				error = hi_error
+				size = hi
+				diff = hi_diff
+				other = low
+				other_diff = low_diff
+				other_error = low_error
+		print("Selected %s, size=%s, error=%s, diff=%s; other=%s, error=%s diff=%s" % (ie, size, error, diff,
+			 other, other_error, other_diff ))
 		sizes.append((ie, size, error))
 	return sizes
 
@@ -175,16 +194,20 @@ def lookup_mem_name(mem_name):
 
 def main():
 	# mem_name = "sdm_k1000_d100_c8_ham#A1"
-	mem_name = "sdm_k1000_d100_c8_dot#A4"
+	# mem_name = "sdm_k1000_d100_c8_dot#A4"
+	mem_name = "sdm_k1000_d100_c1_ham#A2" # "bun_k1000_d100_c8#S2" # "bun_k1000_d100_c1#S1"
 	mi = lookup_mem_name(mem_name)
+	assert mi["mtype"] in ("bundle", "sdm")
 	sizes = find_sizes(mi)
-	if mi["mtype"] == "sdm":
-		k = get_number_items_stored()
-		print("For %s dimensions are:" % (mem_name))
-		for size in sizes:
-			ie, nrows, error = size
+	k = get_number_items_stored()
+	print("For k=%s, %s dimensions are:" % (k, mem_name))
+	for size in sizes:
+		ie, nrows, error = size
+		if mi["mtype"] == "sdm":
 			nact = get_sdm_nact(nrows, k)
-			print("[%s, %s, %s, %s" % (ie, nrows, nact, error))
+			print("[%s, %s, %s, %s]," % (ie, nrows, nact, error))
+		else:
+			print("[%s, %s, %s]," % (ie, nrows, error))
 
 
 if __name__ == "__main__":
