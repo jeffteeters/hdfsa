@@ -38,7 +38,7 @@ def bundle_error_vs_width(n, desired_error=1):
 def get_sdm_activaction_count(nrows, k):
 	# made separate function so can replace by constant for testing
 	nact = sdm_jaeckel.get_sdm_activation_count(round(nrows), k)
-	nact = 2
+	# nact = 3
 	return nact
 
 def get_sdm_ncols():
@@ -58,9 +58,10 @@ def sdm_error_vs_nrows(nrows, desired_error=1):
 	# found_error = sdm_jaeckel.SdmErrorAnalytical(round(nrows),k,d,nact=None,word_length=512)
 	# nact = sdm_jaeckel.get_sdm_activation_count(round(nrows), k)
 	nact = get_sdm_activaction_count(nrows, k)
-	anl = sdm_anl.Sdm_error_analytical(round(nrows), nact, k, ncols=ncols, d=d)
-	# found_error = anl.perr
-	found_error = anl.perr_dot
+	match_method = "hamming"  # use to save time to not compute dot match
+	anl = sdm_anl.Sdm_error_analytical(round(nrows), nact, k, ncols=ncols, d=d, match_method=match_method)
+	found_error = anl.perr
+	# found_error = anl.perr_dot
 	# if nact ==1:
 	# 	bsm = binarized_sdm_analytical.Binarized_sdm_analytical(nrows, ncols, nact, k, d)
 	# else:
@@ -84,7 +85,7 @@ def find_bundle_size(desired_error):
 	return round(res.x)
 
 def find_sdm_size(desired_error):
-	init_xa, init_xb = 25, 270
+	init_xa, init_xb = 25, 400
 	# xa, xb, xc, fa, fb, fc, funcalls = bracket(bundle_error_vs_width, xa=init_xa, xb=init_xb)
 	fun = sdm_error_vs_nrows
 	bounds = (init_xa, init_xb)
@@ -102,6 +103,18 @@ def find_bundle_sizes(desired_error):
 	for i in range(len(desired_error)):
 		print("%s - %s" % (desired_error[i], bundle_sizes[i]))
 	# output for bundle sizes:
+
+	# Bundle sizes, for k=1000, d=100, binarized=False:
+	# 1 - 15221
+	# 2 - 25717
+	# 3 - 35352
+	# 4 - 44632
+	# 5 - 53750
+	# 6 - 62794
+	# 7 - 71812
+	# 8 - 80824
+	# 9 - 89843
+	#  BELOW HAVE binarized=True (use hamming distance)
 	# 	Bundle sizes, k=1000, d=100:
 	# 1 - 24002
 	# 2 - 40503
@@ -177,7 +190,7 @@ def find_sdm_sizes(desired_error):
 	sdm_sizes = [find_sdm_size(x) for x in desired_error]
 	d, k = get_dk()
 	ncols = get_sdm_ncols()
-	print("SDM sizes for k=%s, d=%s, ncols=%s (dot match)" %(k, d, ncols))
+	print("SDM sizes for k=%s, d=%s, ncols=%s (hamming match - jaeckel nact)" %(k, d, ncols))
 	print("SDM size, nact")
 	k = 1000
 	ncols = get_sdm_ncols()
@@ -377,8 +390,8 @@ def find_sdm_sizes(desired_error):
 	# 9 - 438
 
 def main():
-	desired_error = range(1,10)
-	find_bundle_sizes(desired_error)
-	# find_sdm_sizes(desired_error)
+	desired_error = range(1,10) # range(1,10)
+	# find_bundle_sizes(desired_error)
+	find_sdm_sizes(desired_error)
 
 main()
