@@ -105,17 +105,18 @@ def get_error(mi, size):
 	# ncols is the width of sdm
 	k = get_number_items_stored()  # number items stored
 	d = get_item_memory_size()  # number of items in item memory (d - 1) distractors
+	match_method = mi["match_method"]
+	assert match_method in ("hamming", "dot")
+	bits_per_counter = mi["bits_per_counter"]
 	if mi["mtype"] == "bundle":
 		ncols = size
-		binarize_counters = mi["binarize_counters"]
+		binarize_counters = match_method == "hamming"
 		error = bundle_error(ncols, k, d, binarize_counters)
 	else:
 		nrows = size
 		assert mi["mtype"] == "sdm"
 		nact = get_sdm_nact(nrows, k)
 		ncols = get_sdm_ncols()
-		match_method = mi["match_method"]
-		bits_per_counter = mi["bits_per_counter"]
 		error = sdm_error(nrows, k, d, nact, ncols, match_method=match_method, bits_per_counter=bits_per_counter)
 	return error
 
