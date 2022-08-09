@@ -15,6 +15,8 @@ import sympy as sym
 from scipy.stats import norm
 import bundle_analytical
 
+from mdie import mdie
+
 mdims = {
 	"bun_k1000_d100_c1#S1":
 		[[1,24002],
@@ -487,24 +489,34 @@ def compute_sdm_ops(nrows, ncols, bits_per_counter, item_memory_len, fip=1.0):
 	return total_size	
 	# mem_type, either "bundle" or "sdm"
 
+def lookup_mem_name(mem_name):
+	global mdie
+	for mi in mdie:
+		if mi["name"] == mem_name:
+			return mi
+	sys.exit("Error: Unable to find memory '%s' in mdie" % mem_name)
 
 class Line_fit():
 	# fit line to size of sdm or bundle
 
-	def __init__(self, mem_type, bpx=1):
+	def __init__(self, mname, bpx):
+		# mname is name of memory in mdie structure
 		# bpx is bits per x counter (e.g. 1, 8, 512, 512*8)
-		if mem_type not in mdims:
-			print("Invalid mem_type: %s" %(mem_type))
-			sys.exit("options are: %s" % sorted(mem_type.keys()))
-		dims = mdims[mem_type]
+		mi = lookup_mem_name(mname)
+		dims = mi["dims"]
 		nsizes = len(dims)
 		x = np.empty(nsizes, dtype=np.float64)
 		y = np.empty(nsizes, dtype=np.float64)
+		mtype = mi["mtype"]
+		assert mtype in ("bundle", "sdm")
 		for i in range(nsizes):
-			perr, width = dims[i][0:2]
-			assert perr == i + 1
-			x[i] = width
-			y[i] = 10**(-perr)
+			if mtype == "bundle":
+				ie, size, perr = dims[i]
+			else:
+				ie, size, nact, perr = dims[i]
+			assert ie == i + 1
+			x[i] = size
+			y[i] = perr
 		ylog = np.log(y)  # store log of error for regression
 		result = linregress(x, y=ylog)
 		self.k = np.exp(result.intercept)
@@ -513,7 +525,7 @@ class Line_fit():
 		self.xbits = x * bpx
 		self.y = y
 		self.yreg = self.k * np.exp(-self.m *x)
-		print("%s for err=k*exp(-m*x), k=%s, m=%s" % (mem_type, self.k, self.m))
+		print("%s for err=k*exp(-m*x), k=%s, m=%s" % (mname, self.k, self.m))
 
 
 def sdm_vs_bundle():
@@ -522,7 +534,7 @@ def sdm_vs_bundle():
 	#  mdims["bun_k1000_d100_c8"] = gal_dims(d, k)  # estimate, replaced by analytical calculation
 	# print("gal_dims=%s" % mdims["bun_k1000_d100_c8"])
 	gal_bun = Line_fit("bun_k1000_d100_c8#S2", bpx=8)
-	bundle = Line_fit("bun_k1000_d100_c1#S1")
+	bundle = Line_fit("bun_k1000_d100_c1#S1", bpx=1)
 	bin_sdm = Line_fit("sdm_k1000_d100_c1_ham#A2", bpx=512) #("binarized_sdm")
 	full_sdm = Line_fit("sdm_k1000_d100_c8_ham#A1", bpx=512*8) # ("8bit_counter_sdm")
 	sdm_c8_dot = Line_fit("sdm_k1000_d100_c8_dot#A4", bpx=512*8)
@@ -541,7 +553,7 @@ def sdm_vs_bundle():
 	plt.plot(sdm_c8_dot.xbits, sdm_c8_dot.y, 'o',c=colors[4])
 	plt.plot(sdm_c1_dot.xbits, sdm_c1_dot.yreg, c=colors[5], label="sdm_c1_dot")
 	plt.plot(sdm_c1_dot.xbits, sdm_c1_dot.y, 'o',c=colors[5])
-	plt.title("Bundles and sdm errors vs size (bits)")
+	plt.title("Bundles and sdm errors vs size (bits) from mdie")
 	plt.xlabel("bits (in bundle or sdm")
 	plt.ylabel("Fraction error")
 	plt.yscale('log')
