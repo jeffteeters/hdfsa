@@ -18,7 +18,8 @@ mdie = [
 		"name": "bun_k1000_d100_c1#S1",
 		"short_name": "S1",
  		"mtype": "bundle",
- 		"binarize_counters": True,  # use hamming match
+ 		"bits_per_counter": 8,
+ 		"match_method": "hamming",
  		"dims":
 	 		# ie, width, predicted_error
 	 		[[1, 24002, 0.09999738539779227],
@@ -35,7 +36,8 @@ mdie = [
 		"name": "bun_k1000_d100_c8#S2",
 		"short_name": "S2",
  		"mtype": "bundle",
- 		"binarize_counters": False,  # used dot product match
+ 		"bits_per_counter": 8,
+ 		"match_method": "dot",  # used dot product match
  		"dims":
  			# ie, width, predicted error
 			[[1, 15221, 0.1000037988550686],
@@ -52,6 +54,7 @@ mdie = [
   		"name": "sdm_k1000_d100_c8_ham#A1",
 		"short_name": "A1",
  		"mtype": "sdm",
+ 		"ncols": 512,
  		"bits_per_counter": 8,
  		"match_method": "hamming",
  		"dims": sdm_k1000_d100_c8_ham_A1_A3,
@@ -60,6 +63,7 @@ mdie = [
   		"name": "sdm_k1000_d100_c1_ham#A2",
 		"short_name": "A2",
  		"mtype": "sdm",
+ 		 "ncols": 512,
  		"bits_per_counter": 1,
  		"match_method": "hamming",
  		"dims":
@@ -77,6 +81,7 @@ mdie = [
   		"name": "sdm_k1000_d100_c1_dot#A3",
 		"short_name": "A3",
  		"mtype": "sdm",
+ 		 "ncols": 512,
  		"bits_per_counter": 1,
  		"match_method": "dot",
  		"dims": sdm_k1000_d100_c8_ham_A1_A3,
@@ -85,6 +90,7 @@ mdie = [
   		"name": "sdm_k1000_d100_c8_dot#A4",
 		"short_name": "A4",
  		"mtype": "sdm",
+ 		 "ncols": 512,
  		"bits_per_counter": 8,
  		"match_method": "dot",
  		"dims" :
