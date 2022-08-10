@@ -116,9 +116,11 @@ class Empirical_error_db():
 			"bits_per_counter":bits_per_counter, "match_method": match_method, "dims":dims}
 		return info
 
-	def get_memory_names(self):
+	def get_memory_names(self, mtype=None):
 		# return list of memory names
-		sql = "select name from memory order by id"
+		# if mtype specified, return only those with match mtype
+		where_clause = ("where mtype = '%s' " % mtype) if mtype is not None else ""
+		sql = "select name from memory %sorder by id" % where_clause
 		cur = self.con.cursor()
 		res = cur.execute(sql)
 		mnames = res.fetchall()
@@ -136,7 +138,8 @@ class Empirical_error_db():
 				dim_id, epochs, mean, std)
 		else:
 			stat_id = row[0]
-			sql = "update states set epochs=%s, mean=%s, std=%s where id = %s" % stat_id
+			sql = "update stats set epochs=%s, mean=%s, std=%s where id = %s" % (
+				epochs, mean, std, stat_id)
 		cur = self.con.cursor()
 		res = cur.execute(sql)
 		self.con.commit()
@@ -144,7 +147,7 @@ class Empirical_error_db():
 	def add_error(self, dim_id, nerrors, nepochs):
 		# add errors to error table
 		# if dim_id already has nerrors in table, add nepochs to value stored 
-		sql = "select id from error where dim_id = %s" % dim_id
+		sql = "select id from error where dim_id = %s and nerrors = %s" % (dim_id, nerrors)
 		cur = self.con.cursor()
 		res = cur.execute(sql)
 		row = res.fetchone()
@@ -165,8 +168,9 @@ class Empirical_error_db():
 			nepochs = binned_fail_counts[nerrors]
 			self.add_error(dim_id, nerrors, nepochs)
 
-	def calculate_stats(self, dim_id):
+	def calculate_stats(self, dim_id, items_per_epoch):
 		# use entries in error table to calculate stats
+		# items_per_epoch - number of items stored per epoch; used to calculate error rate per one item recall
 		sql = "select nerrors, nepochs from error where dim_id = %s" % dim_id
 		cur = self.con.cursor()
 		res = cur.execute(sql)
@@ -174,10 +178,11 @@ class Empirical_error_db():
 		if len(nee) == 0:
 			# no entries for this dim, don't calculate anything
 			return
-		values = np.empty(len(nee), dtype=np.uint32)
+		values = np.empty(len(nee), dtype=np.float64)
 		weights = np.empty(len(nee), dtype=np.uint32)
 		for i in range(len(nee)):
 			values[i], weights[i] = nee[i]
+		values = values / items_per_epoch  # make values be error rate for recalling one item; instead of num errors
 		# calculate mean and std using method at:
 		# https://stackoverflow.com/questions/2413522/weighted-standard-deviation-in-numpy
 		mean, epochs = np.average(values, weights=weights, returned=True)
@@ -185,7 +190,22 @@ class Empirical_error_db():
 		variance = np.average((values-mean)**2, weights=weights)
 		std = math.sqrt(variance)
 		self.add_stats(dim_id, epochs, mean, std)
-		return (mean, std)
+		# print("dim_id=%s, values=%s, weights=%s, mean=%s, variance=%s" % (dim_id, values, weights, mean, variance))
+		return (mean, std, epochs)
+
+	def update_stats(self):
+		# routine to recalculate all stats; used to fix error in stats due to bug, not including number of transitions
+		num_transitions = 1000  # 100 states, 10 actions per state
+		sql = "select distinct dim_id from error"
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		dim_ids = res.fetchall()
+		for i in range(len(dim_ids)):
+			dim_id = dim_ids[i][0]
+			self.calculate_stats(dim_id, num_transitions)
+
+
+
 
 def get_bundle_ee(ncols, bits_per_counter, match_method, needed_epochs):
 	# return bundle_empirical_error object
@@ -237,10 +257,12 @@ def fill_eedb():
 				else:
 					# add errors to error table and recalculate stats
 					print("%s adding multi_error, mean=%s, std=%s" % (name, fee.mean_error, fee.std_error))
-					import pdb; pdb.set_trace()
+					# import pdb; pdb.set_trace()
 					edb.add_multi_error(dim_id, fee.fail_counts)
-					mean, std = edb.calculate_stats(dim_id)
-					print("%s ie=%s, added epochs=%s, mean=%s, std=%s" % (name, ie, wanted_epochs, mean, std))
+					items_per_epoch = fee.num_transitions
+					mean, std, new_epochs = edb.calculate_stats(dim_id, items_per_epoch)
+					print("%s ie=%s, added epochs=%s, mean=%s, std=%s, new_epochs=%s" % (name, ie,
+						wanted_epochs, mean, std, new_epochs))
 
 
 
@@ -356,7 +378,7 @@ def get_epochs(ie, bundle=False):
 	num_transitions = 1000  # 100 states, 10 choices per state
 	desired_fail_count = 100
 	minimum_fail_count = 40
-	epochs_max = 1000 if not bundle else 5  # bundle takes longer, so use fewer epochs 
+	epochs_max = 10000 if not bundle else 50  # bundle takes longer, so use fewer epochs 
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
 	# print("ie=%s, desired_epochs=%s, desired_fail_count=%s, expected_perr=%s" % (
