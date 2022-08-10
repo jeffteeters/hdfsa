@@ -85,17 +85,6 @@ def plot_size_vs_error(fimp=0.0):
 			predicted_error[i] = -math.log10(pe)
 		# plot arrays filled by above
 		plt.errorbar(predicted_error, sizes, yerr=None, fmt="-o", label=name)
-
-	# following does not work
-	# change order of x-axis so error rate goes from 1 (10**(-1)) to 9 (10**(-9))
-	# from: https://stackoverflow.com/questions/23330484/descend-x-axis-values-using-matplotlib
-	# grab a reference to the current axes
-	# ax = plt.gca()
-	# # set the xlimits to be the reverse of the current xlimits
-	# ax.set_xlim(ax.get_xlim()[::-1])
-	# # call `draw` to re-render the graph
-	# plt.draw()
-
 	plt.title("Size (bits) vs error with fimp=%s" % fimp)
 	xlabel = "Error rate (10^-n)"
 	plt.xlabel(xlabel)
@@ -107,10 +96,74 @@ def plot_size_vs_error(fimp=0.0):
 	plt.legend(loc='upper left')
 	plt.show()
 
+def plot_operations_vs_error(parallel=False):
+	# operations is number if byte operations, or parallel byte operations (if parallel is True)
+	# plot for both bundle and sdm
+	edb = Empirical_error_db()
+	names = edb.get_memory_names()
+	item_memory_len = 100
+	for name in names:
+		mi = edb.get_minfo(name)
+		mtype = mi["mtype"]
+		bits_per_counter = mi["bits_per_counter"]
+		match_method = mi["match_method"]
+		ndims = len(mi["dims"])
+		operations = np.empty(ndims, dtype=np.float64)
+		# empirical_error = np.empty(ndims, dtype=np.float64)
+		# empirical_clm = np.empty(ndims, dtype=np.float64)
+		predicted_error = np.empty(ndims, dtype=np.float64)
+		for i in range(ndims):
+			dim = mi["dims"][i]
+			if mtype == "sdm":
+				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				if match_method == "hamming":
+					# threshold, use hamming
+					ops_address_compare = ncols * nrows / 8
+					ops_select_active = nrows
+					ops_add_counters = ncols * nact
+					ops_threshold = ncols
+					ops_item_memory_compare = item_memory_len * ncols / 8
+					ops_sum_to_make_hamming = item_memory_len * ncols / 8
+					ops_select_smallest = item_memory_len
+					ops = (ops_address_compare + ops_select_active + ops_add_counters + ops_threshold + ops_item_memory_compare
+						+ ops_sum_to_make_hamming + ops_select_smallest)
+				else:
+					# don't threshold, match using dot product
+					ops_address_compare = ncols * nrows / 8
+					ops_select_active = nrows
+					ops_add_counters = ncols * nact
+					ops_threshold = 0  # was ncols for thresholding
+					ops_item_memory_compare = item_memory_len * ncols  # don't divide by 8 because of dot product
+					ops_sum_to_make_hamming = item_memory_len * ncols  # "                "
+					ops_select_smallest = item_memory_len
+					ops = (ops_address_compare + ops_select_active + ops_add_counters + ops_threshold + ops_item_memory_compare
+						+ ops_sum_to_make_hamming + ops_select_smallest)
+				# size = (nrows * ncols * bits_per_counter) + fimp*(nrows*ncols + item_memory_len*ncols) # address memory plus item memory
+			else:
+				dim_id, ie, ncols, pe, epochs, mean, std = dim
+				# bits_per_counter = 1 if match_method == "hamming" else 8  # match_method indicates of bundle binarized or not
+				ops = ncols * (item_memory_len + 2)/8 + item_memory_len if not parallel else ncols / 8 + item_memory_len
+				# size = ncols * bits_per_counter + fimp*(ncols * item_memory_len)  # bundle + item memory
+			operations[i] = ops
+			predicted_error[i] = -math.log10(pe)
+		# plot arrays filled by above
+		plt.errorbar(predicted_error, operations, yerr=None, fmt="-o", label=name)
+	plt.title("Byte operations vs error with parallel=%s" % parallel)
+	xlabel = "Error rate (10^-n)"
+	plt.xlabel(xlabel)
+	plt.ylabel("Number byte operations")
+	# plt.xscale('log')
+	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
+	# plt.xticks(rows[0:num_steps], xlabels)
+	plt.grid()
+	plt.legend(loc='upper left')
+	plt.show()
+
 def main():
 	# plot_error_vs_dimension("bundle")
 	# plot_error_vs_dimension("sdm")
-	plot_size_vs_error(fimp=1.0/64.0)
+	# plot_size_vs_error(fimp=1.0/64.0)
+	plot_operations_vs_error()
 
 
 if __name__ == "__main__":
