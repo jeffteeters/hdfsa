@@ -9,6 +9,8 @@ import sqlite3
 import math
 from scipy.stats import linregress
 from mdie import mdie
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
 
 class Empirical_error_db():
@@ -41,7 +43,15 @@ class Empirical_error_db():
 		nerrors integer not null, -- number of errors found in one epoch
 		nepochs integer not null  -- number of epochs that have this (nerrors) of errors
 	);
+	create table stats(
+		id integer primary key,
+		dim_id integer not null,  -- foreign key to dim table
+		epochs integer not null,  -- number of epochs used in calculating mean and std
+		mean real not null,  -- mean error rate
+		std real not null  -- standard deviation of error rate
+	)
 	"""
+
 
 	def __init__(self, dbfile="empirical_error.db"):
 		self.dbfile = dbfile
@@ -52,7 +62,7 @@ class Empirical_error_db():
 		else:
 			con = sqlite3.connect(dbfile)
 			print("opened existing database")
-
+		self.con = con
 
 	def initialize_database(self):
 		con = sqlite3.connect(self.dbfile)
@@ -80,7 +90,157 @@ class Empirical_error_db():
 						mem_id, ie, nrows, ncols, nact, pe)
 				cur.execute(sql)
 		con.commit()
+		cur.close()
 		return con
+
+	def get_minfo(self, name):
+		# return dictionary of memory properties
+		sql = "select id, short_name, mtype, bits_per_counter, match_method from memory where name = '%s'" % name
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		row = res.fetchone()
+		if row is None:
+			sys.exit("Could not find memory with name '%s' in database" % name)
+		mem_id, short_name, mtype, bits_per_counter, match_method = row
+		# get dims
+		if mtype == "sdm":
+			sql = ("select dim.id, ie, size, ncols, nact, pe, epochs, mean, std from dim left join stats on"
+				" dim.id = stats.dim_id where mem_id = %s order by ie" % mem_id)
+		else:
+			sql = ("select dim.id, ie, size, pe, epochs, mean, std from dim left join stats on"
+				" dim.id = stats.dim_id where mem_id = %s order by ie" % mem_id)
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		dims = res.fetchall()
+		info = {"mem_id": mem_id, "short_name": short_name, "mtype": mtype, 
+			"bits_per_counter":bits_per_counter, "match_method": match_method, "dims":dims}
+		return info
+
+	def get_memory_names(self):
+		# return list of memory names
+		sql = "select name from memory order by id"
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		mnames = res.fetchall()
+		mnames = [x[0] for x in mnames]  # return just name, not name in tuple
+		return mnames
+
+	def add_stats(self, dim_id, epochs, mean, std):
+		# add statistics to stats table
+		sql = "select id from stats where dim_id = %s" % dim_id
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		row = res.fetchone()
+		if row is None:
+			sql = "insert into stats (dim_id, epochs, mean, std) values (%s, %s, %s, %s)" % (
+				dim_id, epochs, mean, std)
+		else:
+			stat_id = row[0]
+			sql = "update states set epochs=%s, mean=%s, std=%s where id = %s" % stat_id
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		self.con.commit()
+
+	def add_error(self, dim_id, nerrors, nepochs):
+		# add errors to error table
+		# if dim_id already has nerrors in table, add nepochs to value stored 
+		sql = "select id from error where dim_id = %s" % dim_id
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		row = res.fetchone()
+		if row is None:
+			sql = "insert into error (dim_id, nerrors, nepochs) values (%s, %s, %s)" % (
+				dim_id, nerrors, nepochs)
+		else:
+			error_id = row[0]
+			sql = "update error set nepochs = nepochs + %s where id = %s" % (nepochs, error_id)
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		self.con.commit()
+
+	def add_multi_error(self, dim_id, fail_counts):
+		# fail_counts is array containing numper of failures in each epoch
+		binned_fail_counts = np.bincount(fail_counts)  # count of number of times each error count occurred
+		for nerrors in range(len(binned_fail_counts)):
+			nepochs = binned_fail_counts[nerrors]
+			self.add_error(dim_id, nerrors, nepochs)
+
+	def calculate_stats(self, dim_id):
+		# use entries in error table to calculate stats
+		sql = "select nerrors, nepochs from error where dim_id = %s" % dim_id
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		nee = res.fetchall()
+		if len(nee) == 0:
+			# no entries for this dim, don't calculate anything
+			return
+		values = np.empty(len(nee), dtype=np.uint32)
+		weights = np.empty(len(nee), dtype=np.uint32)
+		for i in range(len(nee)):
+			values[i], weights[i] = nee[i]
+		# calculate mean and std using method at:
+		# https://stackoverflow.com/questions/2413522/weighted-standard-deviation-in-numpy
+		mean, epochs = np.average(values, weights=weights, returned=True)
+		# Fast and numerically precise:
+		variance = np.average((values-mean)**2, weights=weights)
+		std = math.sqrt(variance)
+		self.add_stats(dim_id, epochs, mean, std)
+		return (mean, std)
+
+def get_bundle_ee(ncols, bits_per_counter, match_method, needed_epochs):
+	# return bundle_empirical_error object
+	assert bits_per_counter == 8
+	assert match_method in ("dot", "hamming")
+	binarize_counters = match_method == "hamming"
+	fbe = fast_bundle_empirical.Fast_bundle_empirical(ncols, epochs=needed_epochs, binarize_counters=binarize_counters)
+	return fbe
+
+def get_sdm_ee(nrows, ncols, nact, bits_per_counter, match_method, needed_epochs):
+	# return sdm_empirical_error object
+	assert bits_per_counter in (1, 8)
+	assert match_method in ("dot", "hamming")
+	assert ncols == 512  # for current simulations
+	threshold_sum = match_method == "hamming"
+	fse = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, epochs=needed_epochs,
+			bits_per_counter=bits_per_counter, threshold_sum=threshold_sum)
+	return fse
+
+def fill_eedb():
+	# main routine to populate the Empirical Error database
+	edb = Empirical_error_db()
+	mem_names = edb.get_memory_names()
+	for name in mem_names:
+		mi = edb.get_minfo(name)
+		mtype = mi["mtype"]  # "bundle" or "sdm"
+		bits_per_counter = mi["bits_per_counter"]
+		match_method = mi["match_method"]
+		for dim in mi["dims"]:
+			if mtype == "sdm":
+				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				wanted_epochs = get_epochs(ie, bundle=False)
+			else:
+				dim_id, ie, ncols, pe, epochs, mean, std = dim
+				wanted_epochs = get_epochs(ie, bundle=True)
+			if epochs is None:
+				epochs = 0  # have no epochs
+			if wanted_epochs is not None and wanted_epochs > epochs:
+				# need more epochs
+				needed_epochs = wanted_epochs if ie < 4 else wanted_epochs - epochs # if ie < 4, store stats directly
+				if mtype == "sdm":
+					fee = get_sdm_ee(nrows, ncols, nact, bits_per_counter, match_method, needed_epochs)
+				else:
+					fee = get_bundle_ee(ncols, bits_per_counter, match_method, needed_epochs) # find empirical error
+				if ie < 4:
+					# store stats directly
+					edb.add_stats(dim_id, wanted_epochs, fee.mean_error, fee.std_error)
+					print("%s ie=%s, fresh epochs=%s, mean=%s, std=%s" % (name, ie, wanted_epochs, fee.mean_error, fee.std_error))
+				else:
+					# add errors to error table and recalculate stats
+					print("%s adding multi_error, mean=%s, std=%s" % (name, fee.mean_error, fee.std_error))
+					import pdb; pdb.set_trace()
+					edb.add_multi_error(dim_id, fee.fail_counts)
+					mean, std = edb.calculate_stats(dim_id)
+					print("%s ie=%s, added epochs=%s, mean=%s, std=%s" % (name, ie, wanted_epochs, mean, std))
 
 
 
@@ -199,8 +359,8 @@ def get_epochs(ie, bundle=False):
 	epochs_max = 1000 if not bundle else 5  # bundle takes longer, so use fewer epochs 
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
-	print("ie=%s, desired_epochs=%s, desired_fail_count=%s, expected_perr=%s" % (
-		ie, desired_epochs, desired_fail_count, expected_perr))
+	# print("ie=%s, desired_epochs=%s, desired_fail_count=%s, expected_perr=%s" % (
+	# 	ie, desired_epochs, desired_fail_count, expected_perr))
 	if desired_epochs <= epochs_max:
 		return desired_epochs
 	minimum_epochs = round(minimum_fail_count / (expected_perr *num_transitions))
@@ -239,10 +399,14 @@ def plot_fit(mtype="sdm"):
 	plt.show()
 
 def main():
+	fill_eedb()
 	# plot_fit("sdm")
 	# plot_fit("bundle")
-	edb = Empirical_error_db()
-
+	# edb = Empirical_error_db()
+	# mem_name = "bun_k1000_d100_c1#S1"
+	# mi = edb.get_minfo(mem_name)
+	# print("minfo for %s is:" % mem_name)
+	# pp.pprint(mi)
 
 
 if __name__ == "__main__":
