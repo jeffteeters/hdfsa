@@ -233,6 +233,8 @@ class Fast_sdm_empirical():
 		assert trial_count == (num_transitions * self.epochs)
 		self.fail_count = fail_count
 		self.trial_count = trial_count
+		self.fail_counts = fail_counts  # used by build_eedb.py
+		self.num_transitions = num_transitions  # used in build_eedb
 		perr = fail_count / trial_count
 		self.ehdist = self.match_hamming_counts / (num_transitions * self.epochs)
 		normalized_fail_counts = fail_counts / num_transitions

@@ -134,8 +134,10 @@ class Fast_bundle_empirical():
 		# print("fail counts are %s" % fail_counts)
 		assert np.sum(fail_counts) == fail_count
 		assert trial_count == (num_transitions * self.epochs)
+		self.num_transitions = num_transitions  # used in build_eedb
 		perr = fail_count / trial_count
 		# self.ehdist = self.match_hamming_counts / (num_transitions * self.epochs)
+		self.fail_counts = fail_counts  # used by build_eedb
 		normalized_fail_counts = fail_counts / num_transitions
 		self.mean_error = np.mean(normalized_fail_counts)
 		self.std_error = np.std(normalized_fail_counts)
