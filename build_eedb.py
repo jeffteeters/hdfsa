@@ -10,6 +10,7 @@ import math
 from scipy.stats import linregress
 from mdie import mdie
 import pprint
+import time
 pp = pprint.PrettyPrinter(indent=4)
 
 
@@ -42,13 +43,18 @@ class Empirical_error_db():
 		dim_id integer not null,  -- foreign key to dim table
 		nerrors integer not null, -- number of errors found in one epoch
 		nepochs integer not null  -- number of epochs that have this (nerrors) of errors
+		match_counts text not null default "",    -- count of match distances, used to calculate match distribution, which
+		    -- is used with distractor distribution to calculate count_error; format is: <count0_distance>;count0,count1,count2,...
+		distract_counts text not null default ""  -- count of distractor distances, used to calculate distractor distribution
+		    -- which is then used with match_distribution to calculate count_error; save format as above
 	);
 	create table stats(
 		id integer primary key,
 		dim_id integer not null,  -- foreign key to dim table
 		epochs integer not null,  -- number of epochs used in calculating mean and std
-		mean real not null,  -- mean error rate
-		std real not null  -- standard deviation of error rate
+		mean real,  -- mean error rate
+		std real,  -- standard deviation of error rate
+		count_error real -- error calculated from match and distractor distributions made from match_counts and distract_counts
 	)
 	"""
 
@@ -204,6 +210,89 @@ class Empirical_error_db():
 			dim_id = dim_ids[i][0]
 			self.calculate_stats(dim_id, num_transitions)
 
+	def add_counts(self, dim_id, kind, additional_counts):
+		# add counts to either match_counts or distract_counts
+		# these are used to calculate match and distractor distributions which are then used to calculate count_error
+		# kind is the name of the field, either "match_counts" or "distract_counts"
+		# additional_counts is a dictionary, with keys distance (hamming or negagive of dot product) and
+		# values counts of occurances of that distance.
+		assert kind in ("match_counts", "distract_counts")
+		sql = "select %s from error where dim_id = %s" % (kind, dim_id)
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		row = res.fetchone()
+		orig_counts_str = row[0]
+		counts = {}
+		if orig_counts_str != "":
+			# convert orig_counts_str to ints, then put in counts dictionary
+			start_index, counts_str = orig_counts_str.split(";", 1)
+			start_index = int(start_index)
+			orig_counts = counts_str.split(",")
+			orig_counts = map(int, orig_counts)  # convert to integers
+			index = start_index
+			for count in orig_counts:
+				if count > 0:
+					# save count in dict
+					counts[index] = count
+		# now add in additional_counts
+		for key, val in additional_counts.items():
+			if key in counts:
+				counts[key] += val
+			else:
+				counts[key] = val
+		# convert from dict to array, with zeros in unused distances
+		start_index = min(counts.keys())
+		end_index = max(counts.keys())
+		length = end_index - start_index + 1
+		counts_arr = np.zeros(length, dtype=np.int)
+		for key, val in counts.items():
+			counts_arr[key - start_index] = val
+		# convert from array to string for storing into database
+		counts_str = ",".join(["%s" % x for x in counts_arr])
+		counts_str = "%s;%s" % (start_index, counts_str)  # put starting index in front
+		# save in database
+		sql = "update error set %s = '%s' where dim_id = %s" % (kind, counts_str, dim_id)
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		self.con.commit()
+		return (start_index, counts_arr)
+
+	def add_distance_counts(self, dim_id, match_counts, distract_counts):
+		# match_counts and distract_counts are both dictionaries
+		# with key=distance (hamming or negagive of dot product) and values counts of occurances of that distance
+		match_start_idx, match_counts = add_counts(dim_id, "match_counts", match_counts)
+		distract_start_idx, distract_counts = add_counts(dim_id, "distract_counts", distract_counts)
+		# calculate error rate by integrating match_counts and distractor_counts
+		match_pmf = match_counts / match_counts.sum()  # normalize
+		distract_pmf = distract_counts / distract_counts.sum()
+		if distract_start_idx <= match_start_idx:
+			# distract_cdf are all distract values less then or equal to current match value
+			end_idx = min(match_start_idx - distract_start_idx + 1, distract_pmf.size)
+			distract_cdf = distract_pmf[0:end_idx].sum()
+		else:
+			distract_cdf = 0
+		distract_match_offset = distract_start_idx - match_start_idx
+		# distract_idx = distract_start_idx - match_start_idx
+		p_err = 0.0
+		for i in range(0, len(match_pmf)):
+			p_err += match_pmf[i] * distract_cdf
+			match_idx = i + match_start_idx
+			distract_idx = match_idx + distract_match_offset
+			distract_0_based_idx = distract_idx - distract_start_idx
+			if distract_0_based_idx >= 0 and distract_0_based_idx < distract_pmf.size:
+				distract_cdf += distract_pmf[distract_0_based_idx]
+		assert p_err >= 0 and p_err <= 1
+		# store in database
+		sql = "select %s from error where dim_id = %s" % (kind, dim_id)
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		row = res.fetchone()
+
+
+
+
+
+
 
 
 
@@ -239,6 +328,7 @@ def fill_eedb():
 				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
 				wanted_epochs = get_epochs(ie, bundle=False)
 			else:
+				continue  # skip bundle for now
 				dim_id, ie, ncols, pe, epochs, mean, std = dim
 				wanted_epochs = get_epochs(ie, bundle=True)
 			if epochs is None:
@@ -246,6 +336,7 @@ def fill_eedb():
 			if wanted_epochs is not None and wanted_epochs > epochs:
 				# need more epochs
 				needed_epochs = wanted_epochs if ie < 4 else wanted_epochs - epochs # if ie < 4, store stats directly
+				print("%s, starting ie=%s, %s, needed_epochs=%s" % (time.ctime(), ie, name, needed_epochs))
 				if mtype == "sdm":
 					fee = get_sdm_ee(nrows, ncols, nact, bits_per_counter, match_method, needed_epochs)
 				else:
@@ -264,121 +355,13 @@ def fill_eedb():
 					print("%s ie=%s, added epochs=%s, mean=%s, std=%s, new_epochs=%s" % (name, ie,
 						wanted_epochs, mean, std, new_epochs))
 
-
-
-mem_info = [
-	{
-		"name": "bun_k1000_d100_c1#S1",
-		"short_name": "S1",
- 		"mtype": "bundle",
- 		"binarize_counters": True,  # use hamming match
-  	},
-  	{
-		"name": "bun_k1000_d100_c8#S2",
-		"short_name": "S2",
- 		"mtype": "bundle",
- 		"binarize_counters": False,  # used dot product match
-  	},
-  	{
-  		"name": "sdm_k1000_d100_c8_ham#A1",
-		"short_name": "A1",
- 		"mtype": "sdm",
- 		"bits_per_counter": 8,
- 		"match_method": "hamming",
- 	},
- 	{
-  		"name": "sdm_k1000_d100_c1_ham#A2",
-		"short_name": "A2",
- 		"mtype": "sdm",
- 		"bits_per_counter": 1,
- 		"match_method": "hamming",
- 	},
- 	{
-  		"name": "sdm_k1000_d100_c1_dot#A3",
-		"short_name": "A3",
- 		"mtype": "sdm",
- 		"bits_per_counter": 1,
- 		"match_method": "dot",
- 	},
- 	{
-  		"name": "sdm_k1000_d100_c8_dot#A4",
-		"short_name": "A4",
- 		"mtype": "sdm",
- 		"bits_per_counter": 8,
- 		"match_method": "dot",
- 	},
-]
-
-def get_bundle_perr(mi, ie):
-	# return mean and standard deviation
-	# mi entry in mem_info array (key-value pairs)
-	# ip is desired error, range 1 to 9 (10^(-ie))
-	global mdims
-	assert mi["mtype"] == "bundle"
-	name = mi["name"]
-	dims = mdims[name]
-	size = dims[ie - 1]
-	assert size[0] == ie, "First component of %s dims does not match error %s" % (name, ie)
-	ncols = size[1]
-	binarize_counters = mi["binarize_counters"]
-	epochs = get_epochs(ie, bundle=True)
-	if epochs is None:
-		# requires too many epochs, don't run
-		mean_error = math.nan
-		std_error = math.nan
-		clm_error = math.nan
-	else:
-		fbe = fast_bundle_empirical.Fast_bundle_empirical(ncols, epochs=epochs, binarize_counters=binarize_counters)
-		mean_error = fbe.mean_error
-		std_error = fbe.std_error
-		clm_error = std_error / math.sqrt(epochs) * 1.96  # 95% confidence interval for the mean (CLM)
-		print("%s, ie=%s, epochs=%s, error mean=%s, std=%s, clm=%s" % (name, ie, epochs, mean_error, std_error, clm_error))
-	mi["results"]["sizes"].append(ncols)
-	mi["results"]["mean_errors"].append(mean_error)
-	mi["results"]["std_errors"].append(std_error)
-	mi["results"]["clm_errors"].append(clm_error)
-
-def get_sdm_perr(mi, ie):
-	# return mean and standard deviation of error
-	# mi entry in mem_info array (key-value pairs)
-	# ie is desired error, range 1 to 9 (10^(-ie))
-	global mdims
-	assert mi["mtype"] == "sdm"
-	name = mi["name"]
-	dims = mdims[name]
-	size = dims[ie - 1]
-	assert size[0] == ie, "First component of %s dims does not match error %s" % (name, ie)
-	nrows = size[1]
-	nact = size[2]
-	bits_per_counter = mi["bits_per_counter"]
-	assert mi["match_method"] in ("hamming", "dot")
-	epochs = get_epochs(ie, bundle=False)
-	if epochs is None:
-		# requires too many epochs, don't run
-		mean_error = math.nan
-		std_error = math.nan
-		clm_error = math.nan
-	else:
-		threshold_sum = mi["match_method"] == "hamming"
-		ncols = 512
-		fse = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, epochs=epochs,
-			bits_per_counter=bits_per_counter, threshold_sum=threshold_sum)
-		mean_error = fse.mean_error
-		std_error = fse.std_error
-		clm_error = std_error / math.sqrt(epochs) * 1.96  # 95% confidence interval for the mean (CLM)
-		print("%s, ie=%s, epochs=%s, error mean=%s, std=%s, clm=%s" % (name, ie, epochs, mean_error, std_error, clm_error))
-	mi["results"]["sizes"].append(nrows)
-	mi["results"]["mean_errors"].append(mean_error)
-	mi["results"]["std_errors"].append(std_error)
-	mi["results"]["clm_errors"].append(clm_error)
-
 def get_epochs(ie, bundle=False):
 	# ie is expected error rate, range 1 to 9 (10^(-ie))
 	# return number of epochs required or None if not running this one because would require too many epochs
 	num_transitions = 1000  # 100 states, 10 choices per state
-	desired_fail_count = 100
-	minimum_fail_count = 40
-	epochs_max = 10000 if not bundle else 50  # bundle takes longer, so use fewer epochs 
+	desired_fail_count = 50
+	minimum_fail_count = 5
+	epochs_max = 50000 if not bundle else 1000  # bundle takes longer, so use fewer epochs 
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
 	# print("ie=%s, desired_epochs=%s, desired_fail_count=%s, expected_perr=%s" % (
@@ -391,34 +374,142 @@ def get_epochs(ie, bundle=False):
 	# requires too many epochs
 	return None
 
-def plot_fit(mtype="sdm"):
-	assert mtype in ("sdm", "bundle")
-	get_perr = get_sdm_perr if mtype=="sdm" else get_bundle_perr
-	for mi in mem_info:
-		if mi["mtype"] == mtype:
-			mi["results"] = {"sizes":[], "mean_errors":[], "std_errors":[], "clm_errors":[]}
-			for ie in range(1, 10):
-				get_perr(mi, ie) # calculates and appends to variables above in "results"
-	# now make plot
-	desired_errors = [10**(-i) for i in range(1, 10)]
-	for mi in mem_info:
-		if mi["mtype"] == mtype:
-			name = mi["name"]
-			x = mi["results"]["sizes"]
-			y = mi["results"]["mean_errors"]
-			ybar = mi["results"]["clm_errors"]
-			plt.errorbar(x, y, yerr=ybar, fmt="-o", label=name)
-			plt.errorbar(x, desired_errors, yerr=None, fmt="o", label="%s - Desired error" % name)
-	plt.title("%s empirical vs. desired error" % mtype)
-	xlabel = "sdm num rows" if mtype == "sdm" else "Superposition vector width"
-	plt.xlabel("xlabel")
-	plt.ylabel("Fraction error")
-	plt.yscale('log')
-	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
-	# plt.xticks(rows[0:num_steps], xlabels)
-	plt.grid()
-	plt.legend(loc='upper right')
-	plt.show()
+
+# mem_info = [
+# 	{
+# 		"name": "bun_k1000_d100_c1#S1",
+# 		"short_name": "S1",
+#  		"mtype": "bundle",
+#  		"binarize_counters": True,  # use hamming match
+#   	},
+#   	{
+# 		"name": "bun_k1000_d100_c8#S2",
+# 		"short_name": "S2",
+#  		"mtype": "bundle",
+#  		"binarize_counters": False,  # used dot product match
+#   	},
+#   	{
+#   		"name": "sdm_k1000_d100_c8_ham#A1",
+# 		"short_name": "A1",
+#  		"mtype": "sdm",
+#  		"bits_per_counter": 8,
+#  		"match_method": "hamming",
+#  	},
+#  	{
+#   		"name": "sdm_k1000_d100_c1_ham#A2",
+# 		"short_name": "A2",
+#  		"mtype": "sdm",
+#  		"bits_per_counter": 1,
+#  		"match_method": "hamming",
+#  	},
+#  	{
+#   		"name": "sdm_k1000_d100_c1_dot#A3",
+# 		"short_name": "A3",
+#  		"mtype": "sdm",
+#  		"bits_per_counter": 1,
+#  		"match_method": "dot",
+#  	},
+#  	{
+#   		"name": "sdm_k1000_d100_c8_dot#A4",
+# 		"short_name": "A4",
+#  		"mtype": "sdm",
+#  		"bits_per_counter": 8,
+#  		"match_method": "dot",
+#  	},
+# ]
+
+# def get_bundle_perr(mi, ie):
+# 	# return mean and standard deviation
+# 	# mi entry in mem_info array (key-value pairs)
+# 	# ip is desired error, range 1 to 9 (10^(-ie))
+# 	global mdims
+# 	assert mi["mtype"] == "bundle"
+# 	name = mi["name"]
+# 	dims = mdims[name]
+# 	size = dims[ie - 1]
+# 	assert size[0] == ie, "First component of %s dims does not match error %s" % (name, ie)
+# 	ncols = size[1]
+# 	binarize_counters = mi["binarize_counters"]
+# 	epochs = get_epochs(ie, bundle=True)
+# 	if epochs is None:
+# 		# requires too many epochs, don't run
+# 		mean_error = math.nan
+# 		std_error = math.nan
+# 		clm_error = math.nan
+# 	else:
+# 		fbe = fast_bundle_empirical.Fast_bundle_empirical(ncols, epochs=epochs, binarize_counters=binarize_counters)
+# 		mean_error = fbe.mean_error
+# 		std_error = fbe.std_error
+# 		clm_error = std_error / math.sqrt(epochs) * 1.96  # 95% confidence interval for the mean (CLM)
+# 		print("%s, ie=%s, epochs=%s, error mean=%s, std=%s, clm=%s" % (name, ie, epochs, mean_error, std_error, clm_error))
+# 	mi["results"]["sizes"].append(ncols)
+# 	mi["results"]["mean_errors"].append(mean_error)
+# 	mi["results"]["std_errors"].append(std_error)
+# 	mi["results"]["clm_errors"].append(clm_error)
+
+# def get_sdm_perr(mi, ie):
+# 	# return mean and standard deviation of error
+# 	# mi entry in mem_info array (key-value pairs)
+# 	# ie is desired error, range 1 to 9 (10^(-ie))
+# 	global mdims
+# 	assert mi["mtype"] == "sdm"
+# 	name = mi["name"]
+# 	dims = mdims[name]
+# 	size = dims[ie - 1]
+# 	assert size[0] == ie, "First component of %s dims does not match error %s" % (name, ie)
+# 	nrows = size[1]
+# 	nact = size[2]
+# 	bits_per_counter = mi["bits_per_counter"]
+# 	assert mi["match_method"] in ("hamming", "dot")
+# 	epochs = get_epochs(ie, bundle=False)
+# 	if epochs is None:
+# 		# requires too many epochs, don't run
+# 		mean_error = math.nan
+# 		std_error = math.nan
+# 		clm_error = math.nan
+# 	else:
+# 		threshold_sum = mi["match_method"] == "hamming"
+# 		ncols = 512
+# 		fse = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, epochs=epochs,
+# 			bits_per_counter=bits_per_counter, threshold_sum=threshold_sum)
+# 		mean_error = fse.mean_error
+# 		std_error = fse.std_error
+# 		clm_error = std_error / math.sqrt(epochs) * 1.96  # 95% confidence interval for the mean (CLM)
+# 		print("%s, ie=%s, epochs=%s, error mean=%s, std=%s, clm=%s" % (name, ie, epochs, mean_error, std_error, clm_error))
+# 	mi["results"]["sizes"].append(nrows)
+# 	mi["results"]["mean_errors"].append(mean_error)
+# 	mi["results"]["std_errors"].append(std_error)
+# 	mi["results"]["clm_errors"].append(clm_error)
+
+
+# def plot_fit(mtype="sdm"):
+# 	assert mtype in ("sdm", "bundle")
+# 	get_perr = get_sdm_perr if mtype=="sdm" else get_bundle_perr
+# 	for mi in mem_info:
+# 		if mi["mtype"] == mtype:
+# 			mi["results"] = {"sizes":[], "mean_errors":[], "std_errors":[], "clm_errors":[]}
+# 			for ie in range(1, 10):
+# 				get_perr(mi, ie) # calculates and appends to variables above in "results"
+# 	# now make plot
+# 	desired_errors = [10**(-i) for i in range(1, 10)]
+# 	for mi in mem_info:
+# 		if mi["mtype"] == mtype:
+# 			name = mi["name"]
+# 			x = mi["results"]["sizes"]
+# 			y = mi["results"]["mean_errors"]
+# 			ybar = mi["results"]["clm_errors"]
+# 			plt.errorbar(x, y, yerr=ybar, fmt="-o", label=name)
+# 			plt.errorbar(x, desired_errors, yerr=None, fmt="o", label="%s - Desired error" % name)
+# 	plt.title("%s empirical vs. desired error" % mtype)
+# 	xlabel = "sdm num rows" if mtype == "sdm" else "Superposition vector width"
+# 	plt.xlabel("xlabel")
+# 	plt.ylabel("Fraction error")
+# 	plt.yscale('log')
+# 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
+# 	# plt.xticks(rows[0:num_steps], xlabels)
+# 	plt.grid()
+# 	plt.legend(loc='upper right')
+# 	plt.show()
 
 def main():
 	fill_eedb()
