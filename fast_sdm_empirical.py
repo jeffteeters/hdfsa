@@ -96,6 +96,8 @@ class Fast_sdm_empirical():
 			distance_counts_offset = int(distance_counts_len / 2)
 		self.match_hamming_counts = np.zeros(distance_counts_len, dtype=np.uint32)
 		self.distractor_hamming_counts = np.zeros(distance_counts_len, dtype=np.uint32)
+		self.match_counts = {}  # key is distance, value is count; used in build_eedb to form pmf_stats
+		self.distract_counts = {}  # key is distance, value is count; used in build_eedb to form pmf_stats
 		rng = np.random.default_rng()
 		num_transitions = self.states * self.choices
 		# match and distractor distances used for finding mean and variance of distances to match and distractor
@@ -203,6 +205,7 @@ class Fast_sdm_empirical():
 				# if trial_count < 10:
 				# 	print("hamming_distances=%s" % hamming_distances[0:20])  # shows often either even or odd if ncols even
 				self.match_hamming_counts[hamming_distances[transition_next_state[i]]+distance_counts_offset] += 1
+				add_count(self.match_counts, hamming_distances[transition_next_state[i]])  # add to count for match distance
 				self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]+distance_counts_offset] += 1 # a random distractor
 				match_distances[trial_count] = hamming_distances[transition_next_state[i]]
 				distractor_distances[trial_count] = hamming_distances[(transition_next_state[i]+1) % self.states]
@@ -220,13 +223,21 @@ class Fast_sdm_empirical():
 						if transition_next_state[i] != two_smallest[0]:
 							fail_counts[epoch_id] += 1
 							fail_count += 1
+							closest_distractor = hamming_distances[two_smallest[0]]
+						else:
+							closest_distractor = hamming_distances[two_smallest[1]]
 					elif hamming_distances[two_smallest[1]] < hamming_distances[two_smallest[0]]:
 						if transition_next_state[i] != two_smallest[1]:
 							fail_counts[epoch_id] += 1
 							fail_count += 1
+							closest_distractor = hamming_distances[two_smallest[1]]
+						else:
+							closest_distractor = hamming_distances[two_smallest[0]]
 					elif self.count_multiple_matches_as_error or transition_next_state[i] != two_smallest[0]:
 						fail_counts[epoch_id] += 1
 						fail_count += 1
+						closest_distractor = hamming_distances[two_smallest[0]]
+					add_count(self.distract_counts, closest_distractor)
 				trial_count += 1
 		# print("fail counts are %s" % fail_counts)
 		assert np.sum(fail_counts) == fail_count
@@ -259,15 +270,33 @@ class Fast_sdm_empirical():
 		assert math.isclose(self.mean_error, perr)
 		# print("fast_sdm_empirical epochs=%s, perr=%s, std_error=%s" % (self.epochs, perr, self.std_error))
 
+def add_count(counts, distance):
+	# counts is a dictionary mapping a distance to a count
+	# used for match_counts and distract_counts
+	if distance in counts:
+		counts[distance] += 1
+	else:
+		counts[distance] = 1
+
 
 def main():
+	# for testing dot product
+	# ncols = 36; actions=3; choices=3; states=10
+	# nrows = 30; nact=2; threshold_sum= False; bits_per_counter=8
 	ncols = 512; actions=10; choices=10; states=100
+	# nrows=86; ncols=511; nact=2; bits_per_counter=1; threshold_sum=False # mean_error=0.01115
+	# nrows=86; ncols=512; nact=2; bits_per_counter=1; threshold_sum=False # 0.0102106  / 0.0105599
+	# nrows=86; ncols=513; nact=2; bits_per_counter=1; threshold_sum=False # mean_error=0.010689
+	nrows=86; ncols=514; nact=2; bits_per_counter=1; threshold_sum=False # mean_error=0.0102
+
+
 	# ncols = 31; actions=3; choices=3; states=10
 	# nrows=239; nact=3  # should give error rate of 10e-6
 	# nrows=86; nact=2  # should be error rate of 10e-2
 	# nrows=125; nact=2 # should give error rate 10e-3
 	# nrows = 75; nact=1; threshold_sum= False  # for dot-product match, should give 10e-3
-	#  Result: 
+	#  Result:
+
 
 # Seleted dims for 8-bit counter, non-thresholded sum (dot product match)
 
@@ -304,7 +333,7 @@ def main():
 	# nrows = 76; nact=2; threshold_sum= False; bits_per_counter=8 # should give 10^-3
 	# With nrows=76, ncols=512, nact=2, threshold_sum=False, only_one_distractor=False, epochs=100, mean_error=0.00099, std_error=0.0009746281342132495
 	# nrows = 80; nact=1; threshold_sum= False; bits_per_counter=8 # should give 10^-3
-	nrows = 80; nact=1; threshold_sum= False; bits_per_counter=8 
+	# nrows = 80; nact=1; threshold_sum= False; bits_per_counter=8 
 
 	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=50, mean_error=0.002300, std_error=0.0013152946
 	# With nrows=75, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.002315, std_error=0.0016173
@@ -313,7 +342,6 @@ def main():
 	# With nrows=76, ncols=512, nact=2, threshold_sum=False epochs=200, mean_error=0.0010350, std_error=0.0010
 	# Above matches perfectly
 	# Try 56/1, should match 10-2
-	# nrows=56; ncols=512; nact=1; threshold_sum=False
 	# nrows=56, ncols=512, nact=1, threshold_sum=False epochs=50, mean_error=0.01026, std_error=0.0031988122795812823
 	# 39/1, should match 10-1
 	# nrows=39; ncols=512; nact=1; threshold_sum=False

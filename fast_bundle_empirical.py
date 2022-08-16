@@ -63,6 +63,8 @@ class Fast_bundle_empirical():
 		num_transitions = self.states * self.choices
 		trial_count = 0
 		fail_count = 0
+		self.match_counts = {}  # key is distance, value is count; used in build_eedb to form pmf_stats
+		self.distract_counts = {}  # key is distance, value is count; used in build_eedb to form pmf_stats
 		for epoch_id in range(self.epochs):
 			# import pdb; pdb.set_trace()
 			im_action = rng.integers(0, high=2, size=(self.actions, self.ncols), dtype=np.int8)
@@ -105,6 +107,8 @@ class Fast_bundle_empirical():
 				contents[contents < 0] = 0
 			else:
 				# don't binerize counters.  Use +1/-1 product and dot product with item memory to calculate distance
+				# this conversion from binary to +1/-1 causes dot product for match to be negative when doing recall
+				# which matches hamming distance being smaller than distractor hamming distance.
 				address = address*2-1    # convert address to +1/-1
 				im_state = im_state*2-1  # convert im_state to +1/-1
 			for i in range(num_transitions):
@@ -117,19 +121,28 @@ class Fast_bundle_empirical():
 					# compute distance via dot product.  Will be more negative for closer match due to difference btwn xor and *
 					recalled_data = np.roll(address[i] * contents, -1) # would need to multiply by -1 for product has same result as xor
 					distances = np.sum(im_state[:,] * recalled_data, axis=1) # dot product distance.
+				add_count(self.match_counts, distances[transition_next_state[i]])  # add to count for match distance
 				two_smallest = np.argpartition(distances, 2)[0:2]
 				# two_largest = np.argpartition(dot_products , -2)[-2:]
 				if distances[two_smallest[0]] < distances[two_smallest[1]]:
 					if transition_next_state[i] != two_smallest[0]:
 						fail_counts[epoch_id] += 1
 						fail_count += 1
+						closest_distractor = distances[two_smallest[0]]
+					else:
+						closest_distractor = distances[two_smallest[1]]
 				elif distances[two_smallest[1]] < distances[two_smallest[0]]:
 					if transition_next_state[i] != two_smallest[1]:
 						fail_counts[epoch_id] += 1
 						fail_count += 1
+						closest_distractor = distances[two_smallest[1]]
+					else:
+						closest_distractor = distances[two_smallest[0]]
 				elif self.count_multiple_matches_as_error or transition_next_state[i] != two_smallest[0]:
 					fail_counts[epoch_id] += 1
 					fail_count += 1
+					closest_distractor = distances[two_smallest[0]]
+				add_count(self.distract_counts, closest_distractor)
 				trial_count += 1
 		# print("fail counts are %s" % fail_counts)
 		assert np.sum(fail_counts) == fail_count
@@ -150,6 +163,14 @@ class Fast_bundle_empirical():
 		# 	sum(self.match_hamming_distribution))
 		assert math.isclose(self.mean_error, perr)
 		# print("fast_sdm_empirical epochs=%s, perr=%s, std_error=%s" % (self.epochs, perr, self.std_error))
+
+def add_count(counts, distance):
+	# counts is a dictionary mapping a distance to a count
+	# used for match_counts and distract_counts
+	if distance in counts:
+		counts[distance] += 1
+	else:
+		counts[distance] = 1
 
 
 	# output for bundle sizes:

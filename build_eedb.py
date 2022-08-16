@@ -43,23 +43,29 @@ class Empirical_error_db():
 		dim_id integer not null,  -- foreign key to dim table
 		nerrors integer not null, -- number of errors found in one epoch
 		nepochs integer not null  -- number of epochs that have this (nerrors) of errors
-		match_counts text not null default "",    -- count of match distances, used to calculate match distribution, which
-		    -- is used with distractor distribution to calculate count_error; format is: <count0_distance>;count0,count1,count2,...
-		distract_counts text not null default ""  -- count of distractor distances, used to calculate distractor distribution
-		    -- which is then used with match_distribution to calculate count_error; save format as above
 	);
 	create table stats(
 		id integer primary key,
 		dim_id integer not null,  -- foreign key to dim table
 		epochs integer not null,  -- number of epochs used in calculating mean and std
-		mean real,  -- mean error rate
-		std real,  -- standard deviation of error rate
-		count_error real -- error calculated from match and distractor distributions made from match_counts and distract_counts
-	)
+		mean real not null,  -- mean error rate
+		std real not null  -- standard deviation of error rate
+	);
+	create table pmf_stats(
+		-- count of match and distractor distances that are used to calculate match and distractor distributions (pmf)
+		-- which are used to calculate the pmf_error (error rate estimated from distributions)
+		id integer primary key,
+		dim_id integer not null,  -- foreign key to dim table
+		match_counts text not null,    -- count of match distances, used to calculate match distribution, which
+		    -- is used with distractor distribution to calculate count_error; format is: <count0_distance>;count0,count1,count2,...
+		distract_counts text not null,  -- count of distractor distances, used to calculate distractor distribution
+		    -- which is then used with match_distribution to calculate count_error; save format as above
+		pmf_error real not null -- error calculated from match and distractor distributions made from match_counts and distract_counts
+	);
 	"""
 
 
-	def __init__(self, dbfile="empirical_error.db"):
+	def __init__(self, dbfile="empirical_error_test.db"):
 		self.dbfile = dbfile
 		# import pdb; pdb.set_trace()
 		if not os.path.isfile(dbfile):
@@ -110,11 +116,17 @@ class Empirical_error_db():
 		mem_id, short_name, mtype, bits_per_counter, match_method = row
 		# get dims
 		if mtype == "sdm":
-			sql = ("select dim.id, ie, size, ncols, nact, pe, epochs, mean, std from dim left join stats on"
-				" dim.id = stats.dim_id where mem_id = %s order by ie" % mem_id)
+			sql = ("select dim.id, ie, size, ncols, nact, pe, epochs, mean, std,\n"
+				" match_counts, distract_counts, pmf_error from dim\n"
+				" left join stats on dim.id = stats.dim_id\n"
+				" left join pmf_stats on dim.id = pmf_stats.dim_id\n"
+				" where mem_id = %s order by ie" % mem_id)
 		else:
-			sql = ("select dim.id, ie, size, pe, epochs, mean, std from dim left join stats on"
-				" dim.id = stats.dim_id where mem_id = %s order by ie" % mem_id)
+			sql = ("select dim.id, ie, size, pe, epochs, mean, std,\n"
+				" match_counts, distract_counts, pmf_error from dim\n"
+				" left join stats on dim.id = stats.dim_id\n"
+				" left join pmf_stats on dim.id = pmf_stats.dim_id\n"
+				" where mem_id = %s order by ie" % mem_id)
 		cur = self.con.cursor()
 		res = cur.execute(sql)
 		dims = res.fetchall()
@@ -210,21 +222,21 @@ class Empirical_error_db():
 			dim_id = dim_ids[i][0]
 			self.calculate_stats(dim_id, num_transitions)
 
-	def add_counts(self, dim_id, kind, additional_counts):
-		# add counts to either match_counts or distract_counts
+	def get_pmf_counts(self, dim_id, kind, additional_counts):
+		# add counts to previously stored match_counts or distract_counts
 		# these are used to calculate match and distractor distributions which are then used to calculate count_error
 		# kind is the name of the field, either "match_counts" or "distract_counts"
 		# additional_counts is a dictionary, with keys distance (hamming or negagive of dot product) and
 		# values counts of occurances of that distance.
 		assert kind in ("match_counts", "distract_counts")
-		sql = "select %s from error where dim_id = %s" % (kind, dim_id)
+		sql = "select %s from pmf_stats where dim_id = %s" % (kind, dim_id)
 		cur = self.con.cursor()
 		res = cur.execute(sql)
 		row = res.fetchone()
-		orig_counts_str = row[0]
 		counts = {}
-		if orig_counts_str != "":
+		if row is not None:
 			# convert orig_counts_str to ints, then put in counts dictionary
+			orig_counts_str = row[0]
 			start_index, counts_str = orig_counts_str.split(";", 1)
 			start_index = int(start_index)
 			orig_counts = counts_str.split(",")
@@ -244,27 +256,22 @@ class Empirical_error_db():
 		start_index = min(counts.keys())
 		end_index = max(counts.keys())
 		length = end_index - start_index + 1
-		counts_arr = np.zeros(length, dtype=np.int)
+		counts_arr = np.zeros(length, dtype=np.int64)
 		for key, val in counts.items():
 			counts_arr[key - start_index] = val
 		# convert from array to string for storing into database
 		counts_str = ",".join(["%s" % x for x in counts_arr])
 		counts_str = "%s;%s" % (start_index, counts_str)  # put starting index in front
-		# save in database
-		sql = "update error set %s = '%s' where dim_id = %s" % (kind, counts_str, dim_id)
-		cur = self.con.cursor()
-		res = cur.execute(sql)
-		self.con.commit()
-		return (start_index, counts_arr)
+		# normalize array to make pmf
+		counts_pmf = counts_arr / counts_arr.sum()
+		# return start_index, array and string
+		return (start_index, counts_pmf, counts_str)
 
-	def add_distance_counts(self, dim_id, match_counts, distract_counts):
+	def update_pmf_stats(self, dim_id, match_counts, distract_counts):
 		# match_counts and distract_counts are both dictionaries
-		# with key=distance (hamming or negagive of dot product) and values counts of occurances of that distance
-		match_start_idx, match_counts = add_counts(dim_id, "match_counts", match_counts)
-		distract_start_idx, distract_counts = add_counts(dim_id, "distract_counts", distract_counts)
-		# calculate error rate by integrating match_counts and distractor_counts
-		match_pmf = match_counts / match_counts.sum()  # normalize
-		distract_pmf = distract_counts / distract_counts.sum()
+		# with key=distance (hamming or negative of dot product) and values counts of occurances of that distance
+		match_start_idx, match_pmf, match_counts_str = self.get_pmf_counts(dim_id, "match_counts", match_counts)
+		distract_start_idx, distract_pmf, distract_counts_str = self.get_pmf_counts(dim_id, "distract_counts", distract_counts)
 		if distract_start_idx <= match_start_idx:
 			# distract_cdf are all distract values less then or equal to current match value
 			end_idx = min(match_start_idx - distract_start_idx + 1, distract_pmf.size)
@@ -272,28 +279,51 @@ class Empirical_error_db():
 		else:
 			distract_cdf = 0
 		distract_match_offset = distract_start_idx - match_start_idx
+		distract_0_based_idx = -distract_match_offset
+		match_xvals = np.arange(len(match_pmf)) + match_start_idx
+		distract_xvals = np.arange(len(distract_pmf)) + distract_start_idx
+		plt.plot(match_xvals, match_pmf, label="match_pmf")
+		plt.plot(distract_xvals, distract_pmf, label="distract_pmf")
+		plt.title("match and distract pmf")
+		plt.xlabel("hamming or dot product distance")
+		plt.ylabel("Frequency")
+		plt.grid()
+		plt.legend(loc='upper right')
+		plt.show()
+		# import pdb; pdb.set_trace()
 		# distract_idx = distract_start_idx - match_start_idx
 		p_err = 0.0
 		for i in range(0, len(match_pmf)):
 			p_err += match_pmf[i] * distract_cdf
+			distract_0_based_idx += 1
 			match_idx = i + match_start_idx
-			distract_idx = match_idx + distract_match_offset
-			distract_0_based_idx = distract_idx - distract_start_idx
+			# distract_idx = match_idx # + distract_match_offset
+			# distract_0_based_idx = distract_idx - distract_start_idx
 			if distract_0_based_idx >= 0 and distract_0_based_idx < distract_pmf.size:
 				distract_cdf += distract_pmf[distract_0_based_idx]
+			if match_idx == 11700:
+				print("at match_index = 11700, distract_cdf = %s, p_err=%s" % (distract_cdf, p_err))
+				import pdb; pdb.set_trace()
 		assert p_err >= 0 and p_err <= 1
 		# store in database
-		sql = "select %s from error where dim_id = %s" % (kind, dim_id)
+		sql = "select id from pmf_stats where dim_id = %s" % dim_id
 		cur = self.con.cursor()
 		res = cur.execute(sql)
 		row = res.fetchone()
-
-
-
-
-
-
-
+		if row is not None:
+			# update existing entry
+			pmf_stats_id = row[0]
+			sql = ("update pmf_stats set match_counts='%s',\n"
+				"	distract_counts='%s',\n"
+				"	pmf_error=%s where id = %s") % (match_counts_str, distract_counts_str, p_err, pmf_stats_id)
+		else:
+			# add new entry
+			sql = ("insert into pmf_stats (dim_id, match_counts, distract_counts, pmf_error) values\n"
+				"	(%s, '%s', '%s', %s)" % (dim_id, match_counts_str, distract_counts_str, p_err))
+		cur = self.con.cursor()
+		res = cur.execute(sql)
+		self.con.commit()
+		return p_err
 
 
 def get_bundle_ee(ncols, bits_per_counter, match_method, needed_epochs):
@@ -325,11 +355,11 @@ def fill_eedb():
 		match_method = mi["match_method"]
 		for dim in mi["dims"]:
 			if mtype == "sdm":
-				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std, match_counts, distract_counts, pmf_error = dim
 				wanted_epochs = get_epochs(ie, bundle=False)
 			else:
-				continue  # skip bundle for now
-				dim_id, ie, ncols, pe, epochs, mean, std = dim
+				# continue  # skip bundle for now
+				dim_id, ie, ncols, pe, epochs, mean, std, match_counts, distract_counts, pmf_error = dim
 				wanted_epochs = get_epochs(ie, bundle=True)
 			if epochs is None:
 				epochs = 0  # have no epochs
@@ -341,27 +371,29 @@ def fill_eedb():
 					fee = get_sdm_ee(nrows, ncols, nact, bits_per_counter, match_method, needed_epochs)
 				else:
 					fee = get_bundle_ee(ncols, bits_per_counter, match_method, needed_epochs) # find empirical error
+				# update pmf_stats
+				pmf_error = edb.update_pmf_stats(dim_id, fee.match_counts, fee.distract_counts)
+				# store empirical count stats
 				if ie < 4:
 					# store stats directly
 					edb.add_stats(dim_id, wanted_epochs, fee.mean_error, fee.std_error)
-					print("%s ie=%s, fresh epochs=%s, mean=%s, std=%s" % (name, ie, wanted_epochs, fee.mean_error, fee.std_error))
+					print("%s ie=%s, fresh epochs=%s, mean=%s, pmf_error=%s, std=%s" % (name,
+						ie, wanted_epochs, fee.mean_error, pmf_error, fee.std_error))
 				else:
 					# add errors to error table and recalculate stats
-					print("%s adding multi_error, mean=%s, std=%s" % (name, fee.mean_error, fee.std_error))
-					# import pdb; pdb.set_trace()
 					edb.add_multi_error(dim_id, fee.fail_counts)
 					items_per_epoch = fee.num_transitions
 					mean, std, new_epochs = edb.calculate_stats(dim_id, items_per_epoch)
-					print("%s ie=%s, added epochs=%s, mean=%s, std=%s, new_epochs=%s" % (name, ie,
-						wanted_epochs, mean, std, new_epochs))
+					print("%s ie=%s, added epochs=%s, mean=%s, pmf_error=%s, std=%s, new_epochs=%s" % (name, ie,
+						wanted_epochs, mean, pmf_error, std, new_epochs))
 
 def get_epochs(ie, bundle=False):
 	# ie is expected error rate, range 1 to 9 (10^(-ie))
 	# return number of epochs required or None if not running this one because would require too many epochs
 	num_transitions = 1000  # 100 states, 10 choices per state
-	desired_fail_count = 50
-	minimum_fail_count = 5
-	epochs_max = 50000 if not bundle else 1000  # bundle takes longer, so use fewer epochs 
+	desired_fail_count = 100
+	minimum_fail_count = 50
+	epochs_max = 1000 if not bundle else 10  # bundle takes longer, so use fewer epochs 
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
 	# print("ie=%s, desired_epochs=%s, desired_fail_count=%s, expected_perr=%s" % (
