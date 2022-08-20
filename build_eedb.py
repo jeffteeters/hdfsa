@@ -65,7 +65,7 @@ class Empirical_error_db():
 	"""
 
 
-	def __init__(self, dbfile="empirical_error_test.db"):
+	def __init__(self, dbfile="empirical_error.db"): #
 		self.dbfile = dbfile
 		# import pdb; pdb.set_trace()
 		if not os.path.isfile(dbfile):
@@ -234,18 +234,21 @@ class Empirical_error_db():
 		res = cur.execute(sql)
 		row = res.fetchone()
 		counts = {}
-		if row is not None:
+		if row is not None and row[0] != "":
 			# convert orig_counts_str to ints, then put in counts dictionary
 			orig_counts_str = row[0]
 			start_index, counts_str = orig_counts_str.split(";", 1)
 			start_index = int(start_index)
-			orig_counts = counts_str.split(",")
-			orig_counts = map(int, orig_counts)  # convert to integers
+			# orig_counts = counts_str.split(",")
+			orig_counts = [int(x) for x in counts_str.split(",")]  # convert to integers
+			#  map(int, orig_counts)  # not sure why this does not work
 			index = start_index
 			for count in orig_counts:
 				if count > 0:
 					# save count in dict
 					counts[index] = count
+				index += 1
+			print("recovered %s %s counts, dim_id=%s, start_index=%s" % (len(counts), kind, dim_id, start_index))
 		# now add in additional_counts
 		for key, val in additional_counts.items():
 			if key in counts:
@@ -267,7 +270,7 @@ class Empirical_error_db():
 		# return start_index, array and string
 		return (start_index, counts_pmf, counts_str)
 
-	def update_pmf_stats(self, dim_id, match_counts, distract_counts):
+	def update_pmf_stats(self, dim_id, match_counts, distract_counts, name):
 		# match_counts and distract_counts are both dictionaries
 		# with key=distance (hamming or negative of dot product) and values counts of occurances of that distance
 		match_start_idx, match_pmf, match_counts_str = self.get_pmf_counts(dim_id, "match_counts", match_counts)
@@ -280,16 +283,17 @@ class Empirical_error_db():
 			distract_cdf = 0
 		distract_match_offset = distract_start_idx - match_start_idx
 		distract_0_based_idx = -distract_match_offset
-		match_xvals = np.arange(len(match_pmf)) + match_start_idx
-		distract_xvals = np.arange(len(distract_pmf)) + distract_start_idx
-		plt.plot(match_xvals, match_pmf, label="match_pmf")
-		plt.plot(distract_xvals, distract_pmf, label="distract_pmf")
-		plt.title("match and distract pmf")
-		plt.xlabel("hamming or dot product distance")
-		plt.ylabel("Frequency")
-		plt.grid()
-		plt.legend(loc='upper right')
-		plt.show()
+		if False:
+			match_xvals = np.arange(len(match_pmf)) + match_start_idx
+			distract_xvals = np.arange(len(distract_pmf)) + distract_start_idx
+			plt.plot(match_xvals, match_pmf, label="match_pmf")
+			plt.plot(distract_xvals, distract_pmf, label="distract_pmf")
+			plt.title("%s match and distract pmf" % name)
+			plt.xlabel("hamming or dot product distance")
+			plt.ylabel("Frequency")
+			plt.grid()
+			plt.legend(loc='upper right')
+			plt.show(block=False)
 		# import pdb; pdb.set_trace()
 		# distract_idx = distract_start_idx - match_start_idx
 		p_err = 0.0
@@ -301,9 +305,9 @@ class Empirical_error_db():
 			# distract_0_based_idx = distract_idx - distract_start_idx
 			if distract_0_based_idx >= 0 and distract_0_based_idx < distract_pmf.size:
 				distract_cdf += distract_pmf[distract_0_based_idx]
-			if match_idx == 11700:
-				print("at match_index = 11700, distract_cdf = %s, p_err=%s" % (distract_cdf, p_err))
-				import pdb; pdb.set_trace()
+			# if match_idx == 11700:
+			# 	print("at match_index = 11700, distract_cdf = %s, p_err=%s" % (distract_cdf, p_err))
+			# 	import pdb; pdb.set_trace()
 		assert p_err >= 0 and p_err <= 1
 		# store in database
 		sql = "select id from pmf_stats where dim_id = %s" % dim_id
@@ -355,12 +359,19 @@ def fill_eedb():
 		match_method = mi["match_method"]
 		for dim in mi["dims"]:
 			if mtype == "sdm":
+				continue  # skip sdm for now
 				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std, match_counts, distract_counts, pmf_error = dim
 				wanted_epochs = get_epochs(ie, bundle=False)
 			else:
-				# continue  # skip bundle for now
 				dim_id, ie, ncols, pe, epochs, mean, std, match_counts, distract_counts, pmf_error = dim
-				wanted_epochs = get_epochs(ie, bundle=True)
+				if ie == 6:
+					wanted_epochs = 300
+				elif ie == 7:
+					wanted_epochs = 300
+					# if ie == 6 else None  # try 100 epochs with bundle, for pe == 6
+				else:
+					wanted_epochs = None
+				# wanted_epochs = get_epochs(ie, bundle=True)
 			if epochs is None:
 				epochs = 0  # have no epochs
 			if wanted_epochs is not None and wanted_epochs > epochs:
@@ -372,7 +383,7 @@ def fill_eedb():
 				else:
 					fee = get_bundle_ee(ncols, bits_per_counter, match_method, needed_epochs) # find empirical error
 				# update pmf_stats
-				pmf_error = edb.update_pmf_stats(dim_id, fee.match_counts, fee.distract_counts)
+				pmf_error = edb.update_pmf_stats(dim_id, fee.match_counts, fee.distract_counts, name)
 				# store empirical count stats
 				if ie < 4:
 					# store stats directly
@@ -385,19 +396,20 @@ def fill_eedb():
 					items_per_epoch = fee.num_transitions
 					mean, std, new_epochs = edb.calculate_stats(dim_id, items_per_epoch)
 					print("%s ie=%s, added epochs=%s, mean=%s, pmf_error=%s, std=%s, new_epochs=%s" % (name, ie,
-						wanted_epochs, mean, pmf_error, std, new_epochs))
+						needed_epochs, mean, pmf_error, std, new_epochs))
 
 def get_epochs(ie, bundle=False):
 	# ie is expected error rate, range 1 to 9 (10^(-ie))
 	# return number of epochs required or None if not running this one because would require too many epochs
 	num_transitions = 1000  # 100 states, 10 choices per state
 	desired_fail_count = 100
-	minimum_fail_count = 50
-	epochs_max = 1000 if not bundle else 10  # bundle takes longer, so use fewer epochs 
+	minimum_fail_count = 3
+	epochs_max = 70000 if not bundle else 10  # bundle takes longer, so use fewer epochs 
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
-	# print("ie=%s, desired_epochs=%s, desired_fail_count=%s, expected_perr=%s" % (
-	# 	ie, desired_epochs, desired_fail_count, expected_perr))
+	# if ie == 7:
+	# 	print("ie=%s, desired_epochs=%s, desired_fail_count=%s, expected_perr=%s" % (
+	# 		ie, desired_epochs, desired_fail_count, expected_perr))
 	if desired_epochs <= epochs_max:
 		return desired_epochs
 	minimum_epochs = round(minimum_fail_count / (expected_perr *num_transitions))
@@ -544,7 +556,9 @@ def get_epochs(ie, bundle=False):
 # 	plt.show()
 
 def main():
+	# plt.ion()
 	fill_eedb()
+	plt.show()  # keep any plots open
 	# plot_fit("sdm")
 	# plot_fit("bundle")
 	# edb = Empirical_error_db()
