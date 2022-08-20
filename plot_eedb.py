@@ -10,6 +10,7 @@ import math
 # import pprint
 # pp = pprint.PrettyPrinter(indent=4)
 from build_eedb import Empirical_error_db
+import sdm_analytical_jaeckel as sdm_jaeckel
 
 
 def plot_error_vs_dimension(mtype="sdm"):
@@ -27,27 +28,41 @@ def plot_error_vs_dimension(mtype="sdm"):
 		empirical_clm = np.empty(ndims, dtype=np.float64)
 		predicted_error = np.empty(ndims, dtype=np.float64)
 		pmf_error = np.empty(ndims, dtype=np.float64)
+		jaeckel_error = np.empty(ndims, dtype=np.float64) if name == "sdm_k1000_d100_c8_ham#A1" else None
 		for i in range(ndims):
 			dim = mi["dims"][i]
 			if mtype == "sdm":
 				# dim_id, ie, size, ncols, nact, pe, epochs, mean, std = dim
 				dim_id, ie, size, ncols, nact, pe, epochs, mean, std, match_counts, distract_counts, pmf_err = dim
+				if jaeckel_error is not None:
+					k = 1000; d=100
+					jaeckel_error[i] = sdm_jaeckel.SdmErrorAnalytical(size,k,d,nact=nact,word_length=512)
 			else:
 				# dim_id, ie, size, pe, epochs, mean, std = dim
 				dim_id, ie, size, pe, epochs, mean, std, match_counts, distract_counts, pmf_err = dim
 			sizes[i] = size
 			predicted_error[i] = pe
+			if False: # mi["short_name"] in ("S1", "S2") and ie == 6:
+				print("%s, ie=%s - len(match_counts)=%s, len(distract_counts)=%s" % (name, ie, len(match_counts), len(distract_counts)))
+				print("match_counts=%s..." % match_counts[0:80])
+				print("distract_counts=%s..." % distract_counts[0:80])
+				import pdb; pdb.set_trace()
 			pmf_error[i] = pmf_err if pmf_err is not None else np.nan
-			if mean is not None:
+			if mean is not None and mean > 0:
 				empirical_error[i] = mean
 				empirical_clm[i] = std / math.sqrt(epochs) * 1.96  # 95% confidence interval for the mean (CLM)
 			else:
 				empirical_error[i] = np.nan
 				empirical_clm[i] = np.nan
 		# plot arrays filled by above
+		# print("plotting")
+		# print("empirical_error[0:6]=%s" % empirical_error[0:6])
+		# print("empirical_clm[0:6]=%s" % empirical_clm[0:6])
 		plt.errorbar(sizes, empirical_error, yerr=empirical_clm, fmt="-o", label=name)
 		plt.errorbar(sizes, predicted_error, yerr=None, fmt="o", label="%s - predicted error" % name)
 		plt.errorbar(sizes, pmf_error, yerr=None, fmt="x", label="%s - pmf error" % name)
+		if jaeckel_error is not None:
+			plt.errorbar(sizes, jaeckel_error, yerr=None, fmt="8m", label="jaeckel_error")
 	plt.title("%s empirical vs. predicted error" % mtype)
 	xlabel = "SDM num rows" if mtype == "sdm" else "Superposition vector width"
 	plt.xlabel(xlabel)
@@ -80,10 +95,12 @@ def plot_size_vs_error(fimp=0.0):
 		for i in range(ndims):
 			dim = mi["dims"][i]
 			if mtype == "sdm":
-				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				# dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std, match_counts, distract_counts, pmf_err = dim
 				size = (nrows * ncols * bits_per_counter) + fimp*(nrows*ncols + item_memory_len*ncols) # address memory plus item memory
 			else:
-				dim_id, ie, ncols, pe, epochs, mean, std = dim
+				# dim_id, ie, ncols, pe, epochs, mean, std = dim
+				dim_id, ie, ncols, pe, epochs, mean, std, match_counts, distract_counts, pmf_err = dim
 				bits_per_counter = 1 if match_method == "hamming" else 8  # match_method indicates of bundle binarized or not
 				size = ncols * bits_per_counter + fimp*(ncols * item_memory_len)  # bundle + item memory
 			sizes[i] = size
@@ -137,12 +154,14 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size"):
 		for i in range(num_fimps):
 			fimp = fimps[i]
 			if mtype == "sdm":
-				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				# dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std, match_counts, distract_counts, pmf_err = dim
 				# size = (nrows * ncols * bits_per_counter) + fimp*(nrows*ncols + item_memory_len*ncols) # address memory plus item memory
 				size = (nrows * ncols * bits_used_in_counters) + fimp*(nrows*ncols + item_memory_len*ncols) # address memory plus item memory
 				changing_bits_size = (nrows * ncols * bits_used_in_counters)
 			else:
-				dim_id, ie, ncols, pe, epochs, mean, std = dim
+				# dim_id, ie, ncols, pe, epochs, mean, std = dim
+				dim_id, ie, ncols, pe, epochs, mean, std, match_counts, distract_counts, pmf_err = dim
 				# bits_per_counter = 1 if match_method == "hamming" else 8  # match_method indicates of bundle binarized or not
 				# size = ncols * bits_per_counter + fimp*(ncols * item_memory_len)  # bundle + item memory
 				size = ncols * bits_used_in_counters + fimp*(ncols * item_memory_len)  # bundle + item memory
@@ -152,7 +171,7 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size"):
 		plt.errorbar(fimps, yvals, yerr=None, fmt="-", label=name)
 
 	plt.title(title)
-	plt.xlabel("Fraction fixed memory present (fimp)")
+	plt.xlabel("Fraction item memory present (fimp)")
 	plt.ylabel(ylabel)
 	# plt.xscale('log')
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
@@ -180,7 +199,8 @@ def plot_operations_vs_error(parallel=False):
 		for i in range(ndims):
 			dim = mi["dims"][i]
 			if mtype == "sdm":
-				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				# dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std = dim
+				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std, match_counts, distract_counts, pmf_err = dim
 				if match_method == "hamming":
 					# threshold, use hamming
 					ops_address_compare = ncols * nrows / 8 if not parallel else ncols / 8
@@ -205,7 +225,8 @@ def plot_operations_vs_error(parallel=False):
 						+ ops_sum_to_make_hamming + ops_select_smallest)
 				# size = (nrows * ncols * bits_per_counter) + fimp*(nrows*ncols + item_memory_len*ncols) # address memory plus item memory
 			else:
-				dim_id, ie, ncols, pe, epochs, mean, std = dim
+				# dim_id, ie, ncols, pe, epochs, mean, std = dim
+				dim_id, ie, ncols, pe, epochs, mean, std, match_counts, distract_counts, pmf_err = dim
 				# bits_per_counter = 1 if match_method == "hamming" else 8  # match_method indicates of bundle binarized or not
 				ops = ncols * (item_memory_len + 2)/8 + item_memory_len if not parallel else ncols / 8 + item_memory_len
 				# size = ncols * bits_per_counter + fimp*(ncols * item_memory_len)  # bundle + item memory
@@ -230,7 +251,7 @@ def main():
 	# plot_size_vs_error(fimp=0) # 1.0/64.0)
 	# plot_size_vs_error(fimp=1) # 1.0/64.0)
 	# plot_operations_vs_error(parallel=True)
-	ie = 6
+	# ie = 6
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size")
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="memory_efficiency")
 
