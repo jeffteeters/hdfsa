@@ -5,6 +5,7 @@ from numba import jit
 from numba import int32, float32, uint32, boolean, float64    # import the types
 # from numba.experimental import jitclass
 import sys
+import pmf_error
 
 spec = [
     ('nrows', int32),
@@ -202,6 +203,7 @@ class Fast_sdm_empirical():
 					# don't convert sum to binary.  Use dot product to find best match to item memory
 					recalled_data = np.roll(address[i] * recalled_vector, -1)
 					hamming_distances = np.sum(im_state[:,] * recalled_data, axis=1) # actually dot product distance
+					# import pdb; pdb.set_trace()
 				# if trial_count < 10:
 				# 	print("hamming_distances=%s" % hamming_distances[0:20])  # shows often either even or odd if ncols even
 				self.match_hamming_counts[hamming_distances[transition_next_state[i]]+distance_counts_offset] += 1
@@ -283,12 +285,13 @@ def main():
 	# for testing dot product
 	# ncols = 36; actions=3; choices=3; states=10
 	# nrows = 30; nact=2; threshold_sum= False; bits_per_counter=8
-	ncols = 512; actions=10; choices=10; states=100
+	# actions=10; choices=10; states=100
 	# nrows=86; ncols=511; nact=2; bits_per_counter=1; threshold_sum=False # mean_error=0.01115
 	# nrows=86; ncols=512; nact=2; bits_per_counter=1; threshold_sum=False # 0.0102106  / 0.0105599
 	# nrows=86; ncols=513; nact=2; bits_per_counter=1; threshold_sum=False # mean_error=0.010689
-	nrows=86; ncols=514; nact=2; bits_per_counter=1; threshold_sum=False # mean_error=0.0102
-
+	# nrows=86; ncols=514; nact=2; bits_per_counter=1; threshold_sum=False # mean_error=0.0102
+	# nrows=205; ncols=512; nact=3; bits_per_counter=8; threshold_sum=False
+	# With nrows=101, ncols=509, nact=2, threshold_sum=False, only_one_distractor=False, epochs=100, mean_error=0.00014000
 
 	# ncols = 31; actions=3; choices=3; states=10
 	# nrows=239; nact=3  # should give error rate of 10e-6
@@ -483,17 +486,21 @@ def main():
 	# nrows=65; nact=1; threshold_sum=True; bits_per_counter=8; only_one_distractor = True
 	# With nrows=65, ncols=512, nact=1, threshold_sum=True, only_one_distractor=True, epochs=100, mean_error=0.00152, std_error=0.00119
 
-	epochs=100
+	actions=10; choices=10; states=100
+	ncols=512
+	nrows=101; nact=2; bits_per_counter=8; threshold_sum=False
+	epochs=1000
 	only_one_distractor = False
 	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices,
 		threshold_sum=threshold_sum, bits_per_counter=bits_per_counter, only_one_distractor=only_one_distractor,
 		epochs=epochs)
-	print("With nrows=%s, ncols=%s, nact=%s, threshold_sum=%s, only_one_distractor=%s,"
-		" epochs=%s, mean_error=%s, std_error=%s" % (nrows, ncols,
-		nact, threshold_sum, only_one_distractor, epochs, fse.mean_error, fse.std_error))
-	print("match_distance mean=%s, std=%s; distractor_distance mean=%s, std=%s" % (fse.match_distance_mean,
-		fse.match_distance_std, fse.distractor_distance_mean, fse.distractor_distance_std))
-	print("counter_sum_mean=%s, counter_sum_std=%s" % (fse.counter_sum_mean, fse.counter_sum_std))
+	pmf_err = pmf_error.pmf_error(fse.match_counts, fse.distract_counts)
+	print("nrows=%s, ncols=%s, nact=%s, bits_per_counter=%s, threshold_sum=%s, only_one_distractor=%s,"
+		" epochs=%s, mean_error=%s, pmf_error=%s, std_error=%s" % (nrows, ncols,
+		nact, bits_per_counter, threshold_sum, only_one_distractor, epochs, fse.mean_error, pmf_err, fse.std_error))
+	# print("match_distance mean=%s, std=%s; distractor_distance mean=%s, std=%s" % (fse.match_distance_mean,
+	# 	fse.match_distance_std, fse.distractor_distance_mean, fse.distractor_distance_std))
+	# print("counter_sum_mean=%s, counter_sum_std=%s" % (fse.counter_sum_mean, fse.counter_sum_std))
 
 	# plot match and distractor hamming distributions
 	plt.plot(fse.match_hamming_distribution, label="match")
