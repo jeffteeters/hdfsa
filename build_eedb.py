@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os.path
 import sqlite3
 import math
-from scipy.stats import linregress
+# from scipy.stats import linregress
 from mdie import mdie
 import pprint
 import time
@@ -359,19 +359,19 @@ def fill_eedb():
 		match_method = mi["match_method"]
 		for dim in mi["dims"]:
 			if mtype == "sdm":
-				continue  # skip sdm for now
+				# continue  # skip sdm for now
 				dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std, match_counts, distract_counts, pmf_error = dim
 				wanted_epochs = get_epochs(ie, bundle=False)
 			else:
 				dim_id, ie, ncols, pe, epochs, mean, std, match_counts, distract_counts, pmf_error = dim
-				if ie == 6:
-					wanted_epochs = 300
-				elif ie == 7:
-					wanted_epochs = 300
-					# if ie == 6 else None  # try 100 epochs with bundle, for pe == 6
-				else:
-					wanted_epochs = None
-				# wanted_epochs = get_epochs(ie, bundle=True)
+				# if ie == 6:
+				# 	wanted_epochs = 300
+				# elif ie == 7:
+				# 	wanted_epochs = 300
+				# 	# if ie == 6 else None  # try 100 epochs with bundle, for pe == 6
+				# else:
+				# 	wanted_epochs = None
+				wanted_epochs = get_epochs(ie, bundle=True)
 			if epochs is None:
 				epochs = 0  # have no epochs
 			if wanted_epochs is not None and wanted_epochs > epochs:
@@ -397,14 +397,20 @@ def fill_eedb():
 					mean, std, new_epochs = edb.calculate_stats(dim_id, items_per_epoch)
 					print("%s ie=%s, added epochs=%s, mean=%s, pmf_error=%s, std=%s, new_epochs=%s" % (name, ie,
 						needed_epochs, mean, pmf_error, std, new_epochs))
+	print("%s, Finished" % time.ctime())
 
 def get_epochs(ie, bundle=False):
 	# ie is expected error rate, range 1 to 9 (10^(-ie))
 	# return number of epochs required or None if not running this one because would require too many epochs
 	num_transitions = 1000  # 100 states, 10 choices per state
 	desired_fail_count = 100
-	minimum_fail_count = 3
-	epochs_max = 70000 if not bundle else 10  # bundle takes longer, so use fewer epochs 
+	if bundle:
+		# bundle takes longer, so use fewer epochs 
+		minimum_fail_count = .01
+		epochs_max = 10000
+	else:
+		epochs_max = 1000000
+		minimum_fail_count = 1
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
 	# if ie == 7:
