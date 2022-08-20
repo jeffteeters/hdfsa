@@ -406,8 +406,8 @@ def get_epochs(ie, bundle=False):
 	desired_fail_count = 100
 	if bundle:
 		# bundle takes longer, so use fewer epochs 
-		minimum_fail_count = .01
-		epochs_max = 10000
+		minimum_fail_count = .001
+		epochs_max = 1000
 	else:
 		epochs_max = 1000000
 		minimum_fail_count = 1
