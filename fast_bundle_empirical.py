@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-from numba import jit
-from numba import int32, float32, uint32, boolean, float64    # import the types
+# from numba import jit
+# from numba import int32, float32, uint32, boolean, float64    # import the types
 # from numba.experimental import jitclass
 import sys
 

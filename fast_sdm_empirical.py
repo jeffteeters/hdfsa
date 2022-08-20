@@ -1,34 +1,34 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-from numba import jit
-from numba import int32, float32, uint32, boolean, float64    # import the types
+# from numba import jit
+# from numba import int32, float32, uint32, boolean, float64    # import the types
 # from numba.experimental import jitclass
 import sys
 import pmf_error
 
-spec = [
-    ('nrows', int32),
-    ('ncols', int32),
-    ('nact', int32),
-    ('actions', int32),
-    ('states', int32),
-    ('choices', int32),
-    ('epochs', int32),
-    ('count_multiple_matches_as_error', boolean),
-    ('roll_address', boolean),
-    ('debug', boolean),
-    ('hl_selection_method_hamming', boolean),
-    ('save_error_rate_vs_hamming_distance', boolean),
-    ('truncate_counters', boolean),
-    ('include_zero', boolean),
-    ('magnitude', int32),
-    ('match_hamming_counts', uint32[:]),
-    ('distractor_hamming_counts', uint32[:]),
-    ('ehdist', float64[:]),
-    ('mean_error', float64),
-    ('std_error', float64),
-]
+# spec = [
+#     ('nrows', int32),
+#     ('ncols', int32),
+#     ('nact', int32),
+#     ('actions', int32),
+#     ('states', int32),
+#     ('choices', int32),
+#     ('epochs', int32),
+#     ('count_multiple_matches_as_error', boolean),
+#     ('roll_address', boolean),
+#     ('debug', boolean),
+#     ('hl_selection_method_hamming', boolean),
+#     ('save_error_rate_vs_hamming_distance', boolean),
+#     ('truncate_counters', boolean),
+#     ('include_zero', boolean),
+#     ('magnitude', int32),
+#     ('match_hamming_counts', uint32[:]),
+#     ('distractor_hamming_counts', uint32[:]),
+#     ('ehdist', float64[:]),
+#     ('mean_error', float64),
+#     ('std_error', float64),
+# ]
 
 # @jitclass(spec)
 class Fast_sdm_empirical():
