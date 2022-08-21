@@ -12,7 +12,10 @@ from mdie import mdie
 import pprint
 import time
 pp = pprint.PrettyPrinter(indent=4)
+from multiprocessing import Pool
 
+
+roll_address = False
 
 class Empirical_error_db():
 	# Class to create and update empirical error database
@@ -65,7 +68,7 @@ class Empirical_error_db():
 	"""
 
 
-	def __init__(self, dbfile="empirical_error.db"): #
+	def __init__(self, dbfile="empirical_error_noroll.db"): #
 		self.dbfile = dbfile
 		# import pdb; pdb.set_trace()
 		if not os.path.isfile(dbfile):
@@ -332,26 +335,33 @@ class Empirical_error_db():
 
 def get_bundle_ee(ncols, bits_per_counter, match_method, needed_epochs):
 	# return bundle_empirical_error object
+	global roll_address
 	assert bits_per_counter == 8
 	assert match_method in ("dot", "hamming")
 	binarize_counters = match_method == "hamming"
-	fbe = fast_bundle_empirical.Fast_bundle_empirical(ncols, epochs=needed_epochs, binarize_counters=binarize_counters)
+	fbe = fast_bundle_empirical.Fast_bundle_empirical(ncols, epochs=needed_epochs, binarize_counters=binarize_counters,
+		roll_address=roll_address)
 	return fbe
 
 def get_sdm_ee(nrows, ncols, nact, bits_per_counter, match_method, needed_epochs):
 	# return sdm_empirical_error object
+	global roll_address
 	assert bits_per_counter in (1, 8)
 	assert match_method in ("dot", "hamming")
 	assert ncols == 512  # for current simulations
 	threshold_sum = match_method == "hamming"
-	fse = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, epochs=needed_epochs,
+	fse = fast_sdm_empirical.Fast_sdm_empirical(nrows, ncols, nact, epochs=needed_epochs, roll_address=roll_address,
 			bits_per_counter=bits_per_counter, threshold_sum=threshold_sum)
 	return fse
 
-def fill_eedb():
+def fill_eedb(mem_name=None):
 	# main routine to populate the Empirical Error database
 	edb = Empirical_error_db()
-	mem_names = edb.get_memory_names("sdm") + edb.get_memory_names("bundle")  # process sdm first
+	if mem_name is None:
+		# no name specified, process all of them
+		mem_names = edb.get_memory_names("sdm") + edb.get_memory_names("bundle")  # process sdm first
+	else:
+		mem_names = [ mem_name, ]  # process just this one
 	for name in mem_names:
 		mi = edb.get_minfo(name)
 		mtype = mi["mtype"]  # "bundle" or "sdm"
@@ -563,8 +573,12 @@ def get_epochs(ie, bundle=False):
 
 def main():
 	# plt.ion()
-	fill_eedb()
-	plt.show()  # keep any plots open
+	edb = Empirical_error_db()
+	mem_names = edb.get_memory_names()
+	with Pool(6) as p:
+		p.map(fill_eedb, mem_names)
+	# fill_eedb()
+	# plt.show()  # keep any plots open
 	# plot_fit("sdm")
 	# plot_fit("bundle")
 	# edb = Empirical_error_db()
