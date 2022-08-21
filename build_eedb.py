@@ -351,7 +351,7 @@ def get_sdm_ee(nrows, ncols, nact, bits_per_counter, match_method, needed_epochs
 def fill_eedb():
 	# main routine to populate the Empirical Error database
 	edb = Empirical_error_db()
-	mem_names = edb.get_memory_names()
+	mem_names = edb.get_memory_names("sdm") + edb.get_memory_names("bundle")  # process sdm first
 	for name in mem_names:
 		mi = edb.get_minfo(name)
 		mtype = mi["mtype"]  # "bundle" or "sdm"
