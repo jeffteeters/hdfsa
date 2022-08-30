@@ -67,7 +67,7 @@ class Empirical_error_db():
 	);
 	"""
 
-
+	# def __init__(self, dbfile="empirical_error_rw1_noroll_v2.db"): #
 	def __init__(self, dbfile="empirical_error_noroll.db"): #
 	# def __init__(self, dbfile="empirical_error_rw1_roll.db"):
 		self.dbfile = dbfile
@@ -418,9 +418,9 @@ def get_epochs(ie, bundle=False):
 	if bundle:
 		# bundle takes longer, so use fewer epochs 
 		minimum_fail_count = .001
-		epochs_max = 2000
+		epochs_max = 3000
 	else:
-		epochs_max = 100000
+		epochs_max = 150000
 		minimum_fail_count = 0.05
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
