@@ -14,7 +14,6 @@ import time
 pp = pprint.PrettyPrinter(indent=4)
 from multiprocessing import Pool
 
-
 roll_address = False
 
 class Empirical_error_db():
@@ -67,7 +66,7 @@ class Empirical_error_db():
 	);
 	"""
 
-	# def __init__(self, dbfile="empirical_error_rw1_noroll_v2.db"): #
+	# def __init__(self, dbfile="empirical_error_noroll_v3.db"): #
 	def __init__(self, dbfile="empirical_error_noroll.db"): #
 	# def __init__(self, dbfile="empirical_error_rw1_roll.db"):
 		self.dbfile = dbfile
@@ -408,7 +407,7 @@ def fill_eedb(mem_name=None):
 					mean, std, new_epochs = edb.calculate_stats(dim_id, items_per_epoch)
 					print("%s ie=%s, added epochs=%s, mean=%s, pmf_error=%s, std=%s, new_epochs=%s" % (name, ie,
 						needed_epochs, mean, pmf_error, std, new_epochs))
-	print("%s, Finished" % time.ctime())
+		print("%s, Finished %s" % (time.ctime(), name))
 
 def get_epochs(ie, bundle=False):
 	# ie is expected error rate, range 1 to 9 (10^(-ie))
@@ -418,9 +417,9 @@ def get_epochs(ie, bundle=False):
 	if bundle:
 		# bundle takes longer, so use fewer epochs 
 		minimum_fail_count = .001
-		epochs_max = 3000
+		epochs_max = 4000
 	else:
-		epochs_max = 150000
+		epochs_max = 200000
 		minimum_fail_count = 0.05
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
