@@ -15,38 +15,39 @@ import warnings
 
 pfmt = {
 	"S1": { # hamming match, solid line thin
-			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"},
-			 "epmf":{"fmt": ":+m", "dashes":None, "lw":1, "label":"empirical pmf"},
-			 "ecount":{"fmt":"--*k", "dashes":None, "lw":1, "label":"empirical count"},
+			"predict": {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "label":"Prediction", "alpha":1},
+			 "epmf":{"fmt": "+r", "dashes":(0, (2,2)), "lw":6, "label":"empirical pmf", "alpha":0.6},
+			 "ecount":{"fmt":"*y", "dashes":(2,(2,2)), "lw":6, "label":"empirical count", "alpha":0.6},
 			 "annotate":{"xy":(5.1e4, 2.3e-3), "xytext":(5.6e4, 8.0e-3), "text":"S1"}
 			 },
 	"S2": { # dot match, solid line thin
-			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None},
-			 "epmf":{"fmt":":+m", "dashes":None, "lw":1, "label":None},
-			 "ecount":{"fmt":"--*k", "dashes":None, "lw":1, "label":None},
+			"predict": {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "label":None, "alpha":1},
+			 "epmf":{"fmt":":+m", "dashes":(0, (1,1)), "lw":6, "label":None, "alpha":0.6},
+			 "ecount":{"fmt":"--*y", "dashes":(1,(1,1)), "lw":6, "label":None, "alpha":0.6},
 			 "annotate":{"xy":(3.9e4, 3.0e-4), "xytext":(2.95e4, 5.5e-5), "text":"S2"}  # "arrow_start": (3.5e4, 1.5e-5)
 			 },
 	"A1": { # full counter, threshold sum
-			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"}, # [12,6,12,6,3,6]
-			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":"empirical pmf"},
-			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None, "label":"empirical count"},
+			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"
+				, "alpha":1}, # [12,6,12,6,3,6]
+			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":"empirical pmf", "alpha":1},
+			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None, "label":"empirical count", "alpha":1},
 			 "annotate":{"xy":(156, 2.4e-4), "xytext":(191, 1.9e-3), "text":"A1 & A3"}
 			 },
 	"A2": { # Binary counter, threshold sum
-			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None},  # [12,6,3,6,3,6]
-			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":None },
-			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None, "label":None},
+			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1},  # [12,6,3,6,3,6]
+			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":None , "alpha":1},
+			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None, "label":None, "alpha":1},
 			 "annotate":{"xy":(249, 2.8e-5), "xytext":(264, 1.0e-4), "text":"A2"}
 			 },
 	"A3": { # binary counter, non-thresholded sum
-			"predict": {"fmt": None, "dashes": None, "lw": 1, "linestyle":"solid", "label":None},  # [12,6,12,6,3,6]
-			 "epmf":{"fmt":":+g", "dashes":None, "lw":None, "label": "A3 empirical pmf" },
-			 "ecount":{"fmt":"--*g", "dashes":None, "lw":None, "label": "A3 empirical count"},
+			"predict": {"fmt": None, "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1},  # [12,6,12,6,3,6]
+			 "epmf":{"fmt":":+g", "dashes":None, "lw":None, "label": "A3 empirical pmf" , "alpha":1},
+			 "ecount":{"fmt":"--*g", "dashes":None, "lw":None, "label": "A3 empirical count", "alpha":1},
 			 },
 	"A4": { # full counter, non-thresholded sum
-			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None},  # [12,6,12,6,3,6]
-			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":None},
-			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None,"label":None},
+			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1},  # [12,6,12,6,3,6]
+			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":None, "alpha":1},
+			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None,"label":None, "alpha":1},
 			 "annotate":{"xy":(95, 1.0e-4), "xytext":(62, 2.5e-5), "text":"A4"}
 			 },
 
@@ -113,11 +114,14 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 		if pf["predict"]["fmt"] is not None:
 			ax.errorbar(sizes, predicted_error, yerr=None, label=pf["predict"]["label"],
 				fmt=pf["predict"]["fmt"], dashes=pf["predict"]["dashes"], lw=pf["predict"]["lw"],
-				linestyle=pf["predict"]["linestyle"])
-		ax.errorbar(sizes, empirical_error, yerr=empirical_clm, label=pf["ecount"]["label"],
-				fmt=pf["ecount"]["fmt"], dashes=pf["ecount"]["dashes"], lw=pf["ecount"]["lw"])
+				linestyle=pf["predict"]["linestyle"], alpha=pf["predict"]["alpha"])
+		ax.errorbar(sizes, empirical_error, yerr=None, #empirical_clm,
+				label=pf["ecount"]["label"],
+				fmt=pf["ecount"]["fmt"], linestyle=pf["ecount"]["dashes"], lw=pf["ecount"]["lw"],
+				alpha=pf["ecount"]["alpha"])
 		ax.errorbar(sizes, pmf_error, yerr=None, label=pf["epmf"]["label"],
-				fmt=pf["epmf"]["fmt"], dashes=pf["epmf"]["dashes"], lw=pf["epmf"]["lw"])
+				fmt=pf["epmf"]["fmt"], linestyle=pf["epmf"]["dashes"], lw=pf["epmf"]["lw"],
+				alpha=pf["epmf"]["alpha"])
 		if "annotate" in pf:
 			if "arrow_start" in pf["annotate"]:
 				# draw arrow and text separately to allow better control of arrow start
