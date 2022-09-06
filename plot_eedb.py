@@ -13,41 +13,127 @@ from build_eedb import Empirical_error_db
 import sdm_analytical_jaeckel as sdm_jaeckel
 import warnings
 
+pftypes = {
+	"predict": {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "alpha":1,
+		"markersize":None, "label":None},
+	"ecount_dotted_line": {"fmt": ":+g", "dashes":None, "linestyle":None, "lw":3,
+		"alpha":0.6, "markersize":None, "show_clm": False, "label":None},
+	"epmf_dashed_line":{"fmt": "--+r", "dashes":None, "linestyle":None, "lw":3,
+		"alpha":0.6, "markersize":None, "label":None},
+
+	"ecount_striped_line": {"fmt": ":Py", "dashes":None, "linestyle":(0, (2,2)), "lw":5,
+		"alpha":0.4, "markersize":12, "show_clm": False, "label":None},
+	"epmf_striped_line":{"fmt": "--*r", "dashes":None, "linestyle":(2, (2,2)), "lw":5,
+		"alpha":0.4, "markersize":12, "label":None},
+
+	"ecount_striped_line_a3": {"fmt": ":^b", "dashes":None, "linestyle":(0, (2,2)), "lw":5,
+		"alpha":0.4, "markersize":12, "show_clm": False, "label":None},
+	"epmf_striped_line_a3":{"fmt": "--Xg", "dashes":None, "linestyle":(2, (2,2)), "lw":5,
+		"alpha":0.4, "markersize":12, "label":None},
+
+				# 	"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"
+				# , "alpha":1, "markersize":None}, # [12,6,12,6,3,6]
+			 # "epmf":{"fmt":":+m", "dashes":None, "linestyle":None, "lw":None, "label":"empirical pmf", "alpha":1,
+			 # 	"markersize":None},
+			 # "ecount":{"fmt":"--*k", "dashes":None, "linestyle":None, "lw":None, "label":"empirical count", "alpha":1,
+			 # 	"markersize":None,
+			 # 	"show_clm": False, "max_ie":7},
+
+}
+
+pfmap = {
+	"predict": pftypes["predict"],
+	# ecount": pftypes["ecount_dotted_line" ], "epmf": pftypes["epmf_dashed_line"],
+	"ecount": pftypes["ecount_striped_line"], "epmf": pftypes["epmf_striped_line"],
+	"ecount_a3": pftypes["ecount_striped_line_a3"], "epmf_a3": pftypes["epmf_striped_line_a3"],
+}
+
 pfmt = {
 	"S1": { # hamming match, solid line thin
-			"predict": {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "label":"Prediction", "alpha":1},
-			 "epmf":{"fmt": "+r", "dashes":(0, (2,2)), "lw":6, "label":"empirical pmf", "alpha":0.6},
-			 "ecount":{"fmt":"*y", "dashes":(2,(2,2)), "lw":6, "label":"empirical count", "alpha":0.6},
+			"predict": {**pfmap["predict"], "label":"Prediction"},
+			# {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction", "alpha":1,
+			# 		"markersize":None},
+			 	"epmf": {**pfmap["epmf"], "label":"empirical pmf"},
+			 	# {"fmt": ":+m",
+			 	# 	"dashes":None,
+				 # 	"linestyle":None, # (0,(1,1)),
+				 # 	"lw":2,
+				 # 	"label":"empirical pmf", "alpha":0.6,
+			 	# 	"markersize":None},
+			 	"ecount": {**pfmap["ecount"], "label":"empirical count", "max_ie": 6},
+			 	# {"fmt":"--*c", "dashes":None,
+			 	# 	"linestyle": None, # (1,(1,1)),
+			 	# 	"lw":2,
+			 	# 	"label":"empirical count", "alpha":0.6,
+			 	# 	"markersize":None,
+			 	# 	"show_clm": False},
 			 "annotate":{"xy":(5.1e4, 2.3e-3), "xytext":(5.6e4, 8.0e-3), "text":"S1"}
 			 },
 	"S2": { # dot match, solid line thin
-			"predict": {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "label":None, "alpha":1},
-			 "epmf":{"fmt":":+m", "dashes":(0, (1,1)), "lw":6, "label":None, "alpha":0.6},
-			 "ecount":{"fmt":"--*y", "dashes":(1,(1,1)), "lw":6, "label":None, "alpha":0.6},
+			"predict": pftypes["predict"],
+			# {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "label":None, "alpha":1,
+			# 		"markersize":None},
+			"epmf": pfmap["epmf"],
+			# {"fmt":":+r", "dashes":None,
+			# 	"linestyle":(0,(1,1)),
+			# 	"lw":4, "label":None, "alpha":0.6,
+			# 	"markersize":None},
+			"ecount": {**pfmap["ecount"], "max_ie":6},
+			# {"fmt":"*y", "dashes":None,
+			# 	"linestyle":(1,(1,1)),
+			# 	"lw":4, "label":None, "alpha":0.6,
+			# 	"markersize":None,
+			# 	"show_clm": False},
 			 "annotate":{"xy":(3.9e4, 3.0e-4), "xytext":(2.95e4, 5.5e-5), "text":"S2"}  # "arrow_start": (3.5e4, 1.5e-5)
 			 },
 	"A1": { # full counter, threshold sum
-			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"
-				, "alpha":1}, # [12,6,12,6,3,6]
-			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":"empirical pmf", "alpha":1},
-			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None, "label":"empirical count", "alpha":1},
+			"predict": {**pftypes["predict"], "label":"Prediction"},
+			 "epmf": {**pfmap["epmf"], "label":"empirical pmf"},
+			 "ecount": {**pfmap["ecount"], "max_ie": 7, "label":"empirical count"},
+			# "predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"
+			# 	, "alpha":1, "markersize":None}, # [12,6,12,6,3,6]
+			#  "epmf":{"fmt":":+m", "dashes":None, "linestyle":None, "lw":None, "label":"empirical pmf", "alpha":1,
+			#  	"markersize":None},
+			#  "ecount":{"fmt":"--*k", "dashes":None, "linestyle":None, "lw":None, "label":"empirical count", "alpha":1,
+			#  	"markersize":None,
+			#  	"show_clm": False, "max_ie":7},
 			 "annotate":{"xy":(156, 2.4e-4), "xytext":(191, 1.9e-3), "text":"A1 & A3"}
 			 },
 	"A2": { # Binary counter, threshold sum
-			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1},  # [12,6,3,6,3,6]
-			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":None , "alpha":1},
-			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None, "label":None, "alpha":1},
+			"predict": pftypes["predict"],
+			"epmf": pfmap["epmf"],
+			"ecount": {**pfmap["ecount"], "max_ie": 7},
+			# "predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1,
+			# 	"markersize":None},  # [12,6,3,6,3,6]
+			#  "epmf":{"fmt":":+m", "dashes":None, "linestyle":None, "lw":None, "label":None , "alpha":1,
+			#  	"markersize":None},
+			#  "ecount":{"fmt":"--*k", "dashes":None, "linestyle":None, "lw":None, "label":None, "alpha":1,
+			#  	"markersize":None,
+			#  	"show_clm": False, "max_ie":7},
 			 "annotate":{"xy":(249, 2.8e-5), "xytext":(264, 1.0e-4), "text":"A2"}
 			 },
 	"A3": { # binary counter, non-thresholded sum
-			"predict": {"fmt": None, "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1},  # [12,6,12,6,3,6]
-			 "epmf":{"fmt":":+g", "dashes":None, "lw":None, "label": "A3 empirical pmf" , "alpha":1},
-			 "ecount":{"fmt":"--*g", "dashes":None, "lw":None, "label": "A3 empirical count", "alpha":1},
+			"predict": {"fmt": None },
+			"epmf": {**pfmap["epmf_a3"], "label": "A3 empirical pmf"},
+			"ecount": {**pfmap["ecount_a3"], "max_ie": 7, "label": "A3 empirical count"},
+			# "predict": {"fmt": None, "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1,
+			# 	"markersize":None},  # [12,6,12,6,3,6]
+			#  "epmf":{"fmt":":+g", "dashes":None, "linestyle":None, "lw":None, "label": "A3 empirical pmf" , "alpha":1,
+			#  	"markersize":None},
+			#  "ecount":{"fmt":"--*g", "dashes":None, "linestyle":None, "lw":None, "label": "A3 empirical count", "alpha":1,
+			#  	"markersize":None,
+			#  	"show_clm": False, "max_ie":7},
 			 },
 	"A4": { # full counter, non-thresholded sum
-			"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1},  # [12,6,12,6,3,6]
-			 "epmf":{"fmt":":+m", "dashes":None, "lw":None, "label":None, "alpha":1},
-			 "ecount":{"fmt":"--*k", "dashes":None, "lw":None,"label":None, "alpha":1},
+			"predict": pftypes["predict"],
+			# "predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1,
+			# 	"markersize":None},  # [12,6,12,6,3,6]
+			 "epmf": pfmap["epmf"],
+			# {"fmt":":+m", "dashes":None, "linestyle":None, "lw":None, "label":None, "alpha":1,
+			# 	"markersize":None},
+			"ecount": {**pfmap["ecount"], "max_ie": 7},
+			 # "ecount":{"fmt":"--*k", "dashes":None, "linestyle":None, "lw":None,"label":None, "alpha":1,
+			 # 	"markersize":None, "show_clm": False, "max_ie":7},
 			 "annotate":{"xy":(95, 1.0e-4), "xytext":(62, 2.5e-5), "text":"A4"}
 			 },
 
@@ -97,31 +183,36 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 				print("distract_counts=%s..." % distract_counts[0:80])
 				import pdb; pdb.set_trace()
 			pmf_error[i] = pmf_err if pmf_err is not None else np.nan
-			if mean is not None and mean > 0:
+			clm = std / math.sqrt(epochs) * 1.96 if mean is not None else None
+			if mean is not None and mean > 0: # and mean > clm:
 				empirical_error[i] = mean
-				empirical_clm[i] = std / math.sqrt(epochs) * 1.96  # 95% confidence interval for the mean (CLM)
+				empirical_clm[i] = clm  # std / math.sqrt(epochs) * 1.96  # 95% confidence interval for the mean (CLM)
 			else:
 				empirical_error[i] = np.nan
 				empirical_clm[i] = np.nan
 		# plot arrays filled by above
-		# print("plotting")
+		short_name = mi["short_name"]
+		# print("plotting %s" % short_name)
 		# print("sizes=%s" % sizes)
 		# print("empirical_error=%s" % empirical_error)
 		# print("empirical_clm=%s" % empirical_clm)
 		# plt.errorbar(sizes, empirical_error, yerr=empirical_clm, fmt="-o", label=name)
-		short_name = mi["short_name"]
 		pf = pfmt[short_name]
 		if pf["predict"]["fmt"] is not None:
 			ax.errorbar(sizes, predicted_error, yerr=None, label=pf["predict"]["label"],
 				fmt=pf["predict"]["fmt"], dashes=pf["predict"]["dashes"], lw=pf["predict"]["lw"],
-				linestyle=pf["predict"]["linestyle"], alpha=pf["predict"]["alpha"])
-		ax.errorbar(sizes, empirical_error, yerr=None, #empirical_clm,
-				label=pf["ecount"]["label"],
-				fmt=pf["ecount"]["fmt"], linestyle=pf["ecount"]["dashes"], lw=pf["ecount"]["lw"],
-				alpha=pf["ecount"]["alpha"])
+				linestyle=pf["predict"]["linestyle"], alpha=pf["predict"]["alpha"],
+				markersize=pf["predict"]["markersize"])
+		empirical_error[pf["ecount"]["max_ie"]:] = np.nan  # don't show empirical ecount above max_ie
+		empirical_clm[pf["ecount"]["max_ie"]:] = np.nan  # don't show empirical ecount above max_ie	
+		ax.errorbar(sizes, empirical_error, yerr=empirical_clm if pf["ecount"]["show_clm"] else None,
+				label=pf["ecount"]["label"],color='tab:blue',
+				# fmt=pf["ecount"]["fmt"],
+				linestyle=pf["ecount"]["linestyle"], lw=pf["ecount"]["lw"],
+				alpha=pf["ecount"]["alpha"],markersize=pf["ecount"]["markersize"])
 		ax.errorbar(sizes, pmf_error, yerr=None, label=pf["epmf"]["label"],
-				fmt=pf["epmf"]["fmt"], linestyle=pf["epmf"]["dashes"], lw=pf["epmf"]["lw"],
-				alpha=pf["epmf"]["alpha"])
+				fmt=pf["epmf"]["fmt"], linestyle=pf["epmf"]["linestyle"], lw=pf["epmf"]["lw"],
+				alpha=pf["epmf"]["alpha"], markersize=pf["epmf"]["markersize"])
 		if "annotate" in pf:
 			if "arrow_start" in pf["annotate"]:
 				# draw arrow and text separately to allow better control of arrow start
@@ -156,6 +247,9 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 	plt.xlabel(xlabel)
 	plt.ylabel("Fraction error")
 	plt.yscale('log')
+	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
+	ylabels = [10.0**(-i) for i in range(9, 0, -1)]
+	plt.yticks(yticks, ylabels)
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
 	# plt.xticks(rows[0:num_steps], xlabels)
 	plt.grid()
