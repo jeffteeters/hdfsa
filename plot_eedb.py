@@ -12,6 +12,7 @@ import math
 from build_eedb import Empirical_error_db
 import sdm_analytical_jaeckel as sdm_jaeckel
 import warnings
+from labellines import labelLine, labelLines
 
 pftypes = {
 	"predict": {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "alpha":1,
@@ -21,15 +22,15 @@ pftypes = {
 	"epmf_dashed_line":{"fmt": "--+r", "dashes":None, "linestyle":None, "lw":3,
 		"alpha":0.6, "markersize":None, "label":None},
 
-	"ecount_striped_line": {"fmt": ":Py", "dashes":None, "linestyle":(0, (2,2)), "lw":5,
-		"alpha":0.4, "markersize":12, "show_clm": False, "label":None},
+	"ecount_striped_line": {"fmt": ":Pc", "dashes":None, "linestyle":(0, (2,2)), "lw":5,
+		"alpha":0.5, "markersize":12, "show_clm": False, "label":None},
 	"epmf_striped_line":{"fmt": "--*r", "dashes":None, "linestyle":(2, (2,2)), "lw":5,
-		"alpha":0.4, "markersize":12, "label":None},
+		"alpha":0.5, "markersize":12, "label":None},
 
 	"ecount_striped_line_a3": {"fmt": ":^b", "dashes":None, "linestyle":(0, (2,2)), "lw":5,
-		"alpha":0.4, "markersize":12, "show_clm": False, "label":None},
+		"alpha":0.5, "markersize":12, "show_clm": False, "label":None},
 	"epmf_striped_line_a3":{"fmt": "--Xg", "dashes":None, "linestyle":(2, (2,2)), "lw":5,
-		"alpha":0.4, "markersize":12, "label":None},
+		"alpha":0.5, "markersize":12, "label":None},
 
 				# 	"predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"
 				# , "alpha":1, "markersize":None}, # [12,6,12,6,3,6]
@@ -53,20 +54,20 @@ pfmt = {
 			"predict": {**pfmap["predict"], "label":"Prediction"},
 			# {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction", "alpha":1,
 			# 		"markersize":None},
-			 	"epmf": {**pfmap["epmf"], "label":"empirical pmf"},
-			 	# {"fmt": ":+m",
-			 	# 	"dashes":None,
+				"epmf": {**pfmap["epmf"], "label":"empirical pmf"},
+				# {"fmt": ":+m",
+				# 	"dashes":None,
 				 # 	"linestyle":None, # (0,(1,1)),
 				 # 	"lw":2,
 				 # 	"label":"empirical pmf", "alpha":0.6,
-			 	# 	"markersize":None},
-			 	"ecount": {**pfmap["ecount"], "label":"empirical count", "max_ie": 6},
-			 	# {"fmt":"--*c", "dashes":None,
-			 	# 	"linestyle": None, # (1,(1,1)),
-			 	# 	"lw":2,
-			 	# 	"label":"empirical count", "alpha":0.6,
-			 	# 	"markersize":None,
-			 	# 	"show_clm": False},
+				# 	"markersize":None},
+				"ecount": {**pfmap["ecount"], "label":"empirical count", "max_ie": 6},
+				# {"fmt":"--*c", "dashes":None,
+				# 	"linestyle": None, # (1,(1,1)),
+				# 	"lw":2,
+				# 	"label":"empirical count", "alpha":0.6,
+				# 	"markersize":None,
+				# 	"show_clm": False},
 			 "annotate":{"xy":(5.1e4, 2.3e-3), "xytext":(5.6e4, 8.0e-3), "text":"S1"}
 			 },
 	"S2": { # dot match, solid line thin
@@ -202,44 +203,45 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 			ax.errorbar(sizes, predicted_error, yerr=None, label=pf["predict"]["label"],
 				fmt=pf["predict"]["fmt"], dashes=pf["predict"]["dashes"], lw=pf["predict"]["lw"],
 				linestyle=pf["predict"]["linestyle"], alpha=pf["predict"]["alpha"],
-				markersize=pf["predict"]["markersize"])
+				markersize=pf["predict"]["markersize"],)
 		empirical_error[pf["ecount"]["max_ie"]:] = np.nan  # don't show empirical ecount above max_ie
 		empirical_clm[pf["ecount"]["max_ie"]:] = np.nan  # don't show empirical ecount above max_ie	
 		ax.errorbar(sizes, empirical_error, yerr=empirical_clm if pf["ecount"]["show_clm"] else None,
-				label=pf["ecount"]["label"],color='tab:blue',
-				# fmt=pf["ecount"]["fmt"],
+				label=pf["ecount"]["label"], # color='tab:blue',
+				fmt=pf["ecount"]["fmt"],
 				linestyle=pf["ecount"]["linestyle"], lw=pf["ecount"]["lw"],
-				alpha=pf["ecount"]["alpha"],markersize=pf["ecount"]["markersize"])
+				alpha=pf["ecount"]["alpha"],markersize=pf["ecount"]["markersize"],
+				markeredgecolor='brown')
 		ax.errorbar(sizes, pmf_error, yerr=None, label=pf["epmf"]["label"],
 				fmt=pf["epmf"]["fmt"], linestyle=pf["epmf"]["linestyle"], lw=pf["epmf"]["lw"],
-				alpha=pf["epmf"]["alpha"], markersize=pf["epmf"]["markersize"])
+				alpha=pf["epmf"]["alpha"], markersize=pf["epmf"]["markersize"], markeredgecolor='brown')
 		if "annotate" in pf:
 			if "arrow_start" in pf["annotate"]:
 				# draw arrow and text separately to allow better control of arrow start
 				# draw text
 				ax.annotate(pf["annotate"]["text"], xy=pf["annotate"]["xy"],  xycoords='data',
-    		        xytext=pf["annotate"]["xytext"], textcoords='data',
-        		    arrowprops=None, # dict(facecolor='black', shrink=0.05, width=.5, headwidth=7,),
-        	    	fontsize='large', fontweight='bold',
-            		# horizontalalignment='right', verticalalignment='top',
-            		)
+					xytext=pf["annotate"]["xytext"], textcoords='data',
+					arrowprops=None, # dict(facecolor='black', shrink=0.05, width=.5, headwidth=7,),
+					fontsize='large', fontweight='bold',
+					# horizontalalignment='right', verticalalignment='top',
+					)
 				# draw arrow
 				ax.annotate("", xy=pf["annotate"]["xy"],  xycoords='data',
-    		        xytext=pf["annotate"]["xytext"], textcoords='data',
-        		    arrowprops=dict(facecolor='black', shrink=0.05, width=.5, headwidth=7,),
-        		    # arrowstyle="->"
-        	    	# fontsize='large', fontweight='bold',
-            		# horizontalalignment='right', verticalalignment='top',
-            		)
+					xytext=pf["annotate"]["xytext"], textcoords='data',
+					arrowprops=dict(facecolor='black', shrink=0.05, width=.5, headwidth=7,),
+					# arrowstyle="->"
+					# fontsize='large', fontweight='bold',
+					# horizontalalignment='right', verticalalignment='top',
+					)
 			else:
 				# draw arrow and text with one call
 				ax.annotate(pf["annotate"]["text"], xy=pf["annotate"]["xy"],  xycoords='data',
-    		        xytext=pf["annotate"]["xytext"], textcoords='data',
-        		    arrowprops=dict(facecolor='black', shrink=0.05, width=.5, headwidth=7,),
-        		    # arrowstyle="->"
-        	    	fontsize='large', fontweight='bold',
-            		# horizontalalignment='right', verticalalignment='top',
-            		)
+					xytext=pf["annotate"]["xytext"], textcoords='data',
+					arrowprops=dict(facecolor='black', shrink=0.05, width=.5, headwidth=7,),
+					# arrowstyle="->"
+					fontsize='large', fontweight='bold',
+					# horizontalalignment='right', verticalalignment='top',
+					)
 		if jaeckel_error is not None:
 			plt.errorbar(sizes, jaeckel_error, yerr=None, fmt="8m", label="jaeckel_error")
 	plt.title("%s empirical vs. predicted error rw1_noroll_v3" % mtype)
@@ -257,10 +259,22 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 	plt.show()
 
 
+mem_linestyles = {
+	# linestyles from:
+	# https://matplotlib.org/stable/gallery/lines_bars_and_markers/linestyles.html
+	"S1": {"color":'tab:brown',  "linestyle":(0, (5,5))}, # loosly dashed
+	"S2": {"color":'tab:orange', "linestyle":(0, (5,1))}, # densly dashed
+	"A1": {"color":'tab:green', "linestyle": (0, (3, 5, 1, 5))}, # dash dotted (one dot)
+	"A2": {"color":'tab:blue', "linestyle": (0, (3, 5, 1, 5, 1, 5))}, # dash dotted (two dots)
+	"A3": {"color":"tab:red" , "linestyle": (0, (3, 5, 1, 5, 1, 5, 1, 5))}, # dash dotted (three dots)
+	"A4": {"color":'tab:purple', "linestyle": (0, (3, 5, 1, 5, 1, 5, 1, 5, 1, 5))}, # dash dotted (four dot)
+}
+
 def plot_size_vs_error(fimp=0.0):
 	# size is number of bits
 	# fimp is fraction of item memory present
 	# plot for both bundle and sdm
+	global mem_linestyles
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
 	item_memory_len = 110
@@ -288,7 +302,17 @@ def plot_size_vs_error(fimp=0.0):
 			sizes[i] = size
 			predicted_error[i] = -math.log10(pe)
 		# plot arrays filled by above
-		plt.errorbar(predicted_error, sizes, yerr=None, fmt="-o", label=name)
+		short_name = mi["short_name"]
+		plt.errorbar(predicted_error, sizes, yerr=None, fmt="-", label=short_name,
+			color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
+			)
+	# labelLines(plt.gca().get_lines(), zorder=2.5)
+	if fimp == 0:
+		xvals = [8.7, 8.5, 4.5, 5.5, 6.7, 6.5]
+	else:
+		assert fimp == 1.0
+		xvals = [3.5, 4.5, 5.5, 7.5, 8.7, 6.5]
+	labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
 	plt.title("Size (bits) vs error with fimp=%s" % fimp)
 	xlabel = "Error rate (10^-n)"
 	plt.xlabel(xlabel)
@@ -297,7 +321,7 @@ def plot_size_vs_error(fimp=0.0):
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
 	# plt.xticks(rows[0:num_steps], xlabels)
 	plt.grid()
-	plt.legend(loc='upper left')
+	# plt.legend(loc='upper left')
 	plt.show()
 
 
@@ -305,6 +329,7 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size"):
 	# ie is a fixed error rate, range(1,10); error rate is 10**(-ie)
 	# plot_type = "size" or "memory_efficiency"
 	# plot for both bundle and sdm
+	global mem_linestyles
 	assert plot_type in ("size", "memory_efficiency")
 	assert ie in range(1,10)
 	if plot_type == "size":
@@ -350,8 +375,13 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size"):
 				changing_bits_size = (ncols * bits_used_in_counters)
 			yvals[i] = size if plot_type == "size" else (changing_bits_size *100.0 / size)
 		# plot arrays filled by above
-		plt.errorbar(fimps, yvals, yerr=None, fmt="-", label=name)
-
+		short_name = mi["short_name"]
+		plt.errorbar(fimps, yvals, yerr=None, fmt="-", label=short_name,
+			color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
+			)
+	assert plot_type == "size", "labeled lines xvals not setup for plot_type memory"
+	xvals = [0.44, 0.7, 0.65, 0.88, 0.95, 0.75]
+	labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
 	plt.title(title)
 	plt.xlabel("Fraction item memory present (fimp)")
 	plt.ylabel(ylabel)
@@ -359,7 +389,7 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size"):
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
 	# plt.xticks(rows[0:num_steps], xlabels)
 	plt.grid()
-	plt.legend(loc='upper right')
+	# plt.legend(loc='upper left')
 	plt.show()
 
 def plot_operations_vs_error(parallel=False):
@@ -428,13 +458,13 @@ def plot_operations_vs_error(parallel=False):
 	plt.show()
 
 def main():
-	plot_error_vs_dimension("bundle")
-	plot_error_vs_dimension("sdm")
-	# plot_size_vs_error(fimp=0) # 1.0/64.0)
-	# plot_size_vs_error(fimp=1) # 1.0/64.0)
+	# plot_error_vs_dimension("bundle")
+	# plot_error_vs_dimension("sdm")
+	plot_size_vs_error(fimp=0) # 1.0/64.0)
+	plot_size_vs_error(fimp=1) # 1.0/64.0)
+	ie = 6
+	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size")
 	# plot_operations_vs_error(parallel=True)
-	# ie = 6
-	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size")
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="memory_efficiency")
 
 
