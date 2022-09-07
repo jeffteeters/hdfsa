@@ -13,6 +13,7 @@ from build_eedb import Empirical_error_db
 import sdm_analytical_jaeckel as sdm_jaeckel
 import warnings
 from labellines import labelLine, labelLines
+import matplotlib.ticker as mtick
 
 pftypes = {
 	"predict": {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "alpha":1,
@@ -256,7 +257,11 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 	# plt.xticks(rows[0:num_steps], xlabels)
 	plt.grid()
 	plt.legend(loc='upper right')
+	# figure = plt.gcf() # get current figure
+	# figure.set_size_inches(8, 6)
 	plt.show()
+	# plt.savefig("archive/savefig/%s_error_vs_dimensions_ms.pdf" % mtype)
+
 
 
 mem_linestyles = {
@@ -270,7 +275,7 @@ mem_linestyles = {
 	"A4": {"color":'tab:purple', "linestyle": (0, (3, 5, 1, 5, 1, 5, 1, 5, 1, 5))}, # dash dotted (four dot)
 }
 
-def plot_size_vs_error(fimp=0.0):
+def plot_size_vs_error(fimp=0.0, log_scale=False):
 	# size is number of bits
 	# fimp is fraction of item memory present
 	# plot for both bundle and sdm
@@ -308,16 +313,19 @@ def plot_size_vs_error(fimp=0.0):
 			)
 	# labelLines(plt.gca().get_lines(), zorder=2.5)
 	if fimp == 0:
-		xvals = [8.7, 8.5, 4.5, 5.5, 6.7, 6.5]
+		xvals = [8.7, 8.5, 4.5, 6.5, 7.5, 6.5]
 	else:
 		assert fimp == 1.0
 		xvals = [3.5, 4.5, 5.5, 7.5, 8.7, 6.5]
 	labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
 	plt.title("Size (bits) vs error with fimp=%s" % fimp)
-	xlabel = "Error rate (10^-n)"
+	xlabel = "Error rate ($10^{-n}$)"
 	plt.xlabel(xlabel)
 	plt.ylabel("Size in bits")
-	# plt.xscale('log')
+	# ax = plt.gca()
+	# ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.1e'))
+	if log_scale:
+		plt.yscale('log')
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
 	# plt.xticks(rows[0:num_steps], xlabels)
 	plt.grid()
@@ -325,7 +333,7 @@ def plot_size_vs_error(fimp=0.0):
 	plt.show()
 
 
-def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size"):
+def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False):
 	# ie is a fixed error rate, range(1,10); error rate is 10**(-ie)
 	# plot_type = "size" or "memory_efficiency"
 	# plot for both bundle and sdm
@@ -385,16 +393,18 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size"):
 	plt.title(title)
 	plt.xlabel("Fraction item memory present (fimp)")
 	plt.ylabel(ylabel)
-	# plt.xscale('log')
+	if log_scale:
+		plt.yscale('log')
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
 	# plt.xticks(rows[0:num_steps], xlabels)
 	plt.grid()
 	# plt.legend(loc='upper left')
 	plt.show()
 
-def plot_operations_vs_error(parallel=False):
+def plot_operations_vs_error(parallel=False, log_scale=False):
 	# operations is number if byte operations, or parallel byte operations (if parallel is True)
 	# plot for both bundle and sdm
+	global mem_linestyles
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
 	item_memory_len = 100
@@ -445,26 +455,38 @@ def plot_operations_vs_error(parallel=False):
 			operations[i] = ops
 			predicted_error[i] = -math.log10(pe)
 		# plot arrays filled by above
-		plt.errorbar(predicted_error, operations, yerr=None, fmt="-o", label=name)
-	plt.title("Byte operations vs error with parallel=%s" % parallel)
+		short_name = mi["short_name"]
+		plt.errorbar(predicted_error, operations, yerr=None, fmt="-", label=short_name,
+			color=mem_linestyles[short_name]["color"])
+	xvals = [3.5, 4.5, 8.5, 7.5, 5.5, 6.5]
+	labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
+	plt.title("Byte operations vs error with parallel=%s, log_scale=%s" % (parallel, log_scale))
 	xlabel = "Error rate (10^-n)"
 	plt.xlabel(xlabel)
 	plt.ylabel("Number byte operations")
-	# plt.xscale('log')
+	if log_scale:
+		plt.yscale('log')
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
 	# plt.xticks(rows[0:num_steps], xlabels)
 	plt.grid()
-	plt.legend(loc='upper left')
+	# plt.legend(loc='upper left')
 	plt.show()
 
 def main():
 	# plot_error_vs_dimension("bundle")
 	# plot_error_vs_dimension("sdm")
-	plot_size_vs_error(fimp=0) # 1.0/64.0)
-	plot_size_vs_error(fimp=1) # 1.0/64.0)
+	plot_size_vs_error(fimp=0, log_scale=False) # 1.0/64.0)
+	plot_size_vs_error(fimp=0, log_scale=True) # 1.0/64.0)
+	plot_size_vs_error(fimp=1, log_scale=False) # 1.0/64.0)
+	plot_size_vs_error(fimp=1,  log_scale=True) # 1.0/64.0)
 	ie = 6
-	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size")
-	# plot_operations_vs_error(parallel=True)
+	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False)
+	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=True)
+	if False:
+		plot_operations_vs_error(parallel=False, log_scale=False)
+		plot_operations_vs_error(parallel=False, log_scale=True)
+		plot_operations_vs_error(parallel=True, log_scale=False)
+		plot_operations_vs_error(parallel=True, log_scale=True)
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="memory_efficiency")
 
 

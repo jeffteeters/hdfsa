@@ -70,13 +70,14 @@ class Bsa_sample():
 	# compute analytical fraction error of binarized sdm using sampling which should work for nact > 1
 	# This is unlike the Binarized_sdm_analytical class (above) which only works when nact is 1.
 
-	def __init__(self, nrows, ncols, nact, k, d, epochs=100, include_correction_factor=True):
+	def __init__(self, nrows, ncols, nact, k, d, epochs=100, include_correction_factor=True, replace=False):
 		# nrows is number of rows (hard locations) in the SDM
 		# ncols is the number of columns
 		# nact is activaction count
 		# k - number of items stored
 		# d - size of item memory
 		# add_correction_factors set to True to include correction factor in final predicted error
+		# replace - True if should sample overlaps with replacement
 		assert nact > 1, "must call Binarized_sdm_analytical if nact > 1"
 			# use direct calculation instead of sampling for nact ==1
 			# return Binarized_sdm_analytical(nrows, ncols, nact, k, d)
@@ -108,7 +109,8 @@ class Bsa_sample():
 		rng = np.random.default_rng()
 		possible_hammings = np.arange(ncols+1)
 		for i in range(epochs*1000):
-			samples = rng.choice(num_possible_overlaps+1, size=nact, replace=False, p=prob_overlap, shuffle=False)
+			samples = rng.choice(num_possible_overlaps+1, size=nact, replace=replace, p=prob_overlap, shuffle=False)
+			# replace was False
 			er = delt_overlap[samples]  # probability error
 			pc = 1 - er # probability correct
 			pc_er[0:nact] = pc  # copy probability correct
