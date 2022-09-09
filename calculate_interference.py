@@ -1,6 +1,17 @@
 
 
 # script to calculate error rate for particular transitions being stored
+# there are two versions, in two different files.  The other version is in file:
+# calculate_interference2.py.  That version treats each term as independent to the others
+# and produces an error rate of 0.3125 which is what is expected if four independent
+# vectors are added to the bundle.  This version calculates the address terms using xor
+# before storing into the bundle.  It produces an error rate of 0.375, which corresponds
+# to about 11 items being stored in the bundle.  (Calculated by solving Pentti's formula,
+# delta = 0.5 - 0.4 / sqrt(k - 0.44), with delta = 0.375
+# to give: (.4/(.5 -.375))**2+.44) = 10.68
+#
+# to see the difference, run this script, and compare that to running the other
+# version (calculate_interference2.py)
 
 import itertools
 
