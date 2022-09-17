@@ -417,9 +417,9 @@ def get_epochs(ie, bundle=False):
 	if bundle:
 		# bundle takes longer, so use fewer epochs 
 		minimum_fail_count = .001
-		epochs_max = 14000
+		epochs_max = 15000
 	else:
-		epochs_max = 700000
+		epochs_max = 750000
 		minimum_fail_count = 0.05
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
