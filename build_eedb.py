@@ -419,7 +419,7 @@ def get_epochs(ie, bundle=False):
 		minimum_fail_count = .001
 		epochs_max = 15000
 	else:
-		epochs_max = 800000
+		epochs_max = 850000
 		minimum_fail_count = 0.05
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
