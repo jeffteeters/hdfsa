@@ -5,6 +5,8 @@ import math
 # from numba import int32, float32, uint32, boolean, float64    # import the types
 # from numba.experimental import jitclass
 import sys
+import time
+
 
 # spec = [
 #     ('nrows', int32),
@@ -59,6 +61,7 @@ class Fast_bundle_empirical():
 	# def empiricalError(self):
 		# compute empirical error by storing then recalling finite state automata from bundle
 		fail_counts = np.zeros(self.epochs, dtype=np.uint16)
+		recall_times = np.empty(self.epochs, dtype=int)
 		rng = np.random.default_rng()
 		num_transitions = self.states * self.choices
 		trial_count = 0
@@ -81,7 +84,11 @@ class Fast_bundle_empirical():
 			transition_state = np.repeat(np.arange(self.states), self.choices)
 			transition_action = transition_action.flatten()
 			transition_next_state = transition_next_state.flatten()
+			# START TIMEING FOR RECALL - part 1 bind action to state
+			start_time = time.perf_counter_ns()
 			address = np.logical_xor(im_state[transition_state], im_action[transition_action])
+			recall_times[epoch_id] = time.perf_counter_ns() - start_time
+			# END TIMEING FOR RECALL - part 1 bind action to state
 			# address = im_state[transition_state] * im_action[transition_action]
 			assert transition_state.size == num_transitions
 			assert transition_action.size == num_transitions
@@ -112,6 +119,8 @@ class Fast_bundle_empirical():
 				address = address*2-1    # convert address to +1/-1
 				im_state = im_state*2-1  # convert im_state to +1/-1
 			for i in range(num_transitions):
+				# START TIMEING FOR RECALL - part 2: find distances
+				start_time = time.perf_counter_ns()
 				if self.binarize_counters:
 					recalled_data = np.roll(np.logical_xor(address[i], contents), -1)
 					distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)  # hamming distance
@@ -121,8 +130,10 @@ class Fast_bundle_empirical():
 					# compute distance via dot product.  Will be more negative for closer match due to difference btwn xor and *
 					recalled_data = np.roll(address[i] * contents, -1) # would need to multiply by -1 for product has same result as xor
 					distances = np.sum(im_state[:,] * recalled_data, axis=1) # dot product distance.
-				add_count(self.match_counts, distances[transition_next_state[i]])  # add to count for match distance
 				two_smallest = np.argpartition(distances, 2)[0:2]
+				# END TIMING FOR RECALL
+				recall_times[epoch_id] += time.perf_counter_ns() - start_time
+				add_count(self.match_counts, distances[transition_next_state[i]])  # add to count for match distance
 				# two_largest = np.argpartition(dot_products , -2)[-2:]
 				if distances[two_smallest[0]] < distances[two_smallest[1]]:
 					if transition_next_state[i] != two_smallest[0]:
@@ -154,6 +165,8 @@ class Fast_bundle_empirical():
 		normalized_fail_counts = fail_counts / num_transitions
 		self.mean_error = np.mean(normalized_fail_counts)
 		self.std_error = np.std(normalized_fail_counts)
+		self.recall_time_mean = np.mean(recall_times)
+		self.recall_time_std = np.std(recall_times)
 		# self.match_hamming_distribution = self.match_hamming_counts / trial_count
 		# self.distractor_hamming_distribution = self.distractor_hamming_counts / trial_count
 		# self.overlap_counts = np.around(overlap_counts / epochs).astype(np.uint16)
@@ -193,7 +206,8 @@ def main():
 	# ncols = 62919; # should give error of 10e-3
 	# ncols = 55649;   # should give error of 10e-3; 3 - 55649 for binarized bundle
 	ncols = 40503  # should be error 10e-2 for binarized bundle
-	binarize_counters=False; epochs=10; roll_address=True
+	binarize_counters=True; epochs=10; roll_address=False
+	# binarize_counters=False; epochs=10; roll_address=True
 	fbe = Fast_bundle_empirical(ncols, actions=actions, states=states, choices=choices, epochs=epochs,
 			count_multiple_matches_as_error=True, roll_address=roll_address, debug=False,
 			binarize_counters=binarize_counters)

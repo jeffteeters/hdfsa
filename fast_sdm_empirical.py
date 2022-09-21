@@ -6,6 +6,7 @@ import math
 # from numba.experimental import jitclass
 import sys
 import pmf_error
+import time
 
 # spec = [
 #     ('nrows', int32),
@@ -88,6 +89,7 @@ class Fast_sdm_empirical():
 	# def empiricalError(self):
 		# compute empirical error by storing then recalling finite state automata from SDM
 		fail_counts = np.zeros(self.epochs, dtype=np.uint16)
+		recall_times = np.empty(self.epochs, dtype=int)
 		if threshold_sum:
 			distance_counts_len = self.ncols+1
 			distance_counts_offset = 0
@@ -133,6 +135,8 @@ class Fast_sdm_empirical():
 			transition_state = np.repeat(np.arange(self.states), self.choices)
 			transition_action = transition_action.flatten()
 			transition_next_state = transition_next_state.flatten()
+			# START TIMEING FOR RECALL PART 1-- build address, find matching hard locations
+			start_time = time.perf_counter_ns()
 			address = np.logical_xor(im_state[transition_state], im_action[transition_action])
 			assert transition_state.size == num_transitions
 			assert transition_action.size == num_transitions
@@ -156,6 +160,8 @@ class Fast_sdm_empirical():
 				for i in range(num_transitions):
 					transition_hard_locations[i,:] = rng.choice(self.nrows, size=self.nact, replace=False)
 					# transition_hard_locations[i,:] = np.random.choice(self.nrows, size=self.nact, replace=False)
+			# END TIMEING FOR RECALL PART 1 -- build address, find matching hard locations
+			recall_times[epoch_id] = time.perf_counter_ns() - start_time
 			contents = np.zeros((self.nrows, self.ncols), dtype=np.int16)
 			# save FSA into SDM contents matrix
 			if self.roll_address:
@@ -181,18 +187,26 @@ class Fast_sdm_empirical():
 					contents[mask] = random_plus_or_minus_one[mask]
 			# recall data from contents matrix
 			# recalled_data = np.empty((num_transitions, self.ncols), dtype=np.int8)
+			# END TIMEING FOR RECALL
+			recall_times[epoch_id] += time.perf_counter_ns() - start_time
 			if not threshold_sum:
 				# not thresholding sum.  Use +1/-1 product and dot product with item memory to calculate distance
 				address = address*2-1    # convert address to +1/-1
-				im_state = im_state*2-1  # convert im_state to +1/-1
+				im_state = im_state*2-1  # convert im_state to +1/-1 
 			for i in range(num_transitions):
+				# START TIMEING FOR RECALL PART 2 -- add selected counters
+				start_time = time.perf_counter_ns()
 				recalled_vector = contents[transition_hard_locations[i,:]].sum(axis=0)
+				recall_times[epoch_id] += time.perf_counter_ns() - start_time
+				# END TIMEING FOR RECALL PART 2 -- add selected counters
 				data_1_index = np.where(data[i] == 1)[0][0]
 				one_counter_sum = recalled_vector[data_1_index]  # pick a random sum for storing, when target is 1
 				# if trial_count < 10:
 				# 	print("one_counter_sum=%s" % one_counter_sum)
 				counter_sums[trial_count] = one_counter_sum
 				counter_counts[one_counter_sum+counter_counts_offset] += 1  # save counts of counters
+				# START TIMEING FOR RECALL PART 3 -- find distances to item memory
+				start_time = time.perf_counter_ns()
 				if threshold_sum:
 					# convert to binary
 					# perhaps should deterministically add random +/- 1 before thresholding recalled vector
@@ -204,6 +218,8 @@ class Fast_sdm_empirical():
 					recalled_data = np.roll(address[i] * recalled_vector, -1)
 					hamming_distances = np.sum(im_state[:,] * recalled_data, axis=1) # actually dot product distance
 					# import pdb; pdb.set_trace()
+				recall_times[epoch_id] += time.perf_counter_ns() - start_time
+				# END TIMEING FOR RECALL PART 3 -- find distances to item memory
 				# if trial_count < 10:
 				# 	print("hamming_distances=%s" % hamming_distances[0:20])  # shows often either even or odd if ncols even
 				self.match_hamming_counts[hamming_distances[transition_next_state[i]]+distance_counts_offset] += 1
@@ -220,7 +236,11 @@ class Fast_sdm_empirical():
 						fail_count += 1
 				else:
 					# normal processing, are multiple distractors
+					# START TIMEING FOR RECALL PART 4 -- find closest match
+					start_time = time.perf_counter_ns()
 					two_smallest = np.argpartition(hamming_distances, 2)[0:2]
+					# END TIMEING FOR RECALL PART 4 -- find closest match
+					recall_times[epoch_id] += time.perf_counter_ns() - start_time
 					if hamming_distances[two_smallest[0]] < hamming_distances[two_smallest[1]]:
 						if transition_next_state[i] != two_smallest[0]:
 							fail_counts[epoch_id] += 1
@@ -253,6 +273,8 @@ class Fast_sdm_empirical():
 		normalized_fail_counts = fail_counts / num_transitions
 		self.mean_error = np.mean(normalized_fail_counts)
 		self.std_error = np.std(normalized_fail_counts)
+		self.recall_time_mean = np.mean(recall_times)
+		self.recall_time_std = np.std(recall_times)
 		self.match_hamming_distribution = self.match_hamming_counts / trial_count
 		self.distractor_hamming_distribution = self.distractor_hamming_counts / trial_count
 		assert math.isclose(sum(self.match_hamming_distribution), 1.0), "match_hamming_distribution sum not 1: %s" % (
