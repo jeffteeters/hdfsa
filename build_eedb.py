@@ -70,6 +70,7 @@ class Empirical_error_db():
 		dim_id integer not null,  -- foreign key to dim table
 		recall_time_mean real not null,  -- mean recall time
 		recall_time_std real not null,   -- standard deviation recall time
+		recall_time_min real not null,   -- minimum recall time
 		rt_nepochs integer not null   -- number of epochs used to calculate recall time
 	);
 
@@ -129,7 +130,7 @@ class Empirical_error_db():
 		# get dims
 		if mtype == "sdm":
 			sql = ("select dim.id, ie, size, ncols, nact, pe, epochs, mean, std,"
-				" recall_time_mean, recall_time_std, rt_nepochs,\n"
+				" recall_time_mean, recall_time_std, recall_time_min, rt_nepochs,\n"
 				" match_counts, distract_counts, pmf_error from dim\n"
 				" left join stats on dim.id = stats.dim_id\n"
 				" left join pmf_stats on dim.id = pmf_stats.dim_id\n"
@@ -137,7 +138,7 @@ class Empirical_error_db():
 				" where mem_id = %s order by ie" % mem_id)
 		else:
 			sql = ("select dim.id, ie, size, pe, epochs, mean, std,"
-				" recall_time_mean, recall_time_std, rt_nepochs,\n"
+				" recall_time_mean, recall_time_std, recall_time_min, rt_nepochs,\n"
 				" match_counts, distract_counts, pmf_error from dim\n"
 				" left join stats on dim.id = stats.dim_id\n"
 				" left join pmf_stats on dim.id = pmf_stats.dim_id\n"
@@ -202,19 +203,19 @@ class Empirical_error_db():
 			nepochs = binned_fail_counts[nerrors]
 			self.add_error(dim_id, nerrors, nepochs)
 
-	def add_recall_time(self, dim_id, recall_time_mean, recall_time_std, rt_nepochs):
+	def add_recall_time(self, dim_id, recall_time_mean, recall_time_std, recall_time_min, rt_nepochs):
 		# add recall_times to recall_time table
-		sql = "select id from recall_time where dim_id = %s" % dim_id
+		sql = "select id, recall_time_min from recall_time where dim_id = %s" % dim_id
 		cur = self.con.cursor()
 		res = cur.execute(sql)
 		row = res.fetchone()
 		if row is None:
-			sql = ("insert into recall_time (dim_id, recall_time_mean, recall_time_std, rt_nepochs)"
-				" values (%s, %s, %s, %s)") % (dim_id, recall_time_mean, recall_time_std, rt_nepochs)
-		else:
+			sql = ("insert into recall_time (dim_id, recall_time_mean, recall_time_std, recall_time_min, rt_nepochs)"
+				" values (%s, %s, %s, %s, %s)") % (dim_id, recall_time_mean, recall_time_std, recall_time_min, rt_nepochs)
+		elif recall_time_min < row[1]:
 			recall_time_id = row[0]
-			sql = ("update recall_time set recall_time_mean = %s, recall_time_std=%s, rt_nepochs=%s "
-				"where id = %s") % (recall_time_mean, recall_time_std, rt_nepochs, recall_time_id)
+			sql = ("update recall_time set recall_time_mean = %s, recall_time_std=%s, recall_time_min=%s, rt_nepochs=%s "
+				"where id = %s") % (recall_time_mean, recall_time_std, recall_time_min, rt_nepochs, recall_time_id)
 		cur = self.con.cursor()
 		res = cur.execute(sql)
 		self.con.commit()
@@ -401,12 +402,12 @@ def fill_eedb(mem_name=None):
 			if mtype == "sdm":
 				# continue  # skip sdm for now
 				(dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std,
-					recall_time_mean, recall_time_std, rt_nepochs,
+					recall_time_mean, recall_time_std, recall_time_min, rt_nepochs,
 					match_counts, distract_counts, pmf_error) = dim
 				wanted_epochs = get_epochs(ie, bundle=False)
 			else:
 				(dim_id, ie, ncols, pe, epochs, mean, std,
-					recall_time_mean, recall_time_std, rt_nepochs,
+					recall_time_mean, recall_time_std, recall_time_min, rt_nepochs,
 					match_counts, distract_counts, pmf_error) = dim
 				# if ie == 6:
 				# 	wanted_epochs = 300
@@ -453,7 +454,7 @@ def get_epochs(ie, bundle=False):
 		minimum_fail_count = .001
 		epochs_max = 15000
 	else:
-		epochs_max = 950000
+		epochs_max = 1000000
 		minimum_fail_count = 0.05
 	expected_perr = 10**(-ie)  # expected probability of error
 	desired_epochs = max(round(desired_fail_count / (expected_perr *num_transitions)), 2)
