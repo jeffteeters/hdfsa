@@ -39,7 +39,7 @@ class Fast_bundle_empirical():
 	# @jit
 	def __init__(self, ncols, actions=10, states=100, choices=10, epochs=10,
 			count_multiple_matches_as_error=True, roll_address=True, debug=False,
-			binarize_counters=True):
+			binarize_counters=True, bipolar_vectors=False):
 		# ncols is number of components in bundle (superposition vector)
 		# actions, states, choices specify finite state automata stored in sdm.  Used to determine number transitions
 		# stored (k) and size of item memory (d) used to compute probability of error in recall with d-1 distractors
@@ -47,6 +47,9 @@ class Fast_bundle_empirical():
 		# count_multiple_matches_as_error = True to count multiple distractor hammings == match as error
 		# binarize_counters - True if counters should be binarized.  If false, keep full counters and use
 		# component multiplication +1 / -1 for binding and dot product for matching to item memory
+		# bipolar_vectors - True if should use bipolar vectors (+1 / -1) for all operations. (Option included for
+		# testing if is faster to do binding via multiplication; used for finding more accurate recall times).
+		# Turned out that bipolar_vectors didn't seem to be faster.  Not sure why not.
 		self.ncols = ncols
 		self.actions = actions
 		self.states = states
@@ -57,6 +60,7 @@ class Fast_bundle_empirical():
 		self.roll_address = roll_address
 		self.debug = debug
 		self.binarize_counters = binarize_counters
+		self.bipolar_vectors = bipolar_vectors
 
 	# def empiricalError(self):
 		# compute empirical error by storing then recalling finite state automata from bundle
@@ -74,6 +78,9 @@ class Fast_bundle_empirical():
 			# im_action = np.random.randint(0,high=2,size=(self.actions, self.ncols)).astype(np.int8)
 			im_state = rng.integers(0, high=2, size=(self.states, self.ncols), dtype=np.int8)
 			# im_state = np.random.randint(0, high=2, size=(self.states, self.ncols)).astype(np.int8)
+			if bipolar_vectors:
+				im_action = im_action*2-1  # convert to bipolar
+				im_state = im_state*2-1
 			transition_action = np.empty((self.states, self.choices), dtype=np.uint16)
 			transition_next_state = np.empty((self.states, self.choices), dtype=np.uint16)
 			for i in range(self.states):
@@ -86,7 +93,10 @@ class Fast_bundle_empirical():
 			transition_next_state = transition_next_state.flatten()
 			# START TIMEING FOR RECALL - part 1 bind action to state
 			start_time = time.perf_counter_ns()
-			address = np.logical_xor(im_state[transition_state], im_action[transition_action])
+			if not bipolar_vectors:
+				address = np.logical_xor(im_state[transition_state], im_action[transition_action])
+			else:
+				address = im_state[transition_state] * im_action[transition_action]
 			recall_times[epoch_id] = time.perf_counter_ns() - start_time
 			# END TIMEING FOR RECALL - part 1 bind action to state
 			# address = im_state[transition_state] * im_action[transition_action]
@@ -102,7 +112,10 @@ class Fast_bundle_empirical():
 				rows, column_indices = np.ogrid[:address.shape[0], :address.shape[1]]
 				column_indices = column_indices - transition_state[:, np.newaxis]
 				address = address[rows, column_indices]
-			data = np.logical_xor(address, np.roll(im_state[transition_next_state], 1, axis=1))*2-1
+			if not bipolar_vectors:
+				data = np.logical_xor(address, np.roll(im_state[transition_next_state], 1, axis=1))*2-1
+			else:
+				data = address * np.roll(im_state[transition_next_state], 1, axis=1)
 			contents = np.sum(data, axis=0, dtype=np.int16)
 			if self.binarize_counters:
 				# binerize counters then use xor and hamming distance
@@ -111,25 +124,39 @@ class Fast_bundle_empirical():
 					random_plus_or_minus_one = rng.integers(0, high=2, size=self.ncols, dtype=np.int8)*2-1
 					contents += random_plus_or_minus_one
 				contents[contents > 0] = 1
-				contents[contents < 0] = 0
+				if not bipolar_vectors:
+					contents[contents < 0] = 0
+				else:
+					contents[contents < 0] = -1
 			else:
 				# don't binerize counters.  Use +1/-1 product and dot product with item memory to calculate distance
 				# this conversion from binary to +1/-1 causes dot product for match to be negative when doing recall
 				# which matches hamming distance being smaller than distractor hamming distance.
-				address = address*2-1    # convert address to +1/-1
-				im_state = im_state*2-1  # convert im_state to +1/-1
+				if not bipolar_vectors:
+					# only convert if not already using bipolar vectors
+					address = address*2-1    # convert address to +1/-1
+					im_state = im_state*2-1  # convert im_state to +1/-1
 			for i in range(num_transitions):
 				# START TIMEING FOR RECALL - part 2: find distances
 				start_time = time.perf_counter_ns()
 				if self.binarize_counters:
-					recalled_data = np.roll(np.logical_xor(address[i], contents), -1)
-					distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)  # hamming distance
+					if not bipolar_vectors:
+						recalled_data = np.roll(np.logical_xor(address[i], contents), -1)
+						distances = np.count_nonzero(im_state[:,] != recalled_data, axis=1)  # hamming distance
+					else:
+						recalled_data = np.roll(address[i] * contents, -1)
+						distances = np.dot(im_state[:,], recalled_data) * (-1) # dot product distance.
 					# self.match_hamming_counts[hamming_distances[transition_next_state[i]]] += 1
 					# self.distractor_hamming_counts[hamming_distances[(transition_next_state[i]+1) % self.states]] += 1 # a random distractor
 				else:
-					# compute distance via dot product.  Will be more negative for closer match due to difference btwn xor and *
-					recalled_data = np.roll(address[i] * contents, -1) # would need to multiply by -1 for product has same result as xor
-					distances = np.sum(im_state[:,] * recalled_data, axis=1) # dot product distance.
+					if not bipolar_vectors:
+						# original code
+						# compute distance via dot product.  Will be more negative for closer match due to difference btwn xor and *
+						recalled_data = np.roll(address[i] * contents, -1) # would need to multiply by -1 for product has same result as xor
+						distances = np.sum(im_state[:,] * recalled_data, axis=1) # dot product distance.
+					else:
+						recalled_data = np.roll(address[i] * contents, -1)
+						distances = np.dot(im_state[:,] * recalled_data) * (-1) # dot product distance.
 				two_smallest = np.argpartition(distances, 2)[0:2]
 				# END TIMING FOR RECALL
 				recall_times[epoch_id] += time.perf_counter_ns() - start_time
@@ -167,6 +194,7 @@ class Fast_bundle_empirical():
 		self.std_error = np.std(normalized_fail_counts)
 		self.recall_time_mean = np.mean(recall_times)
 		self.recall_time_std = np.std(recall_times)
+		self.recall_time_min = recall_times.min()  # same minimum recall time
 		# self.match_hamming_distribution = self.match_hamming_counts / trial_count
 		# self.distractor_hamming_distribution = self.distractor_hamming_counts / trial_count
 		# self.overlap_counts = np.around(overlap_counts / epochs).astype(np.uint16)
@@ -207,13 +235,16 @@ def main():
 	# ncols = 55649;   # should give error of 10e-3; 3 - 55649 for binarized bundle
 	ncols = 40503  # should be error 10e-2 for binarized bundle
 	binarize_counters=True; epochs=10; roll_address=False
+	bipolar_vectors=True
 	# binarize_counters=False; epochs=10; roll_address=True
 	fbe = Fast_bundle_empirical(ncols, actions=actions, states=states, choices=choices, epochs=epochs,
 			count_multiple_matches_as_error=True, roll_address=roll_address, debug=False,
-			binarize_counters=binarize_counters)
-	print("actions=%s, states=%s, choices=%s, binarize_counters=%s,"
-		" epochs=%s, roll_address=%s, ncols=%s, mean_error=%s, std_error=%s" % (actions, states, choices,
-		binarize_counters, epochs, roll_address, ncols, fbe.mean_error, fbe.std_error))
+			binarize_counters=binarize_counters, bipolar_vectors=bipolar_vectors)
+	print("actions=%s, states=%s, choices=%s, binarize_counters=%s, bipolar_vectors=%s"
+		" epochs=%s, roll_address=%s, ncols=%s, mean_error=%s, std_error=%s,"
+		" mean_time=%.3e, min_time=%.3e" % (actions, states, choices,
+		binarize_counters, bipolar_vectors, epochs, roll_address, ncols, fbe.mean_error, fbe.std_error,
+		fbe.recall_time_mean, fbe.recall_time_min))
 
 if __name__ == "__main__":
 	main()

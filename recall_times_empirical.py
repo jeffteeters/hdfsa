@@ -5,6 +5,7 @@ import numpy as np
 import time
 from timeit import default_timer as timer
 
+
 def update_recall_times():
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
@@ -15,15 +16,19 @@ def update_recall_times():
 		match_method = mi["match_method"]
 		ndims = len(mi["dims"])
 		recall_times = np.empty(ndims, dtype=int)
-		needed_epochs = 3
+		needed_epochs = 50 if mi["mtype"] == "bundle" else 500
 		for dim in mi["dims"]:
 			if mtype == "sdm":
-				(dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std, recall_time_mean, recall_time_std,
-					 match_counts, distract_counts, pmf_error) = dim
-			else:
-				(dim_id, ie, ncols, pe, epochs, mean, std, recall_time_mean, recall_time_std,
+				(dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std,
+					recall_time_mean, recall_time_std, recall_time_min, rt_nepochs,
 					match_counts, distract_counts, pmf_error) = dim
-			if recall_time_mean is None:
+				size = nrows
+			else:
+				(dim_id, ie, ncols, pe, epochs, mean, std,
+					recall_time_mean, recall_time_std, recall_time_min, rt_nepochs,
+					match_counts, distract_counts, pmf_error) = dim
+				size = ncols
+			if recall_time_mean is None or rt_nepochs < needed_epochs:
 				# need to get recall time
 				print("%s, starting ie=%s, %s, needed_epochs=%s" % (time.ctime(), ie, name, needed_epochs))
 				if mtype == "sdm":
@@ -31,8 +36,9 @@ def update_recall_times():
 				else:
 					fee = get_bundle_ee(ncols, bits_per_counter, match_method, needed_epochs) # find empirical error
 				# save recall time
-				edb.add_recall_time(dim_id, fee.recall_time_mean, fee.recall_time_std)
-				print("%s-%s, time=%s, std=%s" % (mi["short_name"], ie, fee.recall_time_mean, fee.recall_time_std))
+				edb.add_recall_time(dim_id, fee.recall_time_mean, fee.recall_time_std, fee.recall_time_min, needed_epochs)
+				print("%s-%s, size=%s, epochs=%s, err=%.4e, time mean=%.3e, std=%.3e, min=%.3e" % (mi["short_name"],
+					ie, size, needed_epochs, fee.mean_error, fee.recall_time_mean, fee.recall_time_std, fee.recall_time_min))
 
 def compare_operations(nrows=1000, ncols=512):
 	rng = np.random.default_rng()
@@ -43,13 +49,17 @@ def compare_operations(nrows=1000, ncols=512):
 	b1b = b1*2-1
 	b2b = b2*2-1
 	print("binary xor vs bipolar mult")
-	start_time = time.perf_counter_ns()
-	b1b_b2b_mult = b1b * b2b
-	mult_time = time.perf_counter_ns() - start_time
-	# normal xor
+
+	# binary xor
 	start_time = time.perf_counter_ns()
 	b12_xor = np.logical_xor(b1, b2)
 	xor_time = time.perf_counter_ns() - start_time
+
+	# bipolar mult
+	start_time = time.perf_counter_ns()
+	b1b_b2b_mult = b1b * b2b
+	mult_time = time.perf_counter_ns() - start_time
+
 	assert np.all(-(b12_xor*2-1) == b1b_b2b_mult)
 	mult_xor_ratio = mult_time / xor_time
 	print("xor_time=%s, mult_time=%s, mult_time/xor_time=%s" % (xor_time, mult_time, mult_xor_ratio))
@@ -78,6 +88,14 @@ def compare_operations(nrows=1000, ncols=512):
 	print("ham_time=%s, dot1=%s, dot2=%s, dot1/ham=%s, dot2/ham=%s" % (ham_time, dot1_time, dot2_time,
 		dot1_time/ham_time, dot2_time/ham_time))
 
+	print("dot product with sum vector")
+	sv = np.sum(b1b, axis=0)
+	start_time = time.perf_counter_ns()
+	sv_dot_distances = np.dot(b1b, sv)
+	dot_sv_time2 = time.perf_counter_ns() - start_time
+	print("dot product with sum vector, dot_sv_time2=%s, dot1_time=%s, dot1_time/dot_sv_time2=%s" %
+		(dot_sv_time2, dot1_time, dot1_time / dot_sv_time2))
+
 	print("dot product of binary vector vs non-binary (sv) with item memory")
 	# create superposition vector, test recall time using dot product (with non-binary values)
 	sv = np.sum(b1b, axis=0)
@@ -88,7 +106,6 @@ def compare_operations(nrows=1000, ncols=512):
 	im_address_bipolar = np.tile(im_address_bipolar, reps)
 
 	# dot_distances2 = np.dot(b2b, im_address_bipolar)
-
 
 	# time dot with sum vector
 	start_time = time.perf_counter_ns()
@@ -103,8 +120,6 @@ def compare_operations(nrows=1000, ncols=512):
 	dot_bp_distance = np.dot(sv1, im_address_bipolar)
 	dot_bp_timer = timer() - s_timer
 	dot_bp_time = time.perf_counter_ns() - start_time
-
-
 
 
 	dot1_time_normalized = dot1_time / nrows
@@ -134,9 +149,9 @@ def test_timing(nrows=1000, ncols=512, nact=3, method="hamming"):
 
 
 def main():
-	# update_recall_times()
+	update_recall_times()
 	# test_timing()
-	compare_operations()
+	# compare_operations()
 
 
 main()

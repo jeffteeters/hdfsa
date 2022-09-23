@@ -187,8 +187,6 @@ class Fast_sdm_empirical():
 					contents[mask] = random_plus_or_minus_one[mask]
 			# recall data from contents matrix
 			# recalled_data = np.empty((num_transitions, self.ncols), dtype=np.int8)
-			# END TIMEING FOR RECALL
-			recall_times[epoch_id] += time.perf_counter_ns() - start_time
 			if not threshold_sum:
 				# not thresholding sum.  Use +1/-1 product and dot product with item memory to calculate distance
 				address = address*2-1    # convert address to +1/-1
@@ -275,6 +273,7 @@ class Fast_sdm_empirical():
 		self.std_error = np.std(normalized_fail_counts)
 		self.recall_time_mean = np.mean(recall_times)
 		self.recall_time_std = np.std(recall_times)
+		self.recall_time_min = recall_times.min()
 		self.match_hamming_distribution = self.match_hamming_counts / trial_count
 		self.distractor_hamming_distribution = self.distractor_hamming_counts / trial_count
 		assert math.isclose(sum(self.match_hamming_distribution), 1.0), "match_hamming_distribution sum not 1: %s" % (
