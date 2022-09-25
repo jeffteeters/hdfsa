@@ -6,9 +6,9 @@ import time
 from timeit import default_timer as timer
 
 
-def update_recall_times():
+def update_recall_times(mem_names=None, force=False):
 	edb = Empirical_error_db()
-	names = edb.get_memory_names()
+	names = edb.get_memory_names() if mem_names is None else mem_names
 	for name in names:
 		mi = edb.get_minfo(name)
 		mtype = mi["mtype"]
@@ -16,7 +16,7 @@ def update_recall_times():
 		match_method = mi["match_method"]
 		ndims = len(mi["dims"])
 		recall_times = np.empty(ndims, dtype=int)
-		needed_epochs = 50 if mi["mtype"] == "bundle" else 500
+		needed_epochs = 100 # if mi["mtype"] == "bundle" else 500
 		for dim in mi["dims"]:
 			if mtype == "sdm":
 				(dim_id, ie, nrows, ncols, nact, pe, epochs, mean, std,
@@ -28,7 +28,7 @@ def update_recall_times():
 					recall_time_mean, recall_time_std, recall_time_min, rt_nepochs,
 					match_counts, distract_counts, pmf_error) = dim
 				size = ncols
-			if recall_time_mean is None or rt_nepochs < needed_epochs:
+			if recall_time_mean is None or rt_nepochs < needed_epochs or force:
 				# need to get recall time
 				print("%s, starting ie=%s, %s, needed_epochs=%s" % (time.ctime(), ie, name, needed_epochs))
 				if mtype == "sdm":
@@ -95,6 +95,8 @@ def compare_operations(nrows=1000, ncols=512):
 	dot_sv_time2 = time.perf_counter_ns() - start_time
 	print("dot product with sum vector, dot_sv_time2=%s, dot1_time=%s, dot1_time/dot_sv_time2=%s" %
 		(dot_sv_time2, dot1_time, dot1_time / dot_sv_time2))
+	print("sv dot vs binary hamming, dot_sv_time2=%.3e, ham_time=%.3e "
+		"dot_sv_time2/ham_time=%.3e" % (dot_sv_time2, ham_time, dot_sv_time2/ham_time))
 
 	print("dot product of binary vector vs non-binary (sv) with item memory")
 	# create superposition vector, test recall time using dot product (with non-binary values)
@@ -149,7 +151,8 @@ def test_timing(nrows=1000, ncols=512, nact=3, method="hamming"):
 
 
 def main():
-	update_recall_times()
+	mem_names = [ "bun_k1000_d100_c8#S2",]
+	update_recall_times(mem_names, force=True)
 	# test_timing()
 	# compare_operations()
 

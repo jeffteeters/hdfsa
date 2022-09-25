@@ -205,6 +205,7 @@ class Empirical_error_db():
 
 	def add_recall_time(self, dim_id, recall_time_mean, recall_time_std, recall_time_min, rt_nepochs):
 		# add recall_times to recall_time table
+		# force True to store new values over old values
 		sql = "select id, recall_time_min from recall_time where dim_id = %s" % dim_id
 		cur = self.con.cursor()
 		res = cur.execute(sql)
@@ -213,6 +214,7 @@ class Empirical_error_db():
 			sql = ("insert into recall_time (dim_id, recall_time_mean, recall_time_std, recall_time_min, rt_nepochs)"
 				" values (%s, %s, %s, %s, %s)") % (dim_id, recall_time_mean, recall_time_std, recall_time_min, rt_nepochs)
 		elif recall_time_min < row[1]:
+			print("updating time, old=%.3e, new=%.3e" % (row[1], recall_time_min))
 			recall_time_id = row[0]
 			sql = ("update recall_time set recall_time_mean = %s, recall_time_std=%s, recall_time_min=%s, rt_nepochs=%s "
 				"where id = %s") % (recall_time_mean, recall_time_std, recall_time_min, rt_nepochs, recall_time_id)

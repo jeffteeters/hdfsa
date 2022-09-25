@@ -39,7 +39,8 @@ class Fast_sdm_empirical():
 	# @jit
 	def __init__(self, nrows, ncols, nact, actions=10, states=100, choices=10, epochs=10,
 			count_multiple_matches_as_error=True, roll_address=True, debug=False,
-			hl_selection_method="hamming", bits_per_counter=8, threshold_sum=True, only_one_distractor = False,
+			hl_selection_method="hamming", bits_per_counter=8, threshold_sum=True, use_numpy_dot=True,
+			only_one_distractor = False,
 			save_error_rate_vs_hamming_distance=False):
 		# nrows is number of rows (hard locations) in the SDM
 		# ncols is the number of columns
@@ -57,6 +58,8 @@ class Fast_sdm_empirical():
 		# include zero. e.g. 1.5 means -1, 0, +1;  If greater than 4, zero is always included
 		# threshold_sum set True to threshold sum to binary number before comparing to item memory (hamming distance)
 		#  this is the normal SDM.  threshold_sum False means match to item memory done via dot product.
+		# use_numpy_dot - True if should use numpy.dot function to compute distance to item memory for non-thresholded
+		# sums.  Should be faster than multiplying and adding.  Tested and is faster.
 		# only_one_distractor - True if should do match with only one distractor (used to test analytical
 		#  equations for match - distractor distribution).
 		# print("starting Fast_sdm_empirical, nrows=%s, ncols=%s, nact=%s, actions=%s, states=%s, choices=%s" % (
@@ -161,7 +164,7 @@ class Fast_sdm_empirical():
 					transition_hard_locations[i,:] = rng.choice(self.nrows, size=self.nact, replace=False)
 					# transition_hard_locations[i,:] = np.random.choice(self.nrows, size=self.nact, replace=False)
 			# END TIMEING FOR RECALL PART 1 -- build address, find matching hard locations
-			recall_times[epoch_id] = time.perf_counter_ns() - start_time
+			recall_time1_bind_select_hard_locations = time.perf_counter_ns() - start_time
 			contents = np.zeros((self.nrows, self.ncols), dtype=np.int16)
 			# save FSA into SDM contents matrix
 			if self.roll_address:
@@ -190,12 +193,15 @@ class Fast_sdm_empirical():
 			if not threshold_sum:
 				# not thresholding sum.  Use +1/-1 product and dot product with item memory to calculate distance
 				address = address*2-1    # convert address to +1/-1
-				im_state = im_state*2-1  # convert im_state to +1/-1 
+				im_state = im_state*2-1  # convert im_state to +1/-1
+			recall_times2_add_selected_counters = 0
+			recall_times3_distance_to_im = 0
+			recall_times4_argpartition = 0
 			for i in range(num_transitions):
 				# START TIMEING FOR RECALL PART 2 -- add selected counters
 				start_time = time.perf_counter_ns()
 				recalled_vector = contents[transition_hard_locations[i,:]].sum(axis=0)
-				recall_times[epoch_id] += time.perf_counter_ns() - start_time
+				recall_times2_add_selected_counters += time.perf_counter_ns() - start_time
 				# END TIMEING FOR RECALL PART 2 -- add selected counters
 				data_1_index = np.where(data[i] == 1)[0][0]
 				one_counter_sum = recalled_vector[data_1_index]  # pick a random sum for storing, when target is 1
@@ -214,9 +220,12 @@ class Fast_sdm_empirical():
 				else:
 					# don't convert sum to binary.  Use dot product to find best match to item memory
 					recalled_data = np.roll(address[i] * recalled_vector, -1)
-					hamming_distances = np.sum(im_state[:,] * recalled_data, axis=1) # actually dot product distance
+					if not use_numpy_dot:
+						hamming_distances = np.sum(im_state[:,] * recalled_data, axis=1) # actually dot product distance
+					else:
+						hamming_distances = np.dot(im_state[:,], recalled_data) #* (-1) # dot product distance.
 					# import pdb; pdb.set_trace()
-				recall_times[epoch_id] += time.perf_counter_ns() - start_time
+				recall_times3_distance_to_im += time.perf_counter_ns() - start_time
 				# END TIMEING FOR RECALL PART 3 -- find distances to item memory
 				# if trial_count < 10:
 				# 	print("hamming_distances=%s" % hamming_distances[0:20])  # shows often either even or odd if ncols even
@@ -238,7 +247,7 @@ class Fast_sdm_empirical():
 					start_time = time.perf_counter_ns()
 					two_smallest = np.argpartition(hamming_distances, 2)[0:2]
 					# END TIMEING FOR RECALL PART 4 -- find closest match
-					recall_times[epoch_id] += time.perf_counter_ns() - start_time
+					recall_times4_argpartition += time.perf_counter_ns() - start_time
 					if hamming_distances[two_smallest[0]] < hamming_distances[two_smallest[1]]:
 						if transition_next_state[i] != two_smallest[0]:
 							fail_counts[epoch_id] += 1
@@ -258,7 +267,18 @@ class Fast_sdm_empirical():
 						fail_count += 1
 						closest_distractor = hamming_distances[two_smallest[0]]
 					add_count(self.distract_counts, closest_distractor)
+				recall_times3_distance_to_im
 				trial_count += 1
+			recall_times_sum = (recall_time1_bind_select_hard_locations + recall_times2_add_selected_counters +
+				recall_times3_distance_to_im + recall_times4_argpartition)
+			recall_times[epoch_id] = recall_times_sum
+			if False and epoch_id <= 10:
+				print("bind_select_hl=%.3e (%.2f%%), add_counters=%.3e (%.2f%%)"
+					"distance_to_im=%.3e (%.2f%%), argpartition=%.3e (%.2f%%)" % (
+					recall_time1_bind_select_hard_locations, recall_time1_bind_select_hard_locations*100/recall_times_sum,
+					recall_times2_add_selected_counters, recall_times2_add_selected_counters*100/recall_times_sum,
+					recall_times3_distance_to_im, recall_times3_distance_to_im*100/recall_times_sum,
+					recall_times4_argpartition, recall_times4_argpartition*100/recall_times_sum))
 		# print("fail counts are %s" % fail_counts)
 		assert np.sum(fail_counts) == fail_count
 		assert trial_count == (num_transitions * self.epochs)
@@ -507,9 +527,11 @@ def main():
 	# nrows=65; nact=1; threshold_sum=True; bits_per_counter=8; only_one_distractor = True
 	# With nrows=65, ncols=512, nact=1, threshold_sum=True, only_one_distractor=True, epochs=100, mean_error=0.00152, std_error=0.00119
 
+	# 2, 86, 2, 0.010210605795866634],
+	# A4 : 4, 101, 2, 0.0001043800254808753]
 	actions=10; choices=10; states=100
 	ncols=512
-	nrows=101; nact=2; bits_per_counter=8; threshold_sum=False
+	nrows=101; nact=2; bits_per_counter=8; threshold_sum=False  # should give 0.01 error
 	epochs=1000
 	only_one_distractor = False
 	fse = Fast_sdm_empirical(nrows, ncols, nact, actions=actions, states=states, choices=choices,
@@ -517,31 +539,33 @@ def main():
 		epochs=epochs)
 	pmf_err = pmf_error.pmf_error(fse.match_counts, fse.distract_counts)
 	print("nrows=%s, ncols=%s, nact=%s, bits_per_counter=%s, threshold_sum=%s, only_one_distractor=%s,"
-		" epochs=%s, mean_error=%s, pmf_error=%s, std_error=%s" % (nrows, ncols,
-		nact, bits_per_counter, threshold_sum, only_one_distractor, epochs, fse.mean_error, pmf_err, fse.std_error))
+		" epochs=%s, mean_error=%s, pmf_error=%s, std_error=%s, min_time=%.3e" % (nrows, ncols,
+		nact, bits_per_counter, threshold_sum, only_one_distractor, epochs, fse.mean_error, pmf_err, fse.std_error,
+		fse.recall_time_min))
 	# print("match_distance mean=%s, std=%s; distractor_distance mean=%s, std=%s" % (fse.match_distance_mean,
 	# 	fse.match_distance_std, fse.distractor_distance_mean, fse.distractor_distance_std))
 	# print("counter_sum_mean=%s, counter_sum_std=%s" % (fse.counter_sum_mean, fse.counter_sum_std))
 
-	# plot match and distractor hamming distributions
-	plt.plot(fse.match_hamming_distribution, label="match")
-	plt.plot(fse.distractor_hamming_distribution, label="distractor")
-	plt.xlabel("Hamming distance")
-	plt.title("match vs distractor hamming distance")
-	plt.ylabel("relative frequency")
-	plt.legend(loc='upper right')
-	plt.grid()
-	plt.show()
+	if False:
+		# plot match and distractor hamming distributions
+		plt.plot(fse.match_hamming_distribution, label="match")
+		plt.plot(fse.distractor_hamming_distribution, label="distractor")
+		plt.xlabel("Hamming distance")
+		plt.title("match vs distractor hamming distance")
+		plt.ylabel("relative frequency")
+		plt.legend(loc='upper right')
+		plt.grid()
+		plt.show()
 
-	# plot counter sums distribution
-	xvals = np.arange(fse.counter_counts.size) - fse.counter_counts_offset
-	plt.plot(xvals, fse.counter_counts)
-	plt.xlabel("counter sum")
-	plt.title("distribution of counter sums")
-	plt.ylabel("relative frequency")
-	# plt.legend(loc='upper right')
-	plt.grid()
-	plt.show()
+		# plot counter sums distribution
+		xvals = np.arange(fse.counter_counts.size) - fse.counter_counts_offset
+		plt.plot(xvals, fse.counter_counts)
+		plt.xlabel("counter sum")
+		plt.title("distribution of counter sums")
+		plt.ylabel("relative frequency")
+		# plt.legend(loc='upper right')
+		plt.grid()
+		plt.show()
 
 if __name__ == "__main__":
 	main()
