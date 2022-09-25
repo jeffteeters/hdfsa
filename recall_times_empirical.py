@@ -151,8 +151,9 @@ def test_timing(nrows=1000, ncols=512, nact=3, method="hamming"):
 
 
 def main():
-	mem_names = [ "bun_k1000_d100_c8#S2",]
-	update_recall_times(mem_names, force=True)
+	# mem_names = [ "bun_k1000_d100_c8#S2",]
+	# update_recall_times(mem_names, force=True)
+	update_recall_times()
 	# test_timing()
 	# compare_operations()
 
