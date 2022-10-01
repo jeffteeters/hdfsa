@@ -381,6 +381,13 @@ def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None):
 		xlabel = "Error rate ($10^{-n}$)"
 		plt.xlabel(xlabel)
 		plt.ylabel("Ratio to %s size" % ratio_base)
+		if fimp == 0:
+			# set ymin to zero, make step size 1 for y-axis ticks (1 to 10)
+			ax = plt.gca()
+			ax.set_ylim(ymin=0)
+			start, end = ax.get_ylim()
+			stepsize = 1
+			ax.yaxis.set_ticks(np.arange(start, end, stepsize))
 		plt.grid()
 		plt.show()
 
@@ -704,9 +711,10 @@ def main():
 	if False:
 		plot_error_vs_dimension("bundle")
 		plot_error_vs_dimension("sdm")
-	if False:
-		plot_size_vs_error(fimp=1, log_scale=False, ratio_base="A3") # 1.0/64.0)
+	if True:
+		# plot ratio of sizes
 		plot_size_vs_error(fimp=0, log_scale=False, ratio_base="S1") # 1.0/64.0)
+		plot_size_vs_error(fimp=1, log_scale=False, ratio_base="A3") # 1.0/64.0)
 	if False:
 		plot_size_vs_error(fimp=0, log_scale=False) # 1.0/64.0)
 		plot_size_vs_error(fimp=0, log_scale=True) # 1.0/64.0)
@@ -727,7 +735,8 @@ def main():
 		plot_operations_vs_error(parallel=True, log_scale=False, zoom_lower=True)
 		plot_operations_vs_error(parallel=True, log_scale=True, zoom_lower=True)
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="memory_efficiency")
-	if True:
+	if False:
+		# plot ratio of operations
 		plot_operations_vs_error(parallel=False, log_scale=False, ratio_base="A1")
 		plot_operations_vs_error(parallel=True, log_scale=False, ratio_base="A1")
 
