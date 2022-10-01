@@ -93,7 +93,7 @@ pfmt = {
 	"A1": { # full counter, threshold sum
 			"predict": {**pftypes["predict"], "label":"Prediction"},
 			 "epmf": {**pfmap["epmf"], "label":"empirical pmf"},
-			 "ecount": {**pfmap["ecount"], "max_ie": 8, "label":"empirical count"},
+			 "ecount": {**pfmap["ecount"], "max_ie": 7, "label":"empirical count"},
 			# "predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"
 			# 	, "alpha":1, "markersize":None}, # [12,6,12,6,3,6]
 			#  "epmf":{"fmt":":+m", "dashes":None, "linestyle":None, "lw":None, "label":"empirical pmf", "alpha":1,
@@ -106,7 +106,7 @@ pfmt = {
 	"A2": { # Binary counter, threshold sum
 			"predict": pftypes["predict"],
 			"epmf": pfmap["epmf"],
-			"ecount": {**pfmap["ecount"], "max_ie": 8},
+			"ecount": {**pfmap["ecount"], "max_ie": 7},
 			# "predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1,
 			# 	"markersize":None},  # [12,6,3,6,3,6]
 			#  "epmf":{"fmt":":+m", "dashes":None, "linestyle":None, "lw":None, "label":None , "alpha":1,
@@ -119,7 +119,7 @@ pfmt = {
 	"A3": { # binary counter, non-thresholded sum
 			"predict": {"fmt": None },
 			"epmf": {**pfmap["epmf_a3"], "label": "A3 empirical pmf"},
-			"ecount": {**pfmap["ecount_a3"], "max_ie": 8, "label": "A3 empirical count"},
+			"ecount": {**pfmap["ecount_a3"], "max_ie": 7, "label": "A3 empirical count"},
 			# "predict": {"fmt": None, "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1,
 			# 	"markersize":None},  # [12,6,12,6,3,6]
 			#  "epmf":{"fmt":":+g", "dashes":None, "linestyle":None, "lw":None, "label": "A3 empirical pmf" , "alpha":1,
@@ -135,7 +135,7 @@ pfmt = {
 			 "epmf": pfmap["epmf"],
 			# {"fmt":":+m", "dashes":None, "linestyle":None, "lw":None, "label":None, "alpha":1,
 			# 	"markersize":None},
-			"ecount": {**pfmap["ecount"], "max_ie": 8},
+			"ecount": {**pfmap["ecount"], "max_ie": 7},
 			 # "ecount":{"fmt":"--*k", "dashes":None, "linestyle":None, "lw":None,"label":None, "alpha":1,
 			 # 	"markersize":None, "show_clm": False, "max_ie":7},
 			 "annotate":{"xy":(95, 1.0e-4), "xytext":(62, 2.5e-5), "text":"A4"}
@@ -151,6 +151,7 @@ pfmt = {
 
 def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 	# dimenion is ncols (width) of bundle or nrows
+	# fontsize used for axis labels
 	global pfmt
 	assert mtype in ("sdm", "bundle")
 	edb = Empirical_error_db()
@@ -252,9 +253,10 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 		if jaeckel_error is not None:
 			plt.errorbar(sizes, jaeckel_error, yerr=None, fmt="8m", label="jaeckel_error")
 	plt.title("%s empirical vs. predicted error rw1_noroll_v3" % mtype)
+	fontsize = 14 if mtype == "sdm" else None
 	xlabel = "SDM num rows" if mtype == "sdm" else "Superposition vector width"
-	plt.xlabel(xlabel)
-	plt.ylabel("Fraction error")
+	plt.xlabel(xlabel, fontsize=fontsize)
+	plt.ylabel("Fraction error", fontsize=fontsize)
 	plt.yscale('log')
 	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
 	ylabels = [10.0**(-i) for i in range(9, 0, -1)]
@@ -281,14 +283,18 @@ mem_linestyles = {
 	"A4": {"color":'tab:purple', "linestyle": (0, (3, 5, 1, 5, 1, 5, 1, 5, 1, 5))}, # dash dotted (four dot)
 }
 
-def plot_size_vs_error(fimp=0.0, log_scale=False):
+def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None):
 	# size is number of bits
 	# fimp is fraction of item memory present
 	# plot for both bundle and sdm
+	# ratio_base - a short name (e.g. "A3") to display ratios of sizes
 	global mem_linestyles
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
 	item_memory_len = 110
+	num_dims = 9
+	ratio_data = []
+	short_names = []
 	for name in names:
 		mi = edb.get_minfo(name)
 		mtype = mi["mtype"]
@@ -316,11 +322,14 @@ def plot_size_vs_error(fimp=0.0, log_scale=False):
 				size = ncols * bits_per_counter + fimp*(ncols * item_memory_len)  # bundle + item memory
 			sizes[i] = size
 			predicted_error[i] = -math.log10(pe)
+		ratio_data.append(sizes)
 		# plot arrays filled by above
 		short_name = mi["short_name"]
+		short_names.append(short_name)  # for displaying ratio data
 		plt.errorbar(predicted_error, sizes, yerr=None, fmt="-", label=short_name,
 			color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
 			)
+
 	# labelLines(plt.gca().get_lines(), zorder=2.5)
 	if fimp == 0:
 		xvals = [8.7, 8.5, 4.5, 6.5, 7.5, 6.5]
@@ -332,18 +341,20 @@ def plot_size_vs_error(fimp=0.0, log_scale=False):
 	xlabel = "Error rate ($10^{-n}$)"
 	plt.xlabel(xlabel)
 	plt.ylabel("Size in Mb ($10^6$ bits)")
+	# make_y_axis_scale_10e6()
+	# Following should do the same as the above call
 	# display y-axis value in number, 10**6 bytes
-	ax = plt.gca()
-	ylow, yhi = ax.get_ylim()
-	assert yhi > 10**6
-	yticks_orig = ax.get_yticks()
-	assert yticks_orig[0] < 1
-	assert yticks_orig[-1] > yhi
-	yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
-	# print ("ylow=%s, yhi=%s, yticks=\n%s" % (ylow, yhi, yticks_orig))
-	# yaxis_values = [s for s in range(0, int(yhi), 200000)]
-	yaxis_labels = ["%s" % (s / 10**6) for s in yticks_new]
-	plt.yticks(yticks_new, yaxis_labels)
+	# ax = plt.gca()
+	# ylow, yhi = ax.get_ylim()
+	# assert yhi > 10**6
+	# yticks_orig = ax.get_yticks()
+	# assert yticks_orig[0] < 1
+	# assert yticks_orig[-1] > yhi
+	# yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
+	# # print ("ylow=%s, yhi=%s, yticks=\n%s" % (ylow, yhi, yticks_orig))
+	# # yaxis_values = [s for s in range(0, int(yhi), 200000)]
+	# yaxis_labels = ["%s" % (s / 10**6) for s in yticks_new]
+	# plt.yticks(yticks_new, yaxis_labels)
 	# ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.1e'))
 	if log_scale:
 		plt.yscale('log')
@@ -352,6 +363,26 @@ def plot_size_vs_error(fimp=0.0, log_scale=False):
 	plt.grid()
 	# plt.legend(loc='upper left')
 	plt.show()
+
+	# display ratio of of size to size of A3
+	if ratio_base is not None:
+		print("ratios to size of %s:" % ratio_base)
+		idx_base = short_names.index(ratio_base)
+		for i in range(len(ratio_data)):
+			short_name = short_names[i]
+			ratios = [(ratio_data[i][j]/ratio_data[idx_base][j]) for j in range(len(ratio_data[i]))]
+			ratios_str = [("%.3f" % ratios[j]) for j in range(len(ratios))]
+			print("%s\t%s" % (short_names[i], "\t".join(ratios_str)))
+			plt.errorbar(predicted_error, ratios, yerr=None, fmt="-", label=short_name,
+				color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
+				)
+		labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
+		plt.title("Ratio of sizes to %s size with fimp=%s" % (ratio_base,fimp))
+		xlabel = "Error rate ($10^{-n}$)"
+		plt.xlabel(xlabel)
+		plt.ylabel("Ratio to %s size" % ratio_base)
+		plt.grid()
+		plt.show()
 
 def make_y_axis_scale_10e6():
 	# display y-axis value in number, 10**6 bytes
@@ -434,7 +465,7 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 				if i == 0:
 					size_at_start = size
 				else:
-					size_increase_ratio = round(size / size_at_start, 1)
+					size_increase_ratio = round(size / size_at_start, 2)
 					# ratio_txt = ", ratio=%s" % size_increase_ratio
 					print("%s & %s & %s & %s" % (mi["short_name"], int(size_at_start), int(size), size_increase_ratio))
 					# print("at fimp=%s, %s size = %s%s" % (fimp,mi["short_name"], size, ratio_txt))
@@ -472,9 +503,10 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 	# plt.legend(loc='upper left')
 	plt.show()
 
-def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_times=True):
+def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_times=True, zoom_lower=False):
 	# operations is number if byte operations, or parallel byte operations (if parallel is True)
 	# plot for both bundle and sdm
+	# set zoom_lower True to change labels and scale for zooming lower part of plot
 	global mem_linestyles
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
@@ -492,6 +524,7 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 		recall_times_clm = np.empty(ndims, dtype=np.float64)
 		predicted_error = np.empty(ndims, dtype=np.float64)
 		dsf = 2.2  # dot product scale factor, amount dot product time greater than hamming
+		dsfq = 3.4
 		for i in range(ndims):
 			dim = mi["dims"][i]
 			if mtype == "sdm":
@@ -502,18 +535,19 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 				ops_form_address = ncols # current_state XOR input
 				ops_address_compare = ncols * nrows if not parallel else ncols
 				ops_select_active = nrows * nact  # should be log nact
-				ops_add_counters = ncols * nact
-				ops_threshold = ncols
-	
+				ops_add_counters = ncols * nact if not parallel else nact
+				ops_unpermute = ncols
+				ops_bind_address = ncols
 				if match_method == "hamming":
 					# threshold, use hamming
-					ops_item_memory_compare = item_memory_len * ncols * 2 if not parallel else item_memory_len * 2
+					ops_item_memory_compare = item_memory_len * ncols * 2 if not parallel else ncols * 2
 				else:
 					# don't threshold, match using dot product
-					ops_item_memory_compare = item_memory_len * ncols * 2 * dsf if not parallel else item_memory_len * 2 * dsf
+					# ops_item_memory_compare = item_memory_len * ncols * 2 * dsf if not parallel else ncols * 2 * dsf
+					ops_item_memory_compare = item_memory_len * ncols * (1+ dsfq) if not parallel else ncols * (1+ dsfq)
 				ops_select_smallest = item_memory_len
 				ops = (ops_form_address + ops_address_compare + ops_select_active + ops_add_counters +
-						ops_threshold + ops_item_memory_compare + ops_select_smallest)
+						ops_unpermute + ops_bind_address + ops_item_memory_compare + ops_select_smallest)
 				# size = (nrows * ncols * bits_per_counter) + fimp*(nrows*ncols + item_memory_len*ncols) # address memory plus item memory
 			else:
 				# calculate operations for bundle (superposition vector)
@@ -528,7 +562,8 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 					ops_compute_im_distances = item_memory_len * ncols *2 if not parallel else ncols *2 #  ???8 for bits to bytes * 2 # two for counting
 				else:
 					# match method is dot product
-					ops_compute_im_distances = item_memory_len * ncols *2 * dsf if not parallel else ncols *2 * dsf#  ???8 for bits to bytes * 2 # two for counting
+					# ops_compute_im_distances = item_memory_len * ncols *2 * dsf if not parallel else ncols *2 * dsf#  ???8 for bits to bytes * 2 # two for counting
+					ops_compute_im_distances = item_memory_len * ncols *(1+ dsfq) if not parallel else ncols *(1+ dsfq)#
 				ops_find_smallest_distance = item_memory_len
 				ops = (ops_form_address + ops_bind_address + ops_rotate + ops_compute_im_distances +
 						ops_find_smallest_distance)
@@ -543,7 +578,8 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 			predicted_error[i] = -math.log10(pe)
 		# plot arrays filled by above
 		short_name = mi["short_name"]
-		plt.errorbar(predicted_error, operations, yerr=None, fmt="-", label=short_name,
+		pzs = 1 if not parallel or not zoom_lower else 10**6  # change values of y-axis to 10^6
+		plt.errorbar(predicted_error, operations / pzs, yerr=None, fmt="-", label=short_name,
 			color=mem_linestyles[short_name]["color"])
 		if include_recall_times and not parallel:
 			if scale_factor is None:
@@ -557,13 +593,39 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 				color=mem_linestyles[short_name]["color"])
 			# ax2.errorbar(predicted_error, recall_times_min, yerr=None, fmt="--", label=None,
 			# 	color=mem_linestyles[short_name]["color"])
-	xvals = [3.5, 4.5, 8.5, 7.5, 5.5, 6.5]
+	if not parallel:
+		if not zoom_lower:
+			# normal view
+			# xvals = [3.5, 4.5, 8.5, 7.5, 5.5, 6.5] # orig
+			xvals = [3.5, 4.5, 5.5, 6.5, 8.5, 7.5]
+		else:
+			# change location of S1 and S2 labels to front of line so show up in zoomed plot
+			# xvals = [1.5, 1.15, 8.5, 7.5, 5.5, 6.5] # orig
+			xvals = [1.5, 1.15, 5.5, 6.5, 8.5, 7.5]
+	else:
+		# parallel views
+		if not zoom_lower:
+			# xvals = [3.5, 4.5, 8.5, 7.5, 5.5, 6.5] # orig
+			# xvals = [3.5, 4.5, 7.5, 5.5, 6.5, 8.5] # orig_2
+			xvals = [3.5, 4.5, 5.5, 6.5, 8.5, 7.5]
+		else:
+			# change location of S1 and S2 labels to front of line so show up in zoomed plot
+			# xvals = [1.1, 1.33, 8.5, 7.5, 5.5, 6.5] # orig
+			xvals = [1.1, 1.33, 7.5, 5.5, 6.5, 8.5] # orig_2
+			xvals = [1.1, 1.33, 5.5, 6.5, 8.5, 7.5]
+
+
+
 	labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
-	plt.title("Byte operations vs error with parallel=%s, log_scale=%s" % (parallel, log_scale))
-	xlabel = "Error rate (10^-n)"
+	plt.title("Operations vs error; parallel=%s, log_scale=%s, zoom=%s" % (parallel, log_scale, zoom_lower))
+	xlabel = "Error rate ($10^{-n}$)"
 	plt.xlabel(xlabel)
-	plt.ylabel("Number operations ($10^6$)")
-	make_y_axis_scale_10e6()
+	if not parallel:
+		plt.ylabel("Number operations ($10^6$)")
+	else:
+		plt.ylabel("Number parallel operations ($10^6$)")
+	if not zoom_lower:
+		make_y_axis_scale_10e6()
 	if log_scale:
 		plt.yscale('log')
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
@@ -574,23 +636,24 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 	# https://stackoverflow.com/questions/62705904/add-entry-to-matplotlib-legend-without-plotting-an-object
 	# fig, ax = plt.subplots()
 	ax = plt.gca()
-	legend_elements = [Line2D([0], [0], color='k', ls='-',lw=1, label='Predicted number of operations'),
-                   Line2D([0], [0], color='k', ls='--',lw=1, label='Empirical recall time')]
-	ax.legend(handles=legend_elements, loc='upper left')
-	# plt.legend(loc='upper left')
+	if not parallel:
+		legend_elements = [Line2D([0], [0], color='k', ls='-',lw=1, label='Number of operations'),
+				   Line2D([0], [0], color='k', ls='--',lw=1, label='Empirical recall time')]
+		loc = "upper left" if not zoom_lower else "upper right"
+		ax.legend(handles=legend_elements, loc=loc)
 
 
 	# add secondary axis on right side for time required, from:
 	# https://matplotlib.org/stable/gallery/subplots_axes_and_figures/secondary_axis.html
 	if include_recall_times and not parallel:
-		print("scale_factor=%s" % scale_factor)
-		scale_factor_sec = scale_factor * 10**9
+		# print("scale_factor=%s" % scale_factor)
+		scale_factor_sec = scale_factor * 10**9 # 1000 # * 1000 to convert to ms per recall of one transition
 		def ops2time(ops):
 			return ops/scale_factor_sec
 		def time2ops(time):
 			return time*scale_factor_sec
 		secay = ax.secondary_yaxis('right', functions=(ops2time, time2ops))
-		secay.set_ylabel('Time (Sec)')
+		secay.set_ylabel('Time (ms)')
 
 		# change resolution of scale to be int when possible, e.g. 3.0 => 3
 		# from: https://stackoverflow.com/questions/61269526/customising-y-labels-on-a-secondary-y-axis-in-matplotlib-to-format-to-thousands
@@ -615,6 +678,9 @@ def main():
 	if False:
 		plot_error_vs_dimension("bundle")
 		plot_error_vs_dimension("sdm")
+	if True:
+		plot_size_vs_error(fimp=1, log_scale=False, ratio_base="A3") # 1.0/64.0)
+		plot_size_vs_error(fimp=0, log_scale=False, ratio_base="S1") # 1.0/64.0)
 	if False:
 		plot_size_vs_error(fimp=0, log_scale=False) # 1.0/64.0)
 		plot_size_vs_error(fimp=0, log_scale=True) # 1.0/64.0)
@@ -624,14 +690,16 @@ def main():
 		for ie in range(1, 10):
 			# ie = 3
 			print("ie=%s" % ie)
-			# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False)
-			plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=True)
+			plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False)
+			# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=True)
 		# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=True)
-	if True:
+	if False:
 		plot_operations_vs_error(parallel=False, log_scale=False)
-		# plot_operations_vs_error(parallel=False, log_scale=True)
+		plot_operations_vs_error(parallel=False, log_scale=False, zoom_lower=True)
+		plot_operations_vs_error(parallel=False, log_scale=True, zoom_lower=True)
 		plot_operations_vs_error(parallel=True, log_scale=False)
-		# plot_operations_vs_error(parallel=True, log_scale=True)
+		plot_operations_vs_error(parallel=True, log_scale=False, zoom_lower=True)
+		plot_operations_vs_error(parallel=True, log_scale=True, zoom_lower=True)
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="memory_efficiency")
 
 
