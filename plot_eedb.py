@@ -503,15 +503,18 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 	# plt.legend(loc='upper left')
 	plt.show()
 
-def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_times=True, zoom_lower=False):
+def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_times=True, zoom_lower=False, ratio_base=None):
 	# operations is number if byte operations, or parallel byte operations (if parallel is True)
 	# plot for both bundle and sdm
 	# set zoom_lower True to change labels and scale for zooming lower part of plot
+	# ratio_base is short name to plot ratios of computations
 	global mem_linestyles
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
 	item_memory_len = 100
 	scale_factor = None
+	ratio_data = []
+	short_names = []
 	for name in names:
 		mi = edb.get_minfo(name)
 		mtype = mi["mtype"]
@@ -578,6 +581,9 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 			predicted_error[i] = -math.log10(pe)
 		# plot arrays filled by above
 		short_name = mi["short_name"]
+		ratio_data.append(operations)
+		short_names.append(short_name)  # for displaying ratio data
+		# plot arrays filled by above
 		pzs = 1 if not parallel or not zoom_lower else 10**6  # change values of y-axis to 10^6
 		plt.errorbar(predicted_error, operations / pzs, yerr=None, fmt="-", label=short_name,
 			color=mem_linestyles[short_name]["color"])
@@ -673,12 +679,32 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 	# ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 	plt.show()
 
+	# display ratios of computations to base
+	if ratio_base is not None:
+		print("ratios to size of %s:" % ratio_base)
+		idx_base = short_names.index(ratio_base)
+		for i in range(len(ratio_data)):
+			short_name = short_names[i]
+			ratios = [(ratio_data[i][j]/ratio_data[idx_base][j]) for j in range(len(ratio_data[i]))]
+			ratios_str = [("%.3f" % ratios[j]) for j in range(len(ratios))]
+			print("%s\t%s" % (short_names[i], "\t".join(ratios_str)))
+			plt.errorbar(predicted_error, ratios, yerr=None, fmt="-", label=short_name,
+				color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
+				)
+		labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
+		plt.title("Ratio of operations to %s with parallel=%s" % (ratio_base,parallel))
+		xlabel = "Error rate ($10^{-n}$)"
+		plt.xlabel(xlabel)
+		plt.ylabel("Ratio to %s operations" % ratio_base)
+		plt.grid()
+		plt.show()
+
 
 def main():
 	if False:
 		plot_error_vs_dimension("bundle")
 		plot_error_vs_dimension("sdm")
-	if True:
+	if False:
 		plot_size_vs_error(fimp=1, log_scale=False, ratio_base="A3") # 1.0/64.0)
 		plot_size_vs_error(fimp=0, log_scale=False, ratio_base="S1") # 1.0/64.0)
 	if False:
@@ -701,6 +727,10 @@ def main():
 		plot_operations_vs_error(parallel=True, log_scale=False, zoom_lower=True)
 		plot_operations_vs_error(parallel=True, log_scale=True, zoom_lower=True)
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="memory_efficiency")
+	if True:
+		plot_operations_vs_error(parallel=False, log_scale=False, ratio_base="A1")
+		plot_operations_vs_error(parallel=True, log_scale=False, ratio_base="A1")
+
 
 
 if __name__ == "__main__":
