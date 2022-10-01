@@ -405,7 +405,7 @@ def make_y_axis_scale_10e6():
 	yaxis_labels = ["%g" % (s / 10**6) for s in yticks_new]
 	plt.yticks(yticks_new, yaxis_labels)
 
-def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False):
+def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False, ratio_base=None):
 	# ie is a fixed error rate, range(1,10); error rate is 10**(-ie)
 	# plot_type = "size" or "memory_efficiency"
 	# displays both bundle and sdm
@@ -426,6 +426,8 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 	names = edb.get_memory_names()
 	item_memory_len = 110
 	max_bits_used_in_counters = 8
+	ratio_data = []
+	short_names = []
 	for name in names:
 		mi = edb.get_minfo(name)
 		mtype = mi["mtype"]
@@ -481,6 +483,9 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 		plt.errorbar(fimps, yvals, yerr=None, fmt="-", label=short_name,
 			color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
 			)
+		# save info for displaying ratios
+		ratio_data.append(yvals)
+		short_names.append(short_name)
 	assert plot_type == "size", "labeled lines xvals not setup for plot_type memory"
 	if not zoom:
 		xvals = [0.44, 0.7, 0.65, 0.88, 0.95, 0.75]
@@ -509,6 +514,34 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 	plt.grid()
 	# plt.legend(loc='upper left')
 	plt.show()
+
+	# display ratio of of size to size of A3
+	if ratio_base is not None:
+		# print("ratios to size of %s:" % ratio_base)
+		idx_base = short_names.index(ratio_base)
+		for i in range(len(ratio_data)):
+			short_name = short_names[i]
+			ratios = [(ratio_data[i][j]/ratio_data[idx_base][j]) for j in range(len(ratio_data[i]))]
+			# ratios_str = [("%.3f" % ratios[j]) for j in range(len(ratios))]
+			# print("%s\t%s" % (short_names[i], "\t".join(ratios_str)))
+			plt.errorbar(fimps, ratios, yerr=None, fmt="-", label=short_name,
+				color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
+				)
+		labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
+		plt.title("Ratio of sizes to %s size with varying fimp" % (ratio_base,))
+		plt.xlabel("Fraction item memory present ($f_{imp}$)")
+		plt.ylabel("Ratio to size of %s" % ratio_base)
+		# if fimp == 0:
+		# 	# set ymin to zero, make step size 1 for y-axis ticks (1 to 10)
+		# 	ax = plt.gca()
+		# 	ax.set_ylim(ymin=0)
+		# 	start, end = ax.get_ylim()
+		# 	stepsize = 1
+		# 	ax.yaxis.set_ticks(np.arange(start, end, stepsize))
+		plt.grid()
+		plt.show()
+
+
 
 def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_times=True, zoom_lower=False, ratio_base=None):
 	# operations is number if byte operations, or parallel byte operations (if parallel is True)
@@ -715,6 +748,8 @@ def main():
 		# plot ratio of sizes
 		plot_size_vs_error(fimp=0, log_scale=False, ratio_base="S1") # 1.0/64.0)
 		plot_size_vs_error(fimp=1, log_scale=False, ratio_base="A3") # 1.0/64.0)
+		ie=6
+		plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False, ratio_base="A3")
 	if False:
 		plot_size_vs_error(fimp=0, log_scale=False) # 1.0/64.0)
 		plot_size_vs_error(fimp=0, log_scale=True) # 1.0/64.0)
@@ -735,7 +770,7 @@ def main():
 		plot_operations_vs_error(parallel=True, log_scale=False, zoom_lower=True)
 		plot_operations_vs_error(parallel=True, log_scale=True, zoom_lower=True)
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="memory_efficiency")
-	if False:
+	if True:
 		# plot ratio of operations
 		plot_operations_vs_error(parallel=False, log_scale=False, ratio_base="A1")
 		plot_operations_vs_error(parallel=True, log_scale=False, ratio_base="A1")
