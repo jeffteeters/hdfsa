@@ -469,6 +469,7 @@ def make_y_axis_scale_10e6(panel=None, labelsize=None):
 	yticks_orig = ax.get_yticks()
 	assert yticks_orig[0] < 1
 	assert yticks_orig[-1] > yhi
+	# print("yticks assertion failed.  ylow=%s, yhi=%s, yticks_org=\n%s" % (ylow, yhi, yticks_orig))	
 	yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
 	# print ("ylow=%s, yhi=%s, yticks=\n%s" % (ylow, yhi, yticks_orig))
 	# yaxis_values = [s for s in range(0, int(yhi), 200000)]
@@ -796,12 +797,18 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 
 		if not zoom_lower:
 			# display y-axis value in number, 10**6 bytes
-			# if not parallel and panel is not None:
-			# 	# code to add in ticks 10, 20, 30, 40 to panel A
-			# 	start, end = tmp_axs.get_ylim()
-			# 	stepsize = 10e6
-			# 	tmp_axs.yaxis.set_ticks(np.arange(start, end, stepsize))
-			make_y_axis_scale_10e6(panel=panel)
+			if not parallel and panel is not None:
+				# specialized hack to add in ticks 10, 20, 30, 40 to panel A
+				current_yticks = tmp_axs.get_yticks()
+				expected_yticks = np.array([-20000000.,         0.,  20000000.,  40000000.,  60000000.])
+				assert np.array_equal(current_yticks, expected_yticks)
+				yticks_new = np.arange(0., 40000001., 10000000.)
+				tmp_axs.set_yticks(yticks_new)
+				ytick_labels = ["%g" % (s / 10**6) for s in yticks_new]
+				tmp_axs.set_yticklabels(ytick_labels)
+				panel.yaxis.label.set_size(16)
+			else:
+				make_y_axis_scale_10e6(panel=panel)
 		if log_scale:
 			plp.yscale('log')
 		# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
