@@ -71,7 +71,7 @@ pfmt = {
 				# 	"label":"empirical count", "alpha":0.6,
 				# 	"markersize":None,
 				# 	"show_clm": False},
-			 "annotate":{"xy":(5.1e4, 2.3e-3), "xytext":(5.6e4, 8.0e-3), "text":"S1"}
+			 "annotate":{"xy":(5.1e4, 2.3e-3), "xytext":(6e4, 7.0e-3), "text":"S1"}
 			 },
 	"S2": { # dot match, solid line thin
 			"predict": pftypes["predict"],
@@ -88,7 +88,8 @@ pfmt = {
 			# 	"lw":4, "label":None, "alpha":0.6,
 			# 	"markersize":None,
 			# 	"show_clm": False},
-			 "annotate":{"xy":(3.9e4, 3.0e-4), "xytext":(2.95e4, 5.5e-5), "text":"S2"}  # "arrow_start": (3.5e4, 1.5e-5)
+			# "annotate":{"xy":(3.9e4, 3.0e-4), "xytext":(2.95e4, 5.5e-5), "text":"S2"}  # "arrow_start": (3.5e4, 1.5e-5)
+			"annotate":{"xy":(3.9e4, 3.0e-4), "xytext":(2.0e4, 5.0e-5), "text":"S2"}  # "arrow_start": (3.5e4, 1.5e-5)
 			 },
 	"A1": { # full counter, threshold sum
 			"predict": {**pftypes["predict"], "label":"Prediction"},
@@ -101,7 +102,7 @@ pfmt = {
 			#  "ecount":{"fmt":"--*k", "dashes":None, "linestyle":None, "lw":None, "label":"empirical count", "alpha":1,
 			#  	"markersize":None,
 			#  	"show_clm": False, "max_ie":7},
-			 "annotate":{"xy":(156, 2.4e-4), "xytext":(191, 1.9e-3), "text":"A1 & A3"}
+			 "annotate":{"xy":(156, 2.4e-4), "xytext":(220, 1.1e-3), "text":"A1 & A3"}
 			 },
 	"A2": { # Binary counter, threshold sum
 			"predict": pftypes["predict"],
@@ -114,7 +115,7 @@ pfmt = {
 			#  "ecount":{"fmt":"--*k", "dashes":None, "linestyle":None, "lw":None, "label":None, "alpha":1,
 			#  	"markersize":None,
 			#  	"show_clm": False, "max_ie":7},
-			 "annotate":{"xy":(249, 2.8e-5), "xytext":(264, 1.0e-4), "text":"A2"}
+			 "annotate":{"xy":(249, 2.8e-5), "xytext":(280, 8.0e-5), "text":"A2"}
 			 },
 	"A3": { # binary counter, non-thresholded sum
 			"predict": {"fmt": None },
@@ -138,7 +139,8 @@ pfmt = {
 			"ecount": {**pfmap["ecount"], "max_ie": 7},
 			 # "ecount":{"fmt":"--*k", "dashes":None, "linestyle":None, "lw":None,"label":None, "alpha":1,
 			 # 	"markersize":None, "show_clm": False, "max_ie":7},
-			 "annotate":{"xy":(95, 1.0e-4), "xytext":(62, 2.5e-5), "text":"A4"}
+			 # "annotate":{"xy":(95, 1.0e-4), "xytext":(62, 2.5e-5), "text":"A4"}
+			 "annotate":{"xy":(92, 1.0e-4), "xytext":(30, 2.9e-5), "text":"A4"}
 			 },
 
 }
@@ -149,14 +151,19 @@ pfmt = {
 		# if theoretical_sdm_err and mtype == "sdm":
 		# 	plt.errorbar(xvals["bind"], theoretical_sdm_err, label="SDM theory", fmt="-o", linestyle='dashed')
 
-def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
+def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False, panel=None):
 	# dimenion is ncols (width) of bundle or nrows
+	# panel is axis if this is plot in a panel
 	# fontsize used for axis labels
 	global pfmt
 	assert mtype in ("sdm", "bundle")
+	plp = plt if panel is None else panel
 	edb = Empirical_error_db()
 	names = edb.get_memory_names(mtype=mtype)
-	fig, ax = plt.subplots()
+	if panel is None:
+		fig, ax = plp.subplots()
+	else:
+		ax = plp
 	for name in names:
 		mi = edb.get_minfo(name)
 		bits_per_counter = mi["bits_per_counter"]
@@ -251,25 +258,48 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False):
 					# horizontalalignment='right', verticalalignment='top',
 					)
 		if jaeckel_error is not None:
-			plt.errorbar(sizes, jaeckel_error, yerr=None, fmt="8m", label="jaeckel_error")
-	plt.title("%s empirical vs. predicted error rw1_noroll_v3" % mtype)
-	fontsize = 14 if mtype == "sdm" else None
+			plp.errorbar(sizes, jaeckel_error, yerr=None, fmt="8m", label="jaeckel_error")
 	xlabel = "SDM num rows" if mtype == "sdm" else "Superposition vector width"
-	plt.xlabel(xlabel, fontsize=fontsize)
-	plt.ylabel("Fraction error", fontsize=fontsize)
-	plt.yscale('log')
+	ylabel = "Fraction error ($10^{-n})$"
+	if panel is None:
+		plp.title("%s empirical vs. predicted error rw1_noroll_v3" % mtype)
+		fontsize = 14 if mtype == "sdm" else None
+		plp.xlabel(xlabel, fontsize=fontsize)
+		plp.ylabel(ylabel, fontsize=fontsize)
+	else:
+		title = "Superposition vector memories" if mtype == "bundle" else "Associative memories"
+		plp.set_title(title)
+		plp.set_xlabel(xlabel, fontsize=16)
+		plp.set_ylabel(ylabel, fontsize=16)  # only set if on left of graph
+	if panel is None:
+		plp.yscale('log')
+	else:
+		plp.set_yscale('log')
 	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
-	ylabels = [10.0**(-i) for i in range(9, 0, -1)]
+	# ylabels = [10.0**(-i) for i in range(9, 0, -1)]
+	ylabels = ["%s" % i for i in range(9, 0, -1)]
+	if panel is None:
+		plt.yticks(yticks, ylabels)
+	else:
+		# import pdb; pdb.set_trace()
+		if mtype == "bundle":
+			# set limits so y-axis in panel are aligned
+			panel.set_ylim([8.206982489549015e-11, 0.2906972567491242]) # limits from sdm, printed below
+		ylow, yhi = panel.get_ylim()
+		# print("%s ylow=%s, yhi=%s" % (mtype, ylow, yhi))
+		panel.set_yticks(yticks)
+		panel.set_yticklabels(ylabels)
+		# panel.yaxis.label.set_size(16)
+
 	# plt.yticks(yticks, ylabels)
 	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
 	# plt.xticks(rows[0:num_steps], xlabels)
-	plt.grid()
-	plt.legend(loc='upper right')
+	plp.grid()
+	plp.legend(loc='upper right')
 	# figure = plt.gcf() # get current figure
 	# figure.set_size_inches(8, 6)
-	plt.show()
-	# plt.savefig("archive/savefig/%s_error_vs_dimensions_ms.pdf" % mtype)
-
+	if panel is None:
+		plp.show()
 
 
 mem_linestyles = {
@@ -283,18 +313,21 @@ mem_linestyles = {
 	"A4": {"color":'tab:purple', "linestyle": (0, (3, 5, 1, 5, 1, 5, 1, 5, 1, 5))}, # dash dotted (four dot)
 }
 
-def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None):
+def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None, panel=None):
 	# size is number of bits
 	# fimp is fraction of item memory present
 	# plot for both bundle and sdm
 	# ratio_base - a short name (e.g. "A3") to display ratios of sizes
+	# panel is plot subplot if plotting in panel
 	global mem_linestyles
+	plp = plt if panel is None else panel
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
 	item_memory_len = 110
 	num_dims = 9
 	ratio_data = []
 	short_names = []
+	labelsize = None if not panel else 16
 	for name in names:
 		mi = edb.get_minfo(name)
 		mtype = mi["mtype"]
@@ -323,12 +356,13 @@ def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None):
 			sizes[i] = size
 			predicted_error[i] = -math.log10(pe)
 		ratio_data.append(sizes)
-		# plot arrays filled by above
 		short_name = mi["short_name"]
 		short_names.append(short_name)  # for displaying ratio data
-		plt.errorbar(predicted_error, sizes, yerr=None, fmt="-", label=short_name,
-			color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
-			)
+		# plot arrays filled by above
+		if ratio_base is None:
+			plp.errorbar(predicted_error, sizes, yerr=None, fmt="-", label=short_name,
+				color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
+				)
 
 	# labelLines(plt.gca().get_lines(), zorder=2.5)
 	if fimp == 0:
@@ -336,64 +370,100 @@ def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None):
 	else:
 		assert fimp == 1.0
 		xvals = [3.5, 4.5, 5.5, 7.5, 8.7, 6.5]
-	labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
-	plt.title("Size (bits) vs error with fimp=%s" % fimp)
-	xlabel = "Error rate ($10^{-n}$)"
-	plt.xlabel(xlabel)
-	plt.ylabel("Size in Mb ($10^6$ bits)")
-	# make_y_axis_scale_10e6()
-	# Following should do the same as the above call
-	# display y-axis value in number, 10**6 bytes
-	# ax = plt.gca()
-	# ylow, yhi = ax.get_ylim()
-	# assert yhi > 10**6
-	# yticks_orig = ax.get_yticks()
-	# assert yticks_orig[0] < 1
-	# assert yticks_orig[-1] > yhi
-	# yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
-	# # print ("ylow=%s, yhi=%s, yticks=\n%s" % (ylow, yhi, yticks_orig))
-	# # yaxis_values = [s for s in range(0, int(yhi), 200000)]
-	# yaxis_labels = ["%s" % (s / 10**6) for s in yticks_new]
-	# plt.yticks(yticks_new, yaxis_labels)
-	# ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.1e'))
-	if log_scale:
-		plt.yscale('log')
-	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
-	# plt.xticks(rows[0:num_steps], xlabels)
-	plt.grid()
-	# plt.legend(loc='upper left')
-	plt.show()
+	if ratio_base is None:
+		# normal plot, show sizes (not ratio)
+		tmp_axs = plp.gca() if panel is None else panel
+		# labelLines(plp.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
+		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
+		fimp_msg = "$f_{imp}=%s$" % fimp
+		title = "Size (bits) vs error with %s" % fimp_msg if panel is None else fimp_msg
+		if panel is None:
+			plp.title(title)
+		else:
+			plp.set_title(title, fontsize=18)
+		xlabel = "Error rate ($10^{-n}$)"
+		if panel is None:
+			plp.xlabel(xlabel)
+		# else:
+			# plp.set_xlabel(xlabel)  # don't include xlabel in panel since this is in the top row
+		ylabel = "Size in Mb ($10^6$ bits)"
+		if panel is None:
+			plp.ylabel(ylabel)
+		else:
+			if fimp == 0:
+				# only set ylabel if fimp == 0 because that is the left most plot
+				# import pdb; pdb.set_trace()
+				plp.set_ylabel(ylabel, fontsize=16)
+		make_y_axis_scale_10e6(panel=panel, labelsize=labelsize)
+		# Following should do the same as the above call
+		# display y-axis value in number, 10**6 bytes
+		# ax = plt.gca()
+		# ylow, yhi = ax.get_ylim()
+		# assert yhi > 10**6
+		# yticks_orig = ax.get_yticks()
+		# assert yticks_orig[0] < 1
+		# assert yticks_orig[-1] > yhi
+		# yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
+		# # print ("ylow=%s, yhi=%s, yticks=\n%s" % (ylow, yhi, yticks_orig))
+		# # yaxis_values = [s for s in range(0, int(yhi), 200000)]
+		# yaxis_labels = ["%s" % (s / 10**6) for s in yticks_new]
+		# plt.yticks(yticks_new, yaxis_labels)
+		# ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.1e'))
+		if log_scale:
+			plp.yscale('log')
+		# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
+		# plt.xticks(rows[0:num_steps], xlabels)
+		plp.grid()
+		# plt.legend(loc='upper left')
+		if panel is None:
+			plp.show()
 
 	# display ratio of of size to size of A3
 	if ratio_base is not None:
-		print("ratios to size of %s:" % ratio_base)
+		# print("ratios to size of %s, fimp=%s:" % (ratio_base, fimp))
 		idx_base = short_names.index(ratio_base)
 		for i in range(len(ratio_data)):
 			short_name = short_names[i]
 			ratios = [(ratio_data[i][j]/ratio_data[idx_base][j]) for j in range(len(ratio_data[i]))]
 			ratios_str = [("%.3f" % ratios[j]) for j in range(len(ratios))]
-			print("%s\t%s" % (short_names[i], "\t".join(ratios_str)))
-			plt.errorbar(predicted_error, ratios, yerr=None, fmt="-", label=short_name,
+			# print("%s\t%s" % (short_names[i], "\t".join(ratios_str)))
+			plp.errorbar(predicted_error, ratios, yerr=None, fmt="-", label=short_name,
 				color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
 				)
-		labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
-		plt.title("Ratio of sizes to %s size with fimp=%s" % (ratio_base,fimp))
+		tmp_axs = plp.gca() if panel is None else panel
+		# labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
+		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
+		title = "Ratio of sizes to %s size with fimp=%s" % (ratio_base,fimp)
 		xlabel = "Error rate ($10^{-n}$)"
-		plt.xlabel(xlabel)
-		plt.ylabel("Ratio to %s size" % ratio_base)
+		ylabel = "Ratio to %s size" % ratio_base
+		if panel is None:
+			plp.title(title)
+			plp.xlabel(xlabel)
+			plp.ylabel(ylabel)
+		else:
+			# plp.set_title(title) # don't include title on panel since this is in the lower row
+			plp.set_xlabel(xlabel, fontsize=16)
+			if fimp == 0:
+				# only include ylabel if fimp == 0 because that is on the left side of the panel
+				ylabel = "Ratio to smallest size"
+				plp.set_ylabel(ylabel, fontsize=16)
 		if fimp == 0:
 			# set ymin to zero, make step size 1 for y-axis ticks (1 to 10)
-			ax = plt.gca()
-			ax.set_ylim(ymin=0)
-			start, end = ax.get_ylim()
+			# ax = plp.gca()
+			tmp_axs.set_ylim(ymin=0)
+			start, end = tmp_axs.get_ylim()
 			stepsize = 1
-			ax.yaxis.set_ticks(np.arange(start, end, stepsize))
-		plt.grid()
-		plt.show()
+			# tmp_axs.yaxis.set_ticks(np.arange(start, end, stepsize))
+		plp.grid()
+		if panel is None:
+			plp.show()
 
-def make_y_axis_scale_10e6():
+def make_y_axis_scale_10e6(panel=None, labelsize=None):
 	# display y-axis value in number, 10**6 bytes
-	ax = plt.gca()
+	if panel is None:
+		ax = plp.gca()
+	else:
+		ax = panel
 	ylow, yhi = ax.get_ylim()
 	# assert yhi > 10**6
 	yticks_orig = ax.get_yticks()
@@ -403,21 +473,32 @@ def make_y_axis_scale_10e6():
 	# print ("ylow=%s, yhi=%s, yticks=\n%s" % (ylow, yhi, yticks_orig))
 	# yaxis_values = [s for s in range(0, int(yhi), 200000)]
 	yaxis_labels = ["%g" % (s / 10**6) for s in yticks_new]
-	plt.yticks(yticks_new, yaxis_labels)
+	if panel is None:
+		plt.yticks(yticks_new, yaxis_labels)
+	else:
+		# import pdb; pdb.set_trace()
+		panel.set_yticks(yticks_new)
+		panel.set_yticklabels(yaxis_labels)
+		panel.yaxis.label.set_size(16)
 
-def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False, ratio_base=None):
+def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False, ratio_base=None, panel=None):
 	# ie is a fixed error rate, range(1,10); error rate is 10**(-ie)
 	# plot_type = "size" or "memory_efficiency"
 	# displays both bundle and sdm
 	# zoom is True to zoom in on lower left
+	# panel is plot subplot if plotting in panel
 	global mem_linestyles
+	plp = plt if panel is None else panel
 	assert plot_type in ("size", "memory_efficiency")
 	if zoom:
 		assert plot_type == "size", "zoom only implemented for plot_type size"
 	assert ie in range(1,10)
 	if plot_type == "size":
 		zoom_msg = " (zoom)" if zoom else ""
-		title = "Size required vs fimp for error rate=$10^{-%s}$%s" % (ie, zoom_msg)
+		if panel is None:
+			title = "Size required vs fimp for error rate=$10^{-%s}$%s" % (ie, zoom_msg)
+		else:
+			title = "$0 \leq f_{imp} \leq 1$"
 		ylabel = "Size in Mb ($10^6$ bits)"
 	else:
 		title = "Memory efficiency vs fimp for error rate=$10^{-%s}$" % ie
@@ -476,13 +557,15 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 				else:
 					size_increase_ratio = round(size / size_at_start, 2)
 					# ratio_txt = ", ratio=%s" % size_increase_ratio
-					print("%s & %s & %s & %s" % (mi["short_name"], int(size_at_start), int(size), size_increase_ratio))
+					# following print was used to make a table of ratio changes
+					# print("%s & %s & %s & %s" % (mi["short_name"], int(size_at_start), int(size), size_increase_ratio))
 					# print("at fimp=%s, %s size = %s%s" % (fimp,mi["short_name"], size, ratio_txt))
 		# plot arrays filled by above
 		short_name = mi["short_name"]
-		plt.errorbar(fimps, yvals, yerr=None, fmt="-", label=short_name,
-			color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
-			)
+		if ratio_base is None:
+			plp.errorbar(fimps, yvals, yerr=None, fmt="-", label=short_name,
+				color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
+				)
 		# save info for displaying ratios
 		ratio_data.append(yvals)
 		short_names.append(short_name)
@@ -492,31 +575,41 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 	else:
 		# xvals = [0.03, 0.05, 0.03, 0.07, 0.11, 0.09]
 		xvals = [0.135, 0.125, 0.03, 0.11, 0.13, 0.09]
-	labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
-	plt.title(title)
-	plt.xlabel("Fraction item memory present ($f_{imp}$)")
-	plt.ylabel(ylabel)
-	# display y-axis value in number, 10**6 bytes
-	if False: # plot_type == "size":
-		ax = plt.gca()
-		ylow, yhi = ax.get_ylim()
-		assert yhi > 10**6
-		yticks_orig = ax.get_yticks()
-		assert yticks_orig[0] < 1
-		assert yticks_orig[-1] > yhi
-		yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
-		yaxis_labels = ["%s" % (s / 10**6) for s in yticks_new]
-		plt.yticks(yticks_new, yaxis_labels)
-	if log_scale:
-		plt.yscale('log')
-	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
-	# plt.xticks(rows[0:num_steps], xlabels)
-	plt.grid()
-	# plt.legend(loc='upper left')
-	plt.show()
+	if ratio_base is None:
+		tmp_axs = plp.gca() if panel is None else panel
+		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
+		xlabel = "Fraction item memory present ($f_{imp}$)"
+		if panel is None:
+			plp.title(title)
+			plp.xlabel(xlabel)
+			plp.ylabel(ylabel)
+		else:
+			plp.set_title(title)
+			# plp.set_xlabel(xlabel)  # don't include xlabel in panel since this is in the top row
+			# plp.set_ylabel(ylabel)  # don't include ylabel in panel since this is not the left most
+		# display y-axis value in number, 10**6 bytes
+		make_y_axis_scale_10e6(panel=panel)
+		# if False: # plot_type == "size":
+		# 	ax = plt.gca()
+		# 	ylow, yhi = ax.get_ylim()
+		# 	assert yhi > 10**6
+		# 	yticks_orig = ax.get_yticks()
+		# 	assert yticks_orig[0] < 1
+		# 	assert yticks_orig[-1] > yhi
+		# 	yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
+		# 	yaxis_labels = ["%s" % (s / 10**6) for s in yticks_new]
+		# 	plt.yticks(yticks_new, yaxis_labels)
+		if log_scale:
+			plp.yscale('log')
+		# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
+		# plt.xticks(rows[0:num_steps], xlabels)
+		plp.grid()
+		# plt.legend(loc='upper left')
+		if not panel:
+			plt.show()
 
-	# display ratio of of size to size of A3
 	if ratio_base is not None:
+		# display ratio of of size to size of A3
 		# print("ratios to size of %s:" % ratio_base)
 		idx_base = short_names.index(ratio_base)
 		for i in range(len(ratio_data)):
@@ -524,13 +617,22 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 			ratios = [(ratio_data[i][j]/ratio_data[idx_base][j]) for j in range(len(ratio_data[i]))]
 			# ratios_str = [("%.3f" % ratios[j]) for j in range(len(ratios))]
 			# print("%s\t%s" % (short_names[i], "\t".join(ratios_str)))
-			plt.errorbar(fimps, ratios, yerr=None, fmt="-", label=short_name,
+			plp.errorbar(fimps, ratios, yerr=None, fmt="-", label=short_name,
 				color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
 				)
-		labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
-		plt.title("Ratio of sizes to %s size with varying fimp" % (ratio_base,))
-		plt.xlabel("Fraction item memory present ($f_{imp}$)")
-		plt.ylabel("Ratio to size of %s" % ratio_base)
+		tmp_axs = plp.gca() if panel is None else panel
+		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
+		title = "Ratio of sizes to %s size with varying fimp" % (ratio_base,)
+		xlabel = "Fraction item memory present ($f_{imp}$)"
+		ylabel = "Ratio to size of %s" % ratio_base
+		if not panel:
+			plp.title(title)
+			plt.xlabel(xlabel)
+			plt.ylabel(ylabel)
+		else:
+			# plp.set_title(title) # don't include title on panel since this in the lower row
+			plp.set_xlabel(xlabel, fontsize=16)
+			# plp.set_ylabel(ylabel) # don't include ylabel in panel since this is not the left most
 		# if fimp == 0:
 		# 	# set ymin to zero, make step size 1 for y-axis ticks (1 to 10)
 		# 	ax = plt.gca()
@@ -538,17 +640,19 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 		# 	start, end = ax.get_ylim()
 		# 	stepsize = 1
 		# 	ax.yaxis.set_ticks(np.arange(start, end, stepsize))
-		plt.grid()
-		plt.show()
+		plp.grid()
+		if not panel:
+			plp.show()
 
-
-
-def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_times=True, zoom_lower=False, ratio_base=None):
+def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_times=True,
+		zoom_lower=False, ratio_base=None, panel=None):
 	# operations is number if byte operations, or parallel byte operations (if parallel is True)
 	# plot for both bundle and sdm
 	# set zoom_lower True to change labels and scale for zooming lower part of plot
 	# ratio_base is short name to plot ratios of computations
+	# panel is sublot axis if plotting in a panel
 	global mem_linestyles
+	plp = plt if panel is None else panel
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
 	item_memory_len = 100
@@ -625,20 +729,21 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 		short_names.append(short_name)  # for displaying ratio data
 		# plot arrays filled by above
 		pzs = 1 if not parallel or not zoom_lower else 10**6  # change values of y-axis to 10^6
-		plt.errorbar(predicted_error, operations / pzs, yerr=None, fmt="-", label=short_name,
-			color=mem_linestyles[short_name]["color"])
-		if include_recall_times and not parallel:
-			if scale_factor is None:
-				#import pdb; pdb.set_trace()
-				# ax = plt.gca()
-				# ax2 = ax.twinx() 
-				# calculate one scale factor
-				scale_factor = operations[0] / recall_times_min[0]
-			recall_times_min *= scale_factor
-			plt.errorbar(predicted_error, recall_times_min, yerr=None, fmt="--", label=None,
+		if ratio_base is None:
+			plp.errorbar(predicted_error, operations / pzs, yerr=None, fmt="-", label=short_name,
 				color=mem_linestyles[short_name]["color"])
-			# ax2.errorbar(predicted_error, recall_times_min, yerr=None, fmt="--", label=None,
-			# 	color=mem_linestyles[short_name]["color"])
+			if include_recall_times and not parallel:
+				if scale_factor is None:
+					#import pdb; pdb.set_trace()
+					# ax = plt.gca()
+					# ax2 = ax.twinx() 
+					# calculate one scale factor
+					scale_factor = operations[0] / recall_times_min[0]
+				recall_times_min *= scale_factor
+				plp.errorbar(predicted_error, recall_times_min, yerr=None, fmt="--", label=None,
+					color=mem_linestyles[short_name]["color"])
+				# ax2.errorbar(predicted_error, recall_times_min, yerr=None, fmt="--", label=None,
+				# 	color=mem_linestyles[short_name]["color"])
 	if not parallel:
 		if not zoom_lower:
 			# normal view
@@ -660,91 +765,185 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 			xvals = [1.1, 1.33, 7.5, 5.5, 6.5, 8.5] # orig_2
 			xvals = [1.1, 1.33, 5.5, 6.5, 8.5, 7.5]
 
+	if ratio_base is None:
+		xlabel = "Error rate ($10^{-n}$)"
+		if panel is None:
+			title = "Operations vs error; parallel=%s, log_scale=%s, zoom=%s" % (parallel, log_scale, zoom_lower)
+			ylabel = "Number operations ($10^6$)" if not parallel else "Number parallel operations ($10^6$)"
+			plp.title(title)
+			plp.xlabel(xlabel)
+			plp.ylabel(ylabel)
+		else:
+			title = "Serial operations" if not parallel else "Parallel operations"
+			ylabel = "Number operations ($10^6$)"
+			plp.set_title(title)
+			# plp.set_xlabel(xlabel)  # don't include xlabel in panel since this is in the top row
+			if not parallel:
+				plp.set_ylabel(ylabel)  # only include ylabel in panel if this is the left most
+
+		tmp_axs = plp.gca() if panel is None else panel
+		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
+
+		## old code
+		# if panel is None:
+		# 	plt.title("Operations vs error; parallel=%s, log_scale=%s, zoom=%s" % (parallel, log_scale, zoom_lower))
+		# 	xlabel = "Error rate ($10^{-n}$)"
+		# 	plt.xlabel(xlabel)
+		# 	if not parallel:
+		# 		plt.ylabel("Number operations ($10^6$)")
+		# else:
+		# 	plt.ylabel("Number parallel operations ($10^6$)")
+
+		if not zoom_lower:
+			# display y-axis value in number, 10**6 bytes
+			# if not parallel and panel is not None:
+			# 	# code to add in ticks 10, 20, 30, 40 to panel A
+			# 	start, end = tmp_axs.get_ylim()
+			# 	stepsize = 10e6
+			# 	tmp_axs.yaxis.set_ticks(np.arange(start, end, stepsize))
+			make_y_axis_scale_10e6(panel=panel)
+		if log_scale:
+			plp.yscale('log')
+		# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
+		# plt.xticks(rows[0:num_steps], xlabels)
+		plp.grid()
+
+		# add legend for dash and solid lines; from:
+		# https://stackoverflow.com/questions/62705904/add-entry-to-matplotlib-legend-without-plotting-an-object
+		# fig, ax = plt.subplots()
+		# ax = plt.gca()
+		if not parallel:
+			legend_elements = [Line2D([0], [0], color='k', ls='-',lw=1, label='Number of operations'),
+					   Line2D([0], [0], color='k', ls='--',lw=1, label='Empirical recall time')]
+			loc = "upper left" if not zoom_lower else "upper right"
+			tmp_axs.legend(handles=legend_elements, loc=loc)
 
 
-	labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
-	plt.title("Operations vs error; parallel=%s, log_scale=%s, zoom=%s" % (parallel, log_scale, zoom_lower))
-	xlabel = "Error rate ($10^{-n}$)"
-	plt.xlabel(xlabel)
-	if not parallel:
-		plt.ylabel("Number operations ($10^6$)")
-	else:
-		plt.ylabel("Number parallel operations ($10^6$)")
-	if not zoom_lower:
-		make_y_axis_scale_10e6()
-	if log_scale:
-		plt.yscale('log')
-	# xlabels = ["%s/%s" % (rows[i], nacts[i]) for i in range(num_steps)]
-	# plt.xticks(rows[0:num_steps], xlabels)
-	plt.grid()
+		# add secondary axis on right side for time required, from:
+		# https://matplotlib.org/stable/gallery/subplots_axes_and_figures/secondary_axis.html
+		if include_recall_times and not parallel:
+			# print("scale_factor=%s" % scale_factor)
+			scale_factor_sec = scale_factor * 10**9 # 1000 # * 1000 to convert to ms per recall of one transition
+			def ops2time(ops):
+				return ops/scale_factor_sec
+			def time2ops(time):
+				return time*scale_factor_sec
+			secay = tmp_axs.secondary_yaxis('right', functions=(ops2time, time2ops))
+			secay.set_ylabel('Time (ms)')
 
-	# add legend for dash and solid lines; from:
-	# https://stackoverflow.com/questions/62705904/add-entry-to-matplotlib-legend-without-plotting-an-object
-	# fig, ax = plt.subplots()
-	ax = plt.gca()
-	if not parallel:
-		legend_elements = [Line2D([0], [0], color='k', ls='-',lw=1, label='Number of operations'),
-				   Line2D([0], [0], color='k', ls='--',lw=1, label='Empirical recall time')]
-		loc = "upper left" if not zoom_lower else "upper right"
-		ax.legend(handles=legend_elements, loc=loc)
+			# change resolution of scale to be int when possible, e.g. 3.0 => 3
+			# from: https://stackoverflow.com/questions/61269526/customising-y-labels-on-a-secondary-y-axis-in-matplotlib-to-format-to-thousands
+			secay.get_yaxis().set_major_formatter(FormatStrFormatter('%g'))
+		# 	ylow, yhi = secay.get_ylim()
+		# 	yticks_orig = secay.get_yticks()
+		# 	# assert yticks_orig[0] < 1
+		# 	# assert yticks_orig[-1] > yhi
+		# 	# yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
+		# 	# print ("ylow=%s, yhi=%s, yticks=\n%s" % (ylow, yhi, yticks_orig))
+		# 	# yaxis_values = [s for s in range(0, int(yhi), 200000)]
+		# 	yaxis_labels = ["%g" % s for s in yticks_orig]
+		# 	secay.set_ticklabels(yaxis_labels)
+		# 	# plt.yticks(yticks_new, yaxis_labels)
 
-
-	# add secondary axis on right side for time required, from:
-	# https://matplotlib.org/stable/gallery/subplots_axes_and_figures/secondary_axis.html
-	if include_recall_times and not parallel:
-		# print("scale_factor=%s" % scale_factor)
-		scale_factor_sec = scale_factor * 10**9 # 1000 # * 1000 to convert to ms per recall of one transition
-		def ops2time(ops):
-			return ops/scale_factor_sec
-		def time2ops(time):
-			return time*scale_factor_sec
-		secay = ax.secondary_yaxis('right', functions=(ops2time, time2ops))
-		secay.set_ylabel('Time (ms)')
-
-		# change resolution of scale to be int when possible, e.g. 3.0 => 3
-		# from: https://stackoverflow.com/questions/61269526/customising-y-labels-on-a-secondary-y-axis-in-matplotlib-to-format-to-thousands
-		secay.get_yaxis().set_major_formatter(FormatStrFormatter('%g'))
-	# 	ylow, yhi = secay.get_ylim()
-	# 	yticks_orig = secay.get_yticks()
-	# 	# assert yticks_orig[0] < 1
-	# 	# assert yticks_orig[-1] > yhi
-	# 	# yticks_new = yticks_orig[1:-1]  # strip off negative value and value greater than yhi
-	# 	# print ("ylow=%s, yhi=%s, yticks=\n%s" % (ylow, yhi, yticks_orig))
-	# 	# yaxis_values = [s for s in range(0, int(yhi), 200000)]
-	# 	yaxis_labels = ["%g" % s for s in yticks_orig]
-	# 	secay.set_ticklabels(yaxis_labels)
-	# 	# plt.yticks(yticks_new, yaxis_labels)
-
-	# FormatStrFormatter
-	# ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-	plt.show()
+		# FormatStrFormatter
+		# ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+		if panel is None:
+			plp.show()
 
 	# display ratios of computations to base
 	if ratio_base is not None:
-		print("ratios to size of %s:" % ratio_base)
+		# print("ratios to size of %s:" % ratio_base)
 		idx_base = short_names.index(ratio_base)
 		for i in range(len(ratio_data)):
 			short_name = short_names[i]
 			ratios = [(ratio_data[i][j]/ratio_data[idx_base][j]) for j in range(len(ratio_data[i]))]
 			ratios_str = [("%.3f" % ratios[j]) for j in range(len(ratios))]
-			print("%s\t%s" % (short_names[i], "\t".join(ratios_str)))
-			plt.errorbar(predicted_error, ratios, yerr=None, fmt="-", label=short_name,
+			# print("%s\t%s" % (short_names[i], "\t".join(ratios_str)))
+			plp.errorbar(predicted_error, ratios, yerr=None, fmt="-", label=short_name,
 				color=mem_linestyles[short_name]["color"], # linestyle=mem_linestyles[short_name]["linestyle"]
 				)
-		labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
-		plt.title("Ratio of operations to %s with parallel=%s" % (ratio_base,parallel))
+
+		tmp_axs = plp.gca() if panel is None else panel
+		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
+		title = "Ratio of operations to %s with parallel=%s" % (ratio_base,parallel)
 		xlabel = "Error rate ($10^{-n}$)"
-		plt.xlabel(xlabel)
-		plt.ylabel("Ratio to %s operations" % ratio_base)
-		plt.grid()
-		plt.show()
+		ylabel = "Ratio to %s operations" % ratio_base
+		if panel is None:
+			plp.title(title)
+			plp.xlabel(xlabel)
+			plp.ylabel(ylabel)
+		else:
+			# don't plot title on panel because ratio is in second row
+			plp.set_xlabel(xlabel, fontsize=16)
+			if not parallel:
+				# only show y-label if on leftmost panel
+				ylabel = "Ratio to fewest operations"
+				plp.set_ylabel(ylabel, fontsize=16)
+		plp.grid()
+		if not panel:
+			plp.show()
+
+
+def size_vs_error_panel():
+	# create panel of plots of size vs error
+	# fig, axs = plt.subplots(2,3)
+	fig, axs = plt.subplots(2,3)
+	plt.rcParams.update({'font.size': 12})
+	plot_size_vs_error(fimp=0, log_scale=False, panel=axs[0,0])
+	# axs[0,0].text(-0.1, 1.15, "A", transform=axs[0,0].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
+	plot_size_vs_error(fimp=0, log_scale=False, ratio_base="S1", panel=axs[1,0]) # plot ratio
+	plot_size_vs_error(fimp=1, log_scale=False, panel=axs[0,1])
+	plot_size_vs_error(fimp=1, log_scale=False, ratio_base="A3", panel=axs[1,1]) # plot ratio
+	ie=6
+	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False, panel=axs[0,2])
+	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False, ratio_base="A3", panel=axs[1,2])
+	labels=[["A","C","E"], ["B","D","F"]]
+	for row in range(2):
+		for col in range(3):
+			axs[row,col].tick_params(axis='both', which='major', labelsize=12)
+			axs[row,col].tick_params(axis='both', which='minor', labelsize=12)
+			label = labels[row][col]
+			axs[row,col].text(-0.04, 1.10, label, transform=axs[row,col].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
+	plt.show()
+
+
+def operations_vs_error_panel():
+	# create panel of plots of operations vs error
+	fig, axs = plt.subplots(2,2)
+	plt.rcParams.update({'font.size': 14})
+	plot_operations_vs_error(parallel=False, log_scale=False, panel=axs[0,0])
+	plot_operations_vs_error(parallel=False, log_scale=False, ratio_base="A1", panel=axs[1,0])
+	plot_operations_vs_error(parallel=True, log_scale=False, panel=axs[0,1])
+	plot_operations_vs_error(parallel=True, log_scale=False, ratio_base="A1", panel=axs[1,1])
+	labels=[["A","C"], ["B","D"]]
+	for row in range(2):
+		for col in range(2):
+			axs[row,col].tick_params(axis='both', which='major', labelsize=12)
+			axs[row,col].tick_params(axis='both', which='minor', labelsize=12)
+			label = labels[row][col]
+			axs[row,col].text(-0.04, 1.10, label, transform=axs[row,col].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
+	plt.show()
+
+def error_vs_dimension_panel():
+	# create panel of plot of superposition and associative memory error vs dimension
+	fig, axs = plt.subplots(1,2)
+	plt.rcParams.update({'font.size': 14})
+	plot_error_vs_dimension("bundle", panel=axs[0])
+	plot_error_vs_dimension("sdm", panel=axs[1])
+	labels=["A","B"]
+	for col in range(2):
+		axs[col].tick_params(axis='both', which='major', labelsize=12)
+		axs[col].tick_params(axis='both', which='minor', labelsize=12)
+		label = labels[col]
+		axs[col].text(-0.04, 1.03, label, transform=axs[col].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
+	plt.show()
 
 
 def main():
 	if False:
 		plot_error_vs_dimension("bundle")
 		plot_error_vs_dimension("sdm")
-	if True:
+	if False:
 		# plot ratio of sizes
 		plot_size_vs_error(fimp=0, log_scale=False, ratio_base="S1") # 1.0/64.0)
 		plot_size_vs_error(fimp=1, log_scale=False, ratio_base="A3") # 1.0/64.0)
@@ -770,10 +969,16 @@ def main():
 		plot_operations_vs_error(parallel=True, log_scale=False, zoom_lower=True)
 		plot_operations_vs_error(parallel=True, log_scale=True, zoom_lower=True)
 	# plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="memory_efficiency")
-	if True:
+	if False:
 		# plot ratio of operations
 		plot_operations_vs_error(parallel=False, log_scale=False, ratio_base="A1")
 		plot_operations_vs_error(parallel=True, log_scale=False, ratio_base="A1")
+	if False:
+		size_vs_error_panel()
+	if True:
+		operations_vs_error_panel()
+	if False:
+		error_vs_dimension_panel()
 
 
 
