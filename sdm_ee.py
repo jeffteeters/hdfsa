@@ -139,7 +139,8 @@ def plot(data, title, xlabel, ylabel, label=None, data2=None, label2=None):
 
 
 def main():
-	nrows=6; ncols=33; nact=2; k=6; d=27
+	# nrows=6; ncols=33; nact=2; k=6; d=27
+	nrows=65; ncols=512; nact=1; k=1000; d=2  # test sdm_dot prediction from simple_predict_sizes.py 
 	ee = Sdm_ee(nrows, ncols, nact, k, d)
 	plot(ee.mhcounts, "hamming distances found", "hamming distance", "count")
 	if ee.error_rate_vs_hamming is not None:
