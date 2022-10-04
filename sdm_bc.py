@@ -1030,8 +1030,8 @@ def widths_vs_folds_single_size(size=100000, empirical=True):
 
 if __name__ == "__main__":
 	# vary_sdm_bc()
-	# vary_nact()
-	sdm_vs_bundle()
+	vary_nact()
+	# sdm_vs_bundle()
 	# widths_vs_folds()
 	# test_analytical_methods()
 	# widths_vs_folds_single_size()
