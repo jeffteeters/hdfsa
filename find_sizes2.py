@@ -65,14 +65,18 @@ def sdm_error(nrows, k, d, nact, ncols, match_method="hamming", bits_per_counter
 	# bits_per_counter - 8 if full size, 1 if binarize counters
 	if bits_per_counter == 8:
 		assert match_method in ("hamming", "dot")
-		ae = sdm_anl.Sdm_error_analytical(nrows, nact, k, ncols=ncols, d=d, match_method=match_method)
+		max_num_first_terms = get_max_num_first_terms()
+		threshold = get_sdm_ae_threshold()
+		ae = sdm_anl.Sdm_error_analytical(nrows, nact, k, ncols=ncols, d=d, match_method=match_method,
+			max_num_first_terms=max_num_first_terms, threshold=threshold)
 		error = ae.perr if match_method == "hamming" else ae.perr_dot
 	else:
 		assert bits_per_counter == 1
 		if nact ==1:
 			bsm = binarized_sdm_analytical.Binarized_sdm_analytical(nrows, ncols, nact, k, d)
 		else:
-			bsm = binarized_sdm_analytical.Bsa_sample(nrows, ncols, nact, k, d)
+			replace = get_sdm_c1_ham_replace()
+			bsm = binarized_sdm_analytical.Bsa_sample(nrows, ncols, nact, k, d, replace=replace)
 		error = bsm.p_err
 	return error
 
@@ -80,13 +84,14 @@ def get_sdm_ncols():
 	ncols = 512
 	return ncols
 
-def get_sdm_nact(nrows, k):
-	# nact = sdm_jaeckel.get_sdm_activation_count(nrows, k)
+def get_sdm_nact(nrows, k, name):
+	if name == "sdm_k1000_d100_c1_ham#A2":
+		# round to closest odd integer (only for "sdm_k1000_d100_c1_ham#A2")
+		fnact = sdm_jaeckel.fraction_rows_activated(nrows, k)*nrows
+		nact = 2 * int(fnact/2) + 1
+	else:
+		nact = sdm_jaeckel.get_sdm_activation_count(nrows, k)
 	# nact = 3
-	# return closest odd number for model "sdm_k1000_d100_c1_ham#A2"
-	fnact = sdm_jaeckel.fraction_rows_activated(nrows, k)*nrows
-	# round to closest odd integer
-	nact = 2 * int(fnact/2) + 1
 	# print("nrows=%s, k=%s, fnact=%s, nact=%s" % (nrows, k, fnact, nact))
 	return nact
 
@@ -98,6 +103,22 @@ def get_item_memory_size():
 	d = 100
 	return d
 
+def get_max_num_first_terms():
+	# used in calls to sdm_analytical
+	max_num_first_terms = 5  # make 5 later
+	return max_num_first_terms
+
+def get_sdm_ae_threshold():
+	# pruning threshold used in sdm_ae
+	# threshold=10000000
+	# threshold=10**10
+	threshold=10**7
+	return threshold
+
+def get_sdm_c1_ham_replace():
+	replace = True
+	return replace
+
 def get_error(mi, size):
 	# return error for memory with properties given in dictionary mi (mem_info dictionary above)
 	# size is number of rows (for sdm) or width of bundle
@@ -105,6 +126,7 @@ def get_error(mi, size):
 	# ncols is the width of sdm
 	k = get_number_items_stored()  # number items stored
 	d = get_item_memory_size()  # number of items in item memory (d - 1) distractors
+	name = mi["name"]
 	match_method = mi["match_method"]
 	assert match_method in ("hamming", "dot")
 	bits_per_counter = mi["bits_per_counter"]
@@ -115,7 +137,7 @@ def get_error(mi, size):
 	else:
 		nrows = size
 		assert mi["mtype"] == "sdm"
-		nact = get_sdm_nact(nrows, k)
+		nact = get_sdm_nact(nrows, k, name)
 		ncols = get_sdm_ncols()
 		error = sdm_error(nrows, k, d, nact, ncols, match_method=match_method, bits_per_counter=bits_per_counter)
 	return error
@@ -195,17 +217,19 @@ def lookup_mem_name(mem_name):
 
 def main():
 	# mem_name = "sdm_k1000_d100_c8_ham#A1"
-	# mem_name = "sdm_k1000_d100_c8_dot#A4"
-	mem_name = "sdm_k1000_d100_c1_ham#A2" # "bun_k1000_d100_c8#S2" # "bun_k1000_d100_c1#S1"
+	mem_name = "sdm_k1000_d100_c8_dot#A4"
+	# mem_name = "sdm_k1000_d100_c1_ham#A2" # "bun_k1000_d100_c8#S2" # "bun_k1000_d100_c1#S1"
 	mi = lookup_mem_name(mem_name)
 	assert mi["mtype"] in ("bundle", "sdm")
 	sizes = find_sizes(mi)
 	k = get_number_items_stored()
-	print("For k=%s, %s dimensions are:" % (k, mem_name))
+	sdm_a2_replace_text = "replace=%s, " % get_sdm_c1_ham_replace() if mem_name == "sdm_k1000_d100_c1_ham#A2" else ""
+	print("For k=%s, %s, sdm max_num_first_terms=%s threshold=%s, %sdimensions are:" % (k, mem_name,
+		get_max_num_first_terms(), get_sdm_ae_threshold(), sdm_a2_replace_text))
 	for size in sizes:
 		ie, nrows, error = size
 		if mi["mtype"] == "sdm":
-			nact = get_sdm_nact(nrows, k)
+			nact = get_sdm_nact(nrows, k, mem_name)
 			print("[%s, %s, %s, %s]," % (ie, nrows, nact, error))
 		else:
 			print("[%s, %s, %s]," % (ie, nrows, error))
