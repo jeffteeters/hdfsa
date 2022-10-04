@@ -42,7 +42,6 @@ if using_binarized_sdm:
 
 x = np.empty(len(sdm_dims), dtype=np.float64)
 y = np.empty(len(sdm_dims), dtype=np.float64)
-ylog = np.empty(len(sdm_dims), dtype=np.float64)
 for i in range(len(sdm_dims)):
 	perr, nrows, nact, epochs = sdm_dims[i]
 	x[i] = nrows
