@@ -27,7 +27,7 @@ class Sdm_error_analytical:
 	# independent items could contribute: -3, -1, 1, or 3.
 
 	def __init__(self, nrows, nact, k, ncols=None, d=None, match_method="both",
-		threshold=10000000, show_pruning=False, show_items=False,
+		threshold=10000000, show_pruning=False, max_num_first_terms = 5, show_items=False,
 		show_progress=False, prune=True, prune_zeros=True, debug=False):
 		# nrows - number of rows in sdm
 		# nact - activaction count
@@ -42,6 +42,7 @@ class Sdm_error_analytical:
 		#  This done if prune=True, to limit number of patterns to only those that are contributing the most to the result
 		# prune - True if should drop patterns that have smaller probability than maximum probability / threshold
 		# prune_zeros - True if should drop patterns that have probability == 0.0 (due to underflow)
+		# max_num_first_terms - maximum number of overlaps used in calculations (to reduce number of possible configurations)
 		self.nrows = nrows
 		self.nact = nact
 		self.k = k
@@ -52,6 +53,7 @@ class Sdm_error_analytical:
 		self.dotp_match = match_method in ("dot", "both")
 		self.threshold = threshold
 		self.show_pruning = show_pruning
+		self.max_num_first_terms = max_num_first_terms
 		self.show_items = show_items
 		self.prune = prune
 		self.prune_zeros = prune_zeros
@@ -67,6 +69,7 @@ class Sdm_error_analytical:
 			if show_progress:
 				end = "\n" if i % 10 == 0 else ""
 				print("%s-%s "%(i,len(self.cop_key)), end=end)
+		print("sdm_ae number of terms = %s" % self.cop_key.size)
 		if show_progress:
 			print("\nNumber keys=%s.  Computing error_rates..." % len(self.cop_key))
 		self.cop_err = np.array([self.cop_error_rate(self.nact, key) for key in self.cop_key])
@@ -95,7 +98,14 @@ class Sdm_error_analytical:
 			self.display_result()
 
 	def compute_one_item_overlap_pmf(self):
-		max_num_first_terms = 3  # limit to first 3 terms.  Assume terms beyond that (6 or more overlaps) probability too small)
+		max_num_first_terms = self.max_num_first_terms
+		# specify limit number of term.  Assume terms beyond probability too small.
+		# this should probably be set to six, to ensure that the corresponding cop_keys will all fit
+		# into 64 bit unsigned integers (assumes number of overlaps of six is 18 or less because
+		# an unsigned 64 bit integer has maximum value: 18,446,744,073,709,551,615)
+		# actually, this limit (max_num_first_terms) should not be necessary because pruning should remove
+		# terms that are too small.  Should store only terms that are greather than the threshold
+		# above the first term (which will be most probable) 
 		if self.nrows == 1:
 			assert self.nact == 1, "If nrows is 1, nact must be 1"
 			return np.array([1.0,], dtype=np.float64)  # special case
@@ -336,6 +346,8 @@ class Sdm_error_analytical:
 		# ncols - width of vector, included so can call with different widths
 		# d- number of items in item memory, so there are d-1 distractors 
 		assert self.cop_key.size == self.cop_prb.size
+		self.cop_prb = self.cop_prb/self.cop_prb.sum()  # try normalizing, see if that helps match to empirical
+		assert math.isclose(self.cop_prb.sum(), 1.0), "cop_prb.sum=%s" % self.cop_prb.sum()
 		perr = 0.0
 		for i in range(self.cop_key.size):
 			cw, cp = self.compute_chunk_weights_and_probabilities(self.cop_key[i])
@@ -347,6 +359,7 @@ class Sdm_error_analytical:
 			negative_target_sump = self.nact - cw  # same as (cw - nact) * -1
 			half_cp = cp / 2   # weight probability by half for positive target and half for negative target
 			match_p, match_w = self.pv_union(half_cp, positive_target_sump, half_cp, negative_target_sump)
+			assert math.isclose(match_p.sum(), 1.0)
 			match_mean1, match_var1 = self.pv_stats(match_p, match_w)
 			match_mean_dot, match_var_dot = self.dot_product_stats(match_mean1, match_var1, ncols)
 			# compute for distractor
@@ -356,6 +369,7 @@ class Sdm_error_analytical:
 			no_match_p, no_match_w = self.pv_union(qtr_cp, positive_target_sump_no_match, qtr_cp, negative_target_sump_no_match)
 			# add in probability and match for match (via chance, one half)
 			distactor_p, distractor_w = self.pv_union(match_p / 2.0, match_w, no_match_p, no_match_w)
+			assert math.isclose(distactor_p.sum(), 1.0)
 			distractor_mean1, distractor_var1 = self.pv_stats(distactor_p, distractor_w)
 			distractor_mean_dot, distractor_var_dot = self.dot_product_stats(distractor_mean1, distractor_var1, ncols)
 			# if i == 1:
@@ -644,7 +658,7 @@ def main():
 	# nrows=31; nact=2; threshold_sum=False; bits_per_counter=8
 	# With nrows=31, ncols=512, nact=1, threshold_sum=False epochs=200, mean_error=0.096359, std_error=0.0091608
 	# nrows=30; nact=1; k=1000; d=100; ncols=512;  # from fast_sdm_empirical, should give 10^-1 error for dot product match
-	nrows=80; nact=1; threshold_sum=False; bits_per_counter=8
+	nrows=101; nact=2; threshold_sum=False; bits_per_counter=8
 
 	sea = Sdm_error_analytical(nrows, nact, k, ncols=ncols, d=d, match_method="both")
 	# ae = Sdm_error_analytical.ae(nrows, ncols, nact, k, d)
