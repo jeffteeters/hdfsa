@@ -57,14 +57,14 @@ pfmt = {
 			"predict": {**pfmap["predict"], "label":"Prediction"},
 			# {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction", "alpha":1,
 			# 		"markersize":None},
-				"epmf": {**pfmap["epmf"], "label":"empirical pmf"},
+				"epmf": {**pfmap["epmf"], "label":"Empirical pmf"},
 				# {"fmt": ":+m",
 				# 	"dashes":None,
 				 # 	"linestyle":None, # (0,(1,1)),
 				 # 	"lw":2,
 				 # 	"label":"empirical pmf", "alpha":0.6,
 				# 	"markersize":None},
-				"ecount": {**pfmap["ecount"], "label":"empirical count", "max_ie": 6},
+				"ecount": {**pfmap["ecount"], "label":"Empirical count", "max_ie": 6},
 				# {"fmt":"--*c", "dashes":None,
 				# 	"linestyle": None, # (1,(1,1)),
 				# 	"lw":2,
@@ -93,8 +93,8 @@ pfmt = {
 			 },
 	"A1": { # full counter, threshold sum
 			"predict": {**pftypes["predict"], "label":"Prediction"},
-			 "epmf": {**pfmap["epmf"], "label":"empirical pmf"},
-			 "ecount": {**pfmap["ecount"], "max_ie": 7, "label":"empirical count"},
+			 "epmf": {**pfmap["epmf"], "label":"Empirical pmf"},
+			 "ecount": {**pfmap["ecount"], "max_ie": 7, "label":"Empirical count"},
 			# "predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"
 			# 	, "alpha":1, "markersize":None}, # [12,6,12,6,3,6]
 			#  "epmf":{"fmt":":+m", "dashes":None, "linestyle":None, "lw":None, "label":"empirical pmf", "alpha":1,
@@ -259,7 +259,7 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False, panel=None):
 					)
 		if jaeckel_error is not None:
 			plp.errorbar(sizes, jaeckel_error, yerr=None, fmt="8m", label="jaeckel_error")
-	xlabel = "SDM num rows" if mtype == "sdm" else "Superposition vector width"
+	xlabel = "Number of storage locations ($m$)" if mtype == "sdm" else "Superposition vector width"
 	ylabel = "Fraction error ($10^{-n})$"
 	if panel is None:
 		plp.title("%s empirical vs. predicted error rw1_noroll_v3" % mtype)
@@ -461,7 +461,7 @@ def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None, panel=None):
 def make_y_axis_scale_10e6(panel=None, labelsize=None):
 	# display y-axis value in number, 10**6 bytes
 	if panel is None:
-		ax = plp.gca()
+		ax = plt.gca()
 	else:
 		ax = panel
 	ylow, yhi = ax.get_ylim()
@@ -945,6 +945,14 @@ def error_vs_dimension_panel():
 		axs[col].text(-0.04, 1.03, label, transform=axs[col].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
 	plt.show()
 
+def frontiers_figures():
+	# figures for Frontiers paper version 2
+	error_vs_dimension_panel()
+	size_vs_error_panel()
+	ie = 6
+	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=True)
+	operations_vs_error_panel()
+
 
 def main():
 	if False:
@@ -982,11 +990,13 @@ def main():
 		plot_operations_vs_error(parallel=True, log_scale=False, ratio_base="A1")
 	if False:
 		size_vs_error_panel()
-	if True:
+	if False:
 		operations_vs_error_panel()
 	if False:
 		error_vs_dimension_panel()
-
+	if True:
+		# figures for Frontiers paper version 2
+		frontiers_figures()
 
 
 if __name__ == "__main__":
