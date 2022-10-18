@@ -17,6 +17,17 @@ import matplotlib.ticker as mtick
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FormatStrFormatter
 
+# directory for storing figures
+fig_dir = "frontiers_v2_figures"
+# error_rate_label = "Error rate ($\log_{10}$ scale)"
+error_rate_label = "Error rate"
+# er_ticks = (10.0**-(np.arange(9.0, 0, -1.0)))
+er_ticks = np.arange(9.0, 0, -1.0)
+	# ylabels = [10.0**(-i) for i in range(9, 0, -1)]
+	# ylabels = ["%s" % i for i in range(9, 0, -1)]
+er_labels = ["$10^{-%s}$" % i for i in range(9, 0, -1)]
+# er_labels = ["$-%s$" % i for i in range(9, 0, -1)]
+
 pftypes = {
 	"predict": {"fmt": "o-k", "dashes": None, "lw": 2, "linestyle":"solid", "alpha":1,
 		"markersize":None, "label":None},
@@ -155,7 +166,7 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False, panel=None):
 	# dimenion is ncols (width) of bundle or nrows
 	# panel is axis if this is plot in a panel
 	# fontsize used for axis labels
-	global pfmt
+	global pfmt, error_rate_label
 	assert mtype in ("sdm", "bundle")
 	plp = plt if panel is None else panel
 	edb = Empirical_error_db()
@@ -260,7 +271,7 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False, panel=None):
 		if jaeckel_error is not None:
 			plp.errorbar(sizes, jaeckel_error, yerr=None, fmt="8m", label="jaeckel_error")
 	xlabel = "Number of storage locations ($m$)" if mtype == "sdm" else "Superposition vector width"
-	ylabel = "Fraction error ($10^{-n})$"
+	ylabel = error_rate_label  # "Error rate ($10^{-r})$"
 	if panel is None:
 		plp.title("%s empirical vs. predicted error rw1_noroll_v3" % mtype)
 		fontsize = 14 if mtype == "sdm" else None
@@ -277,7 +288,8 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False, panel=None):
 		plp.set_yscale('log')
 	yticks = (10.0**-(np.arange(9.0, 0, -1.0)))
 	# ylabels = [10.0**(-i) for i in range(9, 0, -1)]
-	ylabels = ["%s" % i for i in range(9, 0, -1)]
+	# ylabels = ["%s" % i for i in range(9, 0, -1)]
+	ylabels = ["$10^{-%s}$" % i for i in range(9, 0, -1)]
 	if panel is None:
 		plt.yticks(yticks, ylabels)
 	else:
@@ -319,7 +331,7 @@ def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None, panel=None):
 	# plot for both bundle and sdm
 	# ratio_base - a short name (e.g. "A3") to display ratios of sizes
 	# panel is plot subplot if plotting in panel
-	global mem_linestyles
+	global mem_linestyles, error_rate_label, er_ticks, er_labels
 	plp = plt if panel is None else panel
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
@@ -379,9 +391,12 @@ def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None, panel=None):
 		title = "Size (bits) vs error with %s" % fimp_msg if panel is None else fimp_msg
 		if panel is None:
 			plp.title(title)
+			plt.xticks(er_ticks, er_labels)
 		else:
 			plp.set_title(title, fontsize=18)
-		xlabel = "Error rate ($10^{-n}$)"
+			panel.set_xticks(er_ticks)
+			panel.set_xticklabels(er_labels, fontsize=18)
+		xlabel = error_rate_label # "Error rate ($10^{-r}$)"
 		if panel is None:
 			plp.xlabel(xlabel)
 		# else:
@@ -434,15 +449,18 @@ def plot_size_vs_error(fimp=0.0, log_scale=False, ratio_base=None, panel=None):
 		# labelLines(plt.gca().get_lines(), xvals=xvals, align=False, zorder=2.5)
 		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
 		title = "Ratio of sizes to %s size with fimp=%s" % (ratio_base,fimp)
-		xlabel = "Error rate ($10^{-n}$)"
+		xlabel = error_rate_label  # "Error rate ($10^{-r}$)"
 		ylabel = "Ratio to %s size" % ratio_base
 		if panel is None:
 			plp.title(title)
 			plp.xlabel(xlabel)
 			plp.ylabel(ylabel)
+			plt.xticks(er_ticks, er_labels)
 		else:
 			# plp.set_title(title) # don't include title on panel since this is in the lower row
 			plp.set_xlabel(xlabel, fontsize=16)
+			panel.set_xticks(er_ticks)
+			panel.set_xticklabels(er_labels, fontsize=16)
 			if fimp == 0:
 				# only include ylabel if fimp == 0 because that is on the left side of the panel
 				ylabel = "Ratio to smallest size"
@@ -482,7 +500,8 @@ def make_y_axis_scale_10e6(panel=None, labelsize=None):
 		panel.set_yticklabels(yaxis_labels)
 		panel.yaxis.label.set_size(16)
 
-def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False, ratio_base=None, panel=None):
+def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=False,
+		ratio_base=None, panel=None, show_title=True):
 	# ie is a fixed error rate, range(1,10); error rate is 10**(-ie)
 	# plot_type = "size" or "memory_efficiency"
 	# displays both bundle and sdm
@@ -581,7 +600,8 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
 		xlabel = "Fraction item memory present ($f_{imp}$)"
 		if panel is None:
-			plp.title(title)
+			if show_title:
+				plp.title(title)
 			plp.xlabel(xlabel)
 			plp.ylabel(ylabel)
 		else:
@@ -606,7 +626,7 @@ def plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=Fals
 		# plt.xticks(rows[0:num_steps], xlabels)
 		plp.grid()
 		# plt.legend(loc='upper left')
-		if not panel:
+		if not panel and show_title:  # show_title false for frontiers zoom figure so can save figure
 			plt.show()
 
 	if ratio_base is not None:
@@ -652,7 +672,7 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 	# set zoom_lower True to change labels and scale for zooming lower part of plot
 	# ratio_base is short name to plot ratios of computations
 	# panel is sublot axis if plotting in a panel
-	global mem_linestyles
+	global mem_linestyles, error_rate_label, er_ticks, er_labels
 	plp = plt if panel is None else panel
 	edb = Empirical_error_db()
 	names = edb.get_memory_names()
@@ -767,13 +787,14 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 			xvals = [1.1, 1.33, 5.5, 6.5, 8.5, 7.5]
 
 	if ratio_base is None:
-		xlabel = "Error rate ($10^{-n}$)"
+		xlabel = error_rate_label  # "Error rate ($10^{-r}$)"
 		if panel is None:
 			title = "Operations vs error; parallel=%s, log_scale=%s, zoom=%s" % (parallel, log_scale, zoom_lower)
 			ylabel = "Number operations ($10^6$)" if not parallel else "Number parallel operations ($10^6$)"
 			plp.title(title)
 			plp.xlabel(xlabel)
 			plp.ylabel(ylabel)
+			plt.xticks(er_ticks, er_labels)
 		else:
 			title = "Serial operations" if not parallel else "Parallel operations"
 			ylabel = "Number operations ($10^6$)"
@@ -781,6 +802,8 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 			# plp.set_xlabel(xlabel)  # don't include xlabel in panel since this is in the top row
 			if not parallel:
 				plp.set_ylabel(ylabel)  # only include ylabel in panel if this is the left most
+			panel.set_xticks(er_ticks)
+			panel.set_xticklabels(er_labels, fontsize=16)
 
 		tmp_axs = plp.gca() if panel is None else panel
 		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
@@ -800,7 +823,13 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 			if not parallel and panel is not None:
 				# specialized hack to add in ticks 10, 20, 30, 40 to panel A
 				current_yticks = tmp_axs.get_yticks()
-				expected_yticks = np.array([-20000000.,         0.,  20000000.,  40000000.,  60000000.])
+				# expected_yticks = np.array([-20000000.,         0.,  20000000.,  40000000.,  60000000.])
+				expected_yticks = np.array([-10000000.,0., 10000000., 20000000., 30000000., 40000000., 50000000.])
+				if not np.array_equal(current_yticks, expected_yticks):
+					print("unexpected yticks for operations panel A")
+					print("expected:\n%s" % expected_yticks)
+					print("found:\n%s" % current_yticks)
+					import pdb; pdb.set_trace()
 				assert np.array_equal(current_yticks, expected_yticks)
 				yticks_new = np.arange(0., 40000001., 10000000.)
 				tmp_axs.set_yticks(yticks_new)
@@ -873,15 +902,18 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 		tmp_axs = plp.gca() if panel is None else panel
 		labelLines(tmp_axs.get_lines(), xvals=xvals, align=False, zorder=2.5)
 		title = "Ratio of operations to %s with parallel=%s" % (ratio_base,parallel)
-		xlabel = "Error rate ($10^{-n}$)"
+		xlabel = error_rate_label  # "r, Error rate ($10^{-r}$)"
 		ylabel = "Ratio to %s operations" % ratio_base
 		if panel is None:
 			plp.title(title)
 			plp.xlabel(xlabel)
 			plp.ylabel(ylabel)
+			plt.xticks(er_ticks, er_labels)
 		else:
 			# don't plot title on panel because ratio is in second row
 			plp.set_xlabel(xlabel, fontsize=16)
+			panel.set_xticks(er_ticks)
+			panel.set_xticklabels(er_labels, fontsize=16)
 			if not parallel:
 				# only show y-label if on leftmost panel
 				ylabel = "Ratio to fewest operations"
@@ -890,11 +922,11 @@ def plot_operations_vs_error(parallel=False, log_scale=False, include_recall_tim
 		if not panel:
 			plp.show()
 
-
 def size_vs_error_panel():
 	# create panel of plots of size vs error
 	# fig, axs = plt.subplots(2,3)
 	fig, axs = plt.subplots(2,3)
+	fig.set_size_inches(20, 10)
 	plt.rcParams.update({'font.size': 12})
 	plot_size_vs_error(fimp=0, log_scale=False, panel=axs[0,0])
 	# axs[0,0].text(-0.1, 1.15, "A", transform=axs[0,0].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
@@ -907,16 +939,18 @@ def size_vs_error_panel():
 	labels=[["A","C","E"], ["B","D","F"]]
 	for row in range(2):
 		for col in range(3):
-			axs[row,col].tick_params(axis='both', which='major', labelsize=12)
-			axs[row,col].tick_params(axis='both', which='minor', labelsize=12)
+			axs[row,col].tick_params(axis='both', which='major', labelsize=14)
+			axs[row,col].tick_params(axis='both', which='minor', labelsize=14)
 			label = labels[row][col]
 			axs[row,col].text(-0.04, 1.10, label, transform=axs[row,col].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
+	save_fig("size_panel")
 	plt.show()
 
 
 def operations_vs_error_panel():
 	# create panel of plots of operations vs error
 	fig, axs = plt.subplots(2,2)
+	fig.set_size_inches(14, 8.6)
 	plt.rcParams.update({'font.size': 14})
 	plot_operations_vs_error(parallel=False, log_scale=False, panel=axs[0,0])
 	plot_operations_vs_error(parallel=False, log_scale=False, ratio_base="A1", panel=axs[1,0])
@@ -929,28 +963,47 @@ def operations_vs_error_panel():
 			axs[row,col].tick_params(axis='both', which='minor', labelsize=12)
 			label = labels[row][col]
 			axs[row,col].text(-0.04, 1.10, label, transform=axs[row,col].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
+	save_fig("operations_panel")
 	plt.show()
+
+def save_fig(file_name):
+	global fig_dir
+	plot_file_name = "%s/%s.pdf" % (fig_dir, file_name)
+	print("saving file '%s'" % plot_file_name)
+	plt.savefig(plot_file_name, bbox_inches="tight")
 
 def error_vs_dimension_panel():
 	# create panel of plot of superposition and associative memory error vs dimension
 	fig, axs = plt.subplots(1,2)
+	fig.set_size_inches(14, 10)
 	plt.rcParams.update({'font.size': 14})
 	plot_error_vs_dimension("bundle", panel=axs[0])
 	plot_error_vs_dimension("sdm", panel=axs[1])
 	labels=["A","B"]
 	for col in range(2):
-		axs[col].tick_params(axis='both', which='major', labelsize=12)
-		axs[col].tick_params(axis='both', which='minor', labelsize=12)
+		axs[col].tick_params(axis='x', which='major', labelsize=12)
+		axs[col].tick_params(axis='x', which='minor', labelsize=12)
+		axs[col].tick_params(axis='y', which='major', labelsize=14)
+		axs[col].tick_params(axis='y', which='minor', labelsize=14)
 		label = labels[col]
 		axs[col].text(-0.04, 1.03, label, transform=axs[col].transAxes, fontsize=16, fontweight='bold', va='top', ha='right')
+	save_fig("dimension_panel")
+	plt.show()
+
+def frontiers_fimp_zoom_figure():
+	fig, axs = plt.subplots(1,1)
+	# fig.set_size_inches(14, 10)
+	ie = 6
+	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=True,
+		show_title=False)
+	save_fig("size_vs_fimp_zoom")
 	plt.show()
 
 def frontiers_figures():
 	# figures for Frontiers paper version 2
 	error_vs_dimension_panel()
 	size_vs_error_panel()
-	ie = 6
-	plot_memory_size_and_efficiency_vs_fimp(ie, plot_type="size", log_scale=False, zoom=True)
+	frontiers_fimp_zoom_figure()
 	operations_vs_error_panel()
 
 
@@ -994,6 +1047,8 @@ def main():
 		operations_vs_error_panel()
 	if False:
 		error_vs_dimension_panel()
+	if False:
+		frontiers_fimp_zoom_figure()
 	if True:
 		# figures for Frontiers paper version 2
 		frontiers_figures()
