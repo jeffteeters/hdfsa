@@ -68,7 +68,7 @@ pfmt = {
 			"predict": {**pfmap["predict"], "label":"Prediction"},
 			# {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction", "alpha":1,
 			# 		"markersize":None},
-				"epmf": {**pfmap["epmf"], "label":"Empirical pmf"},
+				"epmf": {**pfmap["epmf"], "label":"Empirical PMF"},
 				# {"fmt": ":+m",
 				# 	"dashes":None,
 				 # 	"linestyle":None, # (0,(1,1)),
@@ -104,7 +104,7 @@ pfmt = {
 			 },
 	"A1": { # full counter, threshold sum
 			"predict": {**pftypes["predict"], "label":"Prediction"},
-			 "epmf": {**pfmap["epmf"], "label":"Empirical pmf"},
+			 "epmf": {**pfmap["epmf"], "label":"Empirical PMF"},
 			 "ecount": {**pfmap["ecount"], "max_ie": 7, "label":"Empirical count"},
 			# "predict": {"fmt": ".-k", "dashes": None, "lw": 1, "linestyle":"solid", "label":"Prediction"
 			# 	, "alpha":1, "markersize":None}, # [12,6,12,6,3,6]
@@ -130,7 +130,7 @@ pfmt = {
 			 },
 	"A3": { # binary counter, non-thresholded sum
 			"predict": {"fmt": None },
-			"epmf": {**pfmap["epmf_a3"], "label": "A3 empirical pmf"},
+			"epmf": {**pfmap["epmf_a3"], "label": "A3 empirical PMF"},
 			"ecount": {**pfmap["ecount_a3"], "max_ie": 7, "label": "A3 empirical count"},
 			# "predict": {"fmt": None, "dashes": None, "lw": 1, "linestyle":"solid", "label":None, "alpha":1,
 			# 	"markersize":None},  # [12,6,12,6,3,6]
@@ -270,7 +270,7 @@ def plot_error_vs_dimension(mtype="sdm", include_jaeckel=False, panel=None):
 					)
 		if jaeckel_error is not None:
 			plp.errorbar(sizes, jaeckel_error, yerr=None, fmt="8m", label="jaeckel_error")
-	xlabel = "Number of storage locations ($m$)" if mtype == "sdm" else "Superposition vector width"
+	xlabel = "Number of storage locations ($m$)" if mtype == "sdm" else "Superposition vector width ($n_s$)"
 	ylabel = error_rate_label  # "Error rate ($10^{-r})$"
 	if panel is None:
 		plp.title("%s empirical vs. predicted error rw1_noroll_v3" % mtype)
@@ -1045,11 +1045,11 @@ def main():
 		size_vs_error_panel()
 	if False:
 		operations_vs_error_panel()
-	if False:
+	if True:
 		error_vs_dimension_panel()
 	if False:
 		frontiers_fimp_zoom_figure()
-	if True:
+	if False:
 		# figures for Frontiers paper version 2
 		frontiers_figures()
 

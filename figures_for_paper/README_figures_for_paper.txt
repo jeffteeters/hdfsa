@@ -1,3 +1,17 @@
+Note: Oct 16, 2022.
+THIS IS OUTDATTED!  IT'S FOR THE ORIGIONAL VERSION OF
+THE PAPER SUBMITTED IN FEB 2022.
+
+To generate the new figures, run script
+plot_eedb.py to generate figures that are saved
+in directory
+frontiers_v2_figures
+for figures for the new version of the paper (v2)
+which will be published in Dec 2022.
+
+----
+
+
 This file has instuctions for generating the figures with
 graphs in the in the 2022 Frontiers paper:
 
