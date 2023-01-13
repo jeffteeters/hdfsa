@@ -9,8 +9,9 @@ def get_overlap_stats(nrows, ncols, thresh=101, k=500):
 	# nrows - number rows in sdm contents matrix
 	# ncols - number columns in sdm contents matrix
 	# thresh - threshold for activating hard location
-	# k - number of vectors being stored in sdm.  Should be small because will check pairs of values
-	# sdm addresses
+	# k - number of vectors being stored in sdm.  Should be small because will
+	#     check all pairs for overlaps, e.g. 500 generates 124750 pairs
+	# generate sdm addresses
 	addresses = rng.integers(0, high=2, size=(nrows, ncols), dtype=np.int8)
 	hard_locations = []
 	for i in range(k):
