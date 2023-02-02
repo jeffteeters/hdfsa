@@ -26,7 +26,7 @@ class Target_overlap():
 
 
 	def empirical(self):
-		print("starting empirical, thresh=%s" % self.thresh)
+		print("starting empirical, thresh=%s, nrows=%s" % (self.thresh, self.nrows))
 		# generate sdm addresses
 		addresses = rng.integers(0, high=2, size=(self.nrows, self.ncols), dtype=np.int8)
 		hard_locations = []
@@ -44,11 +44,16 @@ class Target_overlap():
 		# print(hard_locations)
 		# now find number of overlaps between pairs
 		overlap_counts = []
+		count_ten_sizes = []
 		for i in range(self.k-1):
 			for j in range(i+1, self.k):
-				overlap_counts.append(np.intersect1d(hard_locations[i], hard_locations[j]).size)
+				overlap_count = np.intersect1d(hard_locations[i], hard_locations[j]).size
+				overlap_counts.append(overlap_count)
+				if overlap_count==10:
+					count_ten_sizes.append( (hard_locations[i].size, hard_locations[j].size, ))
 		# print("overlap counts=")
 		# print(overlap_counts)
+		print("len(count_ten_sizes)=%s, fraction=%s" % (len(count_ten_sizes), len(count_ten_sizes)/len(overlap_counts)))
 		mean = np.mean(overlap_counts)
 		var = np.var(overlap_counts)
 		predicted_mean = binom.cdf(self.thresh, self.ncols, 0.5)**2*self.nrows
@@ -65,7 +70,7 @@ class Target_overlap():
 
 	def numerical_variance(self):
 		# calculate overlap mean and variance numerically
-		print("starting numerical, thresh=%s" % self.thresh)
+		print("starting numerical, thresh=%s, nrows=%s" % (self.thresh, self.nrows))
 		pin = binom.cdf(self.thresh, self.ncols, 0.5)  # probability random hard location is selected (Hamming distance <= thresh)
 		x = np.arange(self.nrows + 1)  # all the possible number or rows selected for a given address
 		pnin = binom.pmf(x, self.nrows + 1, pin)  # probability each number of rows selected (in circle)
@@ -92,6 +97,7 @@ class Target_overlap():
 				# add these probabilities to the overall sum, weighted by the probabilities
 				ovp[0:max_overlap+1] += overlap_probabilities * pnin[saved_size] * pnin[add_size]
 		self.numerical_oc_pmf = ovp
+		print("Numerical probability of overlap 10 is: %s" % ovp[10])
 		# see what it looks like
 		mean = np.dot(ovp, ovn)
 		ex2 = np.dot(ovp, ovn**2)
@@ -107,7 +113,7 @@ class Target_overlap():
 		# print("numerical select_counts (len=%s/%s):\n%s" % (
 		# 	limit, self.numerical_select_counts.size, self.numerical_select_counts[0:limit]))
 		x = np.arange(limit)
-		plt.title("Select counts for thresh=%s" % self.thresh)
+		plt.title("Select counts for thresh=%s, nrows=%s" % (self.thresh, self.nrows))
 		plt.plot(x, self.empirical_select_counts_pmf, label = "empirical")
 		plt.plot(x, self.numerical_select_counts[0:limit], label = "numerical")
 		plt.legend(loc="upper left")
@@ -115,10 +121,10 @@ class Target_overlap():
 		# plot comparison of overlap counts
 		limit = self.empirical_oc_pmf.size
 		x = np.arange(limit)
-		plt.title("Overlap counts for thresh=%s" % self.thresh)
+		plt.title("Overlap counts for thresh=%s, nrows=%s" % (self.thresh, self.nrows))
 		plt.plot(x, self.empirical_oc_pmf, label = "empirical")
 		plt.plot(x, self.numerical_oc_pmf[0:limit], label = "numerical")
-		plt.legend(loc="upper left")
+		plt.legend(loc="upper right")
 		plt.show()
 
 
@@ -143,12 +149,13 @@ def main():
 	get_overlap_stats(nrows, ncols, thresh=107)
 
 def main_numerical():
-	nrows=20000
+	nrows=200000
 	ncols=250
 	thresh=101
-	Target_overlap(nrows, ncols, thresh)
-	Target_overlap(nrows, ncols, thresh=104)
+	# Target_overlap(nrows, ncols, thresh)
+	# Target_overlap(nrows, ncols, thresh=104)
 	Target_overlap(nrows, ncols, thresh=107)
+	# Target_overlap(nrows, ncols, thresh=110)
 
 
 # main()
