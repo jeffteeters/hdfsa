@@ -170,7 +170,21 @@ def circle_intersect(thresh=107, d=0):
 	theta = np.arccos(d / (2 * r))
 	w = math.sqrt(r**2 - (d/2)**2)
 	area = 2*(r**2*theta - (w*d/2))
-	return area / (math.pi * r**2)
+	return area / (math.pi * r**2)*math.exp()
+
+def gpx(p, x, ncols):
+	# function defined in Pentti's book, page 133
+	# p - fraction of locations
+	# x - fraction of ditance between circles; also the variable of integration
+	# ncols - dnumber of components in vector
+	# --
+	# convert p (fraction of locations) to rp (radius in bits for that fraction)
+	rp = binom.ppf(p, ncols, .5)
+	# calculate cp given rp and ncols
+	cp = (rp - ncols/2)/math.sqrt(ncols/4)
+	# calculate gpx using equation
+	gpx = 1 / (2*math.pi*math.sqrt(x*(1-x))) * 
+
 
 def intersect_range_analysis(thresh, nrows, ncols):
 	# first calculate probability of different Hamming distances between two vectors
@@ -185,6 +199,10 @@ def intersect_range_analysis(thresh, nrows, ncols):
 	total = pham[from_idx:to_idx+1].sum()
 	print("most probable Hamming distances, from_idx=%s, to_idx=%s, width=%s, total=%s" % (
 		from_idx, to_idx, width, total))
+	# calculate expected overlap if largest 
+
+
+
 	# for each most probable hamming distance, calculate expected overlap
 	ovp = np.zeros(to_idx + 1)  # overlap probabilities
 	ovn = np.arange(to_idx + 1) # overlap numbers (e.g. 0, 1, 2, ... to_idx)
