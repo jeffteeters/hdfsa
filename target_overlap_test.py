@@ -5,6 +5,7 @@ from scipy.stats import hypergeom
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import scipy.integrate as integrate
 
 
 rng = np.random.default_rng()
@@ -170,10 +171,10 @@ def circle_intersect(thresh=107, d=0):
 	theta = np.arccos(d / (2 * r))
 	w = math.sqrt(r**2 - (d/2)**2)
 	area = 2*(r**2*theta - (w*d/2))
-	return area / (math.pi * r**2)*math.exp()
+	return area / (math.pi * r**2)
 
 def gpx(p, x, ncols):
-	# function defined in Pentti's book, page 133
+	# function defined in Pentti's book, page 133; g(p, x) = ...
 	# p - fraction of locations
 	# x - fraction of ditance between circles; also the variable of integration
 	# ncols - dnumber of components in vector
@@ -183,8 +184,18 @@ def gpx(p, x, ncols):
 	# calculate cp given rp and ncols
 	cp = (rp - ncols/2)/math.sqrt(ncols/4)
 	# calculate gpx using equation
-	gpx = 1 / (2*math.pi*math.sqrt(x*(1-x))) * 
+	result = 1 / (2*math.pi*math.sqrt(x*(1-x)))*math.exp(-0.5*cp**2/(1-x))
+	return result
 
+def normalize_circle_intersect(p, d, ncols):
+	# function defined in Pentti's book, page 133; i(p, d) = ...
+	# function to integrate
+	fun = lambda x: gpx(p, x, ncols)
+	range_start = d
+	range_end = 1
+	acc = integrate.quad(fun, range_start, range_end) # integrate over range
+	portion = acc[0]
+	return portion
 
 def intersect_range_analysis(thresh, nrows, ncols):
 	# first calculate probability of different Hamming distances between two vectors
@@ -199,32 +210,23 @@ def intersect_range_analysis(thresh, nrows, ncols):
 	total = pham[from_idx:to_idx+1].sum()
 	print("most probable Hamming distances, from_idx=%s, to_idx=%s, width=%s, total=%s" % (
 		from_idx, to_idx, width, total))
-	# calculate expected overlap if largest 
+	mean_portion = binom.cdf(thresh, ncols, 0.5)
+	p = mean_portion
+	minimum_distance = from_idx
+	d = minimum_distance / ncols
+	max_portion_overlap = normalize_circle_intersect(p, d, ncols)
+	# probably wrong, but see what happens if use number of overlaps at each distance, weighted
+	# by probability of distance
+	overlaps = np.empty(width)
+	prob_overlaps = np.empty(width)
+	for i in range(width):
+		distance = i + from_idx
+		prob_overlaps[i] = pham[i + from_idx]
+		overlaps[i] = normalize_circle_intersect(p, distance/ncols, ncols) * nrows
+	mean_overlaps = np.dot(prob_overlaps, overlaps)
+	var_overlaps = np.dot(prob_overlaps, (overlaps - mean_overlaps)**2)
+	print("mean_overlaps=%s, var_overlaps=%s" % (mean_overlaps, var_overlaps))
 
-
-
-	# for each most probable hamming distance, calculate expected overlap
-	ovp = np.zeros(to_idx + 1)  # overlap probabilities
-	ovn = np.arange(to_idx + 1) # overlap numbers (e.g. 0, 1, 2, ... to_idx)
-	for hdist in range(from_idx, to_idx+1):
-		
-		for add_size in range(from_idx, to_idx+1):
-			max_overlap = min(saved_size, add_size)
-			possible_overlaps = range(max_overlap + 1)
-			# use hypergeometric distribution
-			M = self.nrows    # total number objects
-			n = saved_size  # total number type 1 objects
-			N = add_size   # number drawn without replacement
-			overlap_probabilities = hypergeom.pmf(possible_overlaps, M, n, N)
-			# add these probabilities to the overall sum, weighted by the probabilities
-			ovp[0:max_overlap+1] += overlap_probabilities * pnin[saved_size] * pnin[add_size]
-	self.numerical_oc_pmf = ovp
-	print("Numerical probability of overlap 10 is: %s" % ovp[10])
-	# see what it looks like
-	mean = np.dot(ovp, ovn)
-	ex2 = np.dot(ovp, ovn**2)
-	var = ex2 - mean**2
-	print("found ovp, total=%s, mean=%s, var=%s" % (ovp.sum(), mean, var))
 
 def main():
 	nrows=20000
