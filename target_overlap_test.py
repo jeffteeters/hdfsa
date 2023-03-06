@@ -25,8 +25,8 @@ class Target_overlap():
 		self.k = k
 		self.nact = nact
 		self.empirical()
-		self.numerical_variance()
-		self.compare_empirical_numerical()
+		# self.numerical_variance()
+		# self.compare_empirical_numerical()
 
 
 	def empirical(self):
@@ -197,10 +197,11 @@ def normalize_circle_intersect(p, d, ncols):
 	portion = acc[0]
 	return portion
 
-def intersect_range_analysis(thresh, nrows, ncols):
+def numerical_estimate(nrows, ncols, thresh):
+	# A numerical estimate that takes into account the Hamming distance between addresses
 	# first calculate probability of different Hamming distances between two vectors
 	x = np.arange(ncols + 1)  # all possible hamming distances between two random vectors
-	pham = binom.pmf(x, ncols + 1, 0.5)  # probability each hamming distance
+	pham = binom.pmf(x, ncols, 0.5)  # probability each hamming distance
 	max_pham = pham.max()    # maximum probability
 	cutoff_threshold = 10**6
 	itemindex = np.where(pham > max_pham/cutoff_threshold)
@@ -210,23 +211,38 @@ def intersect_range_analysis(thresh, nrows, ncols):
 	total = pham[from_idx:to_idx+1].sum()
 	print("most probable Hamming distances, from_idx=%s, to_idx=%s, width=%s, total=%s" % (
 		from_idx, to_idx, width, total))
-	mean_portion = binom.cdf(thresh, ncols, 0.5)
-	p = mean_portion
-	minimum_distance = from_idx
-	d = minimum_distance / ncols
-	max_portion_overlap = normalize_circle_intersect(p, d, ncols)
-	# probably wrong, but see what happens if use number of overlaps at each distance, weighted
-	# by probability of distance
-	overlaps = np.empty(width)
-	prob_overlaps = np.empty(width)
-	for i in range(width):
-		distance = i + from_idx
-		prob_overlaps[i] = pham[i + from_idx]
-		overlaps[i] = normalize_circle_intersect(p, distance/ncols, ncols) * nrows
+	prob_both_selected = np.zeros(width)
+	# for each possible Hamming distance between two addresses
+	for h in range(from_idx, to_idx + 1):
+		# for each possible Hamming distance between row in SDM and one of the addresses, which is selected
+		# tprob = 0  # total probability
+		for da in range(from_idx, thresh + 1):
+			if h==5 and da==3 and False:
+				import pdb; pdb.set_trace()
+			max_hamming_bits_in_non_match_region = min(da, h)
+			mc = np.arange(max_hamming_bits_in_non_match_region + 1)  # count of bits different in non-match area
+			M = ncols  # total number of animals (bits)
+			n = h      # number that are dogs (non-matching region size)
+			N = da     # number of animals selecting (Hamming distance between address A and row)
+			pnnm = hypergeom.pmf(mc, M, n, N)  # probability number in non-matching region
+			# db = mc + h - (da - mc)  # Hamming distances to second address
+			db = da + h - 2*mc
+			pb_selected = np.dot(pnnm, db <= thresh)  # probability row selected by address B (under threshold)
+			# print("h=%s, da=%s, db=%s, pb_selected=%s" % (h, da, db, pb_selected))
+			prob_both_selected[h-from_idx] += pham[da] * pb_selected  # make total of weighted probabilities
+	# After above, have probability row selected by both addresses for each Hamming distances between addresses
+	# next, convert to distribution of overlaps
+	# expected number of rows selected by one address
+	expected_activaction_count = round(binom.cdf(thresh, ncols, 0.5) * nrows)
+	max_num_overlap = round(expected_activaction_count / 2) # should be large enough to be very improbable
+	overlaps = np.arange(max_num_overlap + 1)  # all possible overlaps
+	prob_overlaps = np.zeros(max_num_overlap + 1)  # will have probability of each overlap
+	for h in range(from_idx, to_idx + 1):
+		prob_overlaps += pham[h]*binom.pmf(overlaps, nrows, prob_both_selected[h-from_idx])  # add distribution for each hamming distance
+	# finally, calculate mean and variance of overlap_distribution
 	mean_overlaps = np.dot(prob_overlaps, overlaps)
 	var_overlaps = np.dot(prob_overlaps, (overlaps - mean_overlaps)**2)
 	print("mean_overlaps=%s, var_overlaps=%s" % (mean_overlaps, var_overlaps))
-
 
 def main():
 	nrows=20000
@@ -252,8 +268,23 @@ def circle_intersect_test():
 	for d in range(0,121,10):
 		print("thresh=%s, d=%s, intersect=%s" % (thresh, d, circle_intersect(thresh, d)))
 
+def numerical_estimate_test():
+	nrows=200000
+	ncols=250
+	thresh=107
+	Target_overlap(nrows, ncols, thresh=thresh)
+	numerical_estimate(nrows, ncols, thresh)
+
+def numerical_estimate_debug():
+	nrows=20
+	ncols=10
+	thresh=4
+	numerical_estimate(nrows, ncols, thresh)
+
 # main()
 # main_numerical()
 # circle_intersect_test()
-intersect_range_analysis(thresh=107, nrows=20000, ncols=250)
+numerical_estimate_test()
+# numerical_estimate_debug()
+# intersect_range_analysis(thresh=107, nrows=20000, ncols=250)
 
