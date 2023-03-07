@@ -269,6 +269,21 @@ def circle_intersect_test():
 		print("thresh=%s, d=%s, intersect=%s" % (thresh, d, circle_intersect(thresh, d)))
 
 def numerical_estimate_test():
+	nrows=20000
+	ncols=250
+	thresh=101
+	Target_overlap(nrows, ncols, thresh=thresh)
+	numerical_estimate(nrows, ncols, thresh)
+	nrows=20000
+	ncols=250
+	thresh=104
+	Target_overlap(nrows, ncols, thresh=thresh)
+	numerical_estimate(nrows, ncols, thresh)
+	nrows=20000
+	ncols=250
+	thresh=107
+	Target_overlap(nrows, ncols, thresh=thresh)
+	numerical_estimate(nrows, ncols, thresh)
 	nrows=200000
 	ncols=250
 	thresh=107
