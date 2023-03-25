@@ -25,6 +25,7 @@ class Target_overlap():
 		self.k = k
 		self.empirical()
 		self.numerical()
+		self.naive()
 		self.compare_empirical_numerical()
 
 
@@ -111,16 +112,32 @@ class Target_overlap():
 		print("nrows=%s, ncols=%s, thresh=%s. Empirical / Numerical mean=%0.3f / %0.3f; variance=%0.3f / %0.3f" %
 			(self.nrows, self.ncols, self.thresh, self.empirical_mean, self.numerical_mean,
 				self.empirical_var, self.numerical_var))
+		print("   naive mean=%0.3f, variance=%0.3f" % (self.naive_mean, self.naive_var))
 		# plot comparison of overlap count PMF
 		limit = self.empirical_oc_pmf.size
 		x = np.arange(limit)
-		plt.title("Overlap count PMF for thresh=%s, nrows=%s" % (self.thresh, self.nrows))
+		plt.title("Overlap count PMF for threshold=%s, nrows=%s, ncols=%s" % (self.thresh, self.nrows, self.ncols))
 		plt.plot(x, self.empirical_oc_pmf, label = "empirical", lw=2.0)
-		plt.plot(x, self.numerical_oc_pmf[0:limit], '--', label = "numerical", lw=2.0)
+		plt.plot(x, self.numerical_oc_pmf[0:limit], '--', label = "multiple binomial", lw=2.0)
+		plt.plot(x, self.naive_oc_pmf[0:limit], 'r--', label = "single binomial", lw=2.0)
 		plt.xlabel("Overlap count")
 		plt.ylabel("Probability of overlap")
 		plt.legend(loc="upper right")
 		plt.show()
+
+	def naive(self):
+		# try naive approach -- using a single value for the overlap probability to generate the distribution
+		prob_row_selected = binom.cdf(self.thresh, self.ncols, 0.5)
+		max_num_overlap = round(prob_row_selected * self.nrows / 2)  # should be enough to cover likely possibilities
+		prob_both_selected = prob_row_selected**2
+		overlaps = np.arange(max_num_overlap + 1)  # all most likely overlaps
+		prob_overlaps = binom.pmf(overlaps, self.nrows, prob_both_selected)  # probability each overlap
+		mean_overlaps = np.dot(prob_overlaps, overlaps)
+		self.naive_mean = mean_overlaps
+		self.naive_var = np.dot(prob_overlaps, (overlaps - mean_overlaps)**2)
+		self.naive_oc_pmf = prob_overlaps
+
+
 
 	# def numerical_variance(self):
 	# 	# calculate overlap mean and variance numerically
@@ -288,19 +305,39 @@ def normalize_circle_intersect(p, d, ncols):
 # 	var_overlaps = np.dot(prob_overlaps, (overlaps - mean_overlaps)**2)
 # 	print("mean_overlaps=%s, var_overlaps=%s" % (mean_overlaps, var_overlaps))
 
-def main():
+def multiple_binomial_test():
+	# compare single binomal to multi-binomal; plots used in writeup of multibinomal algorithm
 	ncols=250
 	for nrows in [20000, 200000]:
 		for thresh in [101, 104, 107]:
 			Target_overlap(nrows, ncols, thresh)
+
+def multiple_binomial_test_vary_ncols():
+	# compare single binomal to multi-binomal; plots used in writeup of multibinomal algorithm
+	orig_ncols=250
+	for ncols in [250, 500, 1000, 2000, 2500]:
+	# for nrows in [200000]: # [20000, 200000]:
+		nrows = 200000
+		# for thresh in [101, 104, 107]:
+		for thresh in [107]:
+			new_thresh = round(binom.ppf(binom.cdf(thresh, orig_ncols, 0.5), ncols, 0.5))
+			# import pdb; pdb.set_trace()
+			Target_overlap(nrows, ncols, new_thresh)
 
 def circle_intersect_test():
 	thresh = 101
 	for d in range(0,121,10):
 		print("thresh=%s, d=%s, intersect=%s" % (thresh, d, circle_intersect(thresh, d)))
 
+def pentti_paper_parameter_test():
+	# test example numbers used in Pentti's book to see if activation distribution is what is predicted (it is)
+	ncols=1000
+	nrows=1000000
+	thresh=447
+	Target_overlap(nrows, ncols, thresh)
 
-main()
+# pentti_paper_parameter_test()
+multiple_binomial_test_vary_ncols()
 # circle_intersect_test()
 # numerical_estimate_test()
 # numerical_estimate_debug()
